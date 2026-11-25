@@ -374,3 +374,13 @@ Die BLE-Laufzeit liest nach dem Verbinden und danach alle 10 Minuten (`battery_p
 **Web:** Seite *Anzeige* mit Live-Vorschau (SSE `/events/display`, bis 4 Bilder/s), Galerie aller Ansichten, virtuellem Joystick und Helligkeit (alle Änderungen per Token über `POST /display/control`); Einstellungen für Ansichten, Startansicht, Auto-Weiterschalten, Nachtmodus, Helligkeit, Drehung. Änderungen werden ohne Neustart angewendet; wird die Startansicht geändert, gilt sie sofort.
 
 **Grenzen:** Joystick-Änderungen (Helligkeit, Ansicht) sind flüchtig und werden nicht gespeichert; der Verlauf der Anzeige umfasst nur die letzten 8 Messwerte im Speicher; der Joystick löst noch keine Hub-Aktionen aus (F-R7).
+
+## Joystick als Aktionsquelle (F-R7)
+
+Der Sense-HAT-Joystick ist eine eingebaute Aktionsquelle neben den Würfeln: Konfiguration und Regeln kennen den reservierten Namen `Joystick` (kein Würfel darf so heißen) mit **5 „Seiten“**: 1 hoch, 2 rechts, 3 runter, 4 links, 5 Mitte. Zuordnungen, Regelwerk, Outbox (eigene FIFO-Schlange und eigener Dispatcher-Task) und Plugins sind dieselben wie bei Würfeln; Aktionen werden wiederholt, wenn z. B. die Bridge nicht antwortet.
+
+**Bedienung:** In der LED-Ansicht **Steuerung** (`control`; unter Einstellungen aktivieren) führt ein *kurzer Druck* die Aktion der Richtung aus (beim Loslassen), *links/rechts lang halten* wechselt die Ansicht, langes Drücken der Mitte schaltet weiter die Anzeige aus/ein. In allen anderen Ansichten bleibt die Navigation unverändert, so gibt es keinen Konflikt. Die Ansicht zeigt, welche Richtungen belegt sind; nach dem Druck erscheint kurz ein Pfeil (Aktion eingereiht), ein graues Kreuz (nichts eingerichtet) und danach wie bei Würfeln Häkchen oder Kreuz.
+
+**Web:** Der Zuordnungseditor hat einen Joystick-Block mit fünf Feldern und zeigt, ob der Joystick einsatzbereit ist (Anzeige aktiv, Joystick eingeschaltet, Ansicht aktiviert). Der Knopf **„Jetzt auslösen“** führt die gespeicherte Aktion einer Würfelseite oder Joystick-Richtung sofort aus (`POST /cubes/trigger`, nur mit Token): Joystick und Weboberfläche lösen so dieselben Aktionen aus.
+
+**Grenzen:** Der Joystick wird vom Anzeige-Dienst gelesen; ist die LED-Anzeige ausgeschaltet, funktioniert er nicht. Nicht an echter Hardware geprüft.

@@ -9,6 +9,9 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 
 from octapihub.core.config import (
+    CUBE_FACES,
+    JOYSTICK_FACES,
+    JOYSTICK_SOURCE,
     MATRIX_VIEW_IDS,
     AppConfig,
     HueConfig,
@@ -337,7 +340,14 @@ def parse_hue_form(form: Mapping[str, str], current: AppConfig) -> FormResult:
 
 # ---------- cube mapping form ----------
 
-MAX_FACE = 8
+
+def mapping_sources(config: AppConfig) -> list[tuple[str, int]]:
+    """(name, number of faces) of everything that can trigger actions: cubes, then joystick."""
+    sources = [(cube.name, CUBE_FACES) for cube in config.cubes]
+    sources.append((JOYSTICK_SOURCE, JOYSTICK_FACES))
+    return sources
+
+
 EDITABLE_KIND = "hue"
 EDITABLE_ACTION = "scene.activate"
 MAX_SCENE_ID_LENGTH = 200
@@ -372,9 +382,9 @@ def mapping_config_to_form(config: AppConfig) -> dict[str, str]:
     """Selected scene ID per editable face; faces with other actions have no field."""
     lookup = _mapping_lookup(config)
     values: dict[str, str] = {}
-    for index, cube in enumerate(config.cubes):
-        for face in range(1, MAX_FACE + 1):
-            mapping = lookup.get((cube.name.casefold(), face))
+    for index, (name, faces) in enumerate(mapping_sources(config)):
+        for face in range(1, faces + 1):
+            mapping = lookup.get((name.casefold(), face))
             if mapping is None:
                 values[mapping_field(index, face)] = ""
             elif (scene := scene_of(mapping)) is not None:
@@ -403,9 +413,9 @@ def parse_mapping_form(
     known = set(known_scene_ids)
     errors: dict[str, str] = {}
     result: list[dict[str, object]] = []
-    for index, cube in enumerate(config.cubes):
-        for face in range(1, MAX_FACE + 1):
-            existing = lookup.get((cube.name.casefold(), face))
+    for index, (name, faces) in enumerate(mapping_sources(config)):
+        for face in range(1, faces + 1):
+            existing = lookup.get((name.casefold(), face))
             if existing is not None and scene_of(existing) is None:
                 result.append(_raw_mapping(existing))
                 continue
@@ -428,7 +438,7 @@ def parse_mapping_form(
                     continue
             result.append(
                 {
-                    "cube": cube.name,
+                    "cube": name,
                     "face": face,
                     "actions": [
                         {

@@ -48,6 +48,7 @@ class DisplayState:
     hue_level: str = "off"
     sense_level: str = "off"
     host_level: str = "off"
+    joystick_faces: tuple[int, ...] = ()
     readings: Mapping[str, Reading] = field(default_factory=lambda: MappingProxyType({}))
     history: Mapping[str, tuple[float, ...]] = field(default_factory=lambda: MappingProxyType({}))
 

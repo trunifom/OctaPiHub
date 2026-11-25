@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from octapihub.application.ble_runtime import CubeEvent
-from octapihub.core.config import AppConfig, RuleActionConfig
+from octapihub.core.config import JOYSTICK_SOURCE, AppConfig, RuleActionConfig
 from octapihub.core.errors import ValidationError
 from octapihub.domain.cube import OrientationKind
 
@@ -13,6 +13,7 @@ class RuleEngine:
 
     def __init__(self, config: AppConfig) -> None:
         self._cube_names = {cube.name.casefold(): cube.name for cube in config.cubes}
+        self._cube_names[JOYSTICK_SOURCE.casefold()] = JOYSTICK_SOURCE
         self._mappings = {
             (mapping.cube.casefold(), mapping.face): mapping.actions for mapping in config.mappings
         }

@@ -34,6 +34,15 @@ _ROTATION_ORDER = (
 )
 
 
+_FACE_OF = {
+    JoystickDirection.UP: 1,
+    JoystickDirection.RIGHT: 2,
+    JoystickDirection.DOWN: 3,
+    JoystickDirection.LEFT: 4,
+    JoystickDirection.MIDDLE: 5,
+}
+
+
 class Effect(StrEnum):
     """Something the display service must do besides re-rendering."""
 
@@ -41,6 +50,7 @@ class Effect(StrEnum):
     SHOW_INFO = "show_info"
     TOGGLE_DISPLAY = "toggle_display"
     VIEW_CHANGED = "view_changed"
+    TRIGGER = "trigger"  # run the joystick action in ``take_trigger()``
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +90,9 @@ class DisplayController:
         self._last_repeat = -1.0
         self._middle_down = False
         self._middle_long = False
+        self._down: set[JoystickDirection] = set()
+        self._long: set[JoystickDirection] = set()
+        self._trigger_face: int | None = None
 
     # ----- read access -----
 
@@ -130,6 +143,11 @@ class DisplayController:
         """Switch the display on or off (the joystick can switch it back on)."""
         self.display_on = on
 
+    def take_trigger(self) -> int | None:
+        """Face number (1..5) of the joystick action to run, once."""
+        face, self._trigger_face = self._trigger_face, None
+        return face
+
     # ----- input -----
 
     def handle(self, event: SenseHatInputEvent, state: DisplayState, now: float) -> Effect:
@@ -140,6 +158,9 @@ class DisplayController:
         if not self.display_on:
             return Effect.NONE  # a sleeping display only reacts to the middle button
         direction = logical_direction(event.direction, self._rotation)
+        view = VIEWS[self.view_id]
+        if view.captures_joystick and direction in _FACE_OF:
+            return self._handle_captured(direction, event.action)
         if event.action is JoystickAction.RELEASED:
             return Effect.NONE
         if event.action is JoystickAction.HELD:
@@ -148,7 +169,6 @@ class DisplayController:
             if now - self._last_repeat < HOLD_REPEAT_SECONDS:
                 return Effect.NONE
         self._last_repeat = now
-        view = VIEWS[self.view_id]
         if direction in (JoystickDirection.LEFT, JoystickDirection.RIGHT):
             delta = -1 if direction is JoystickDirection.LEFT else 1
             if self.ui.edit_mode and view.has_edit_mode:
@@ -160,6 +180,29 @@ class DisplayController:
             self._vertical(
                 view.id, view.sub_count(state), +1 if direction is JoystickDirection.UP else -1
             )
+        return Effect.NONE
+
+    def _handle_captured(self, direction: JoystickDirection, action: JoystickAction) -> Effect:
+        """Control view: a short press runs the action, a long ◀/▶ press changes the view."""
+        if action is JoystickAction.PRESSED:
+            self._down.add(direction)
+            self._long.discard(direction)
+            return Effect.NONE
+        if action is JoystickAction.HELD:
+            if direction not in self._down or direction in self._long:
+                return Effect.NONE
+            self._long.add(direction)
+            if direction in (JoystickDirection.LEFT, JoystickDirection.RIGHT):
+                self.step_view(-1 if direction is JoystickDirection.LEFT else 1)
+                return Effect.VIEW_CHANGED
+            return Effect.NONE
+        was_down = direction in self._down
+        was_long = direction in self._long
+        self._down.discard(direction)
+        self._long.discard(direction)
+        if was_down and not was_long:
+            self._trigger_face = _FACE_OF[direction]
+            return Effect.TRIGGER
         return Effect.NONE
 
     def _vertical(self, view_id: str, sub_count: int, direction: int) -> None:
@@ -190,6 +233,9 @@ class DisplayController:
         if not was_short or not self.display_on:
             return Effect.NONE
         view = VIEWS[self.view_id]
+        if view.captures_joystick:
+            self._trigger_face = _FACE_OF[JoystickDirection.MIDDLE]
+            return Effect.TRIGGER
         if view.has_edit_mode:
             self.ui.edit_mode = not self.ui.edit_mode
             return Effect.NONE

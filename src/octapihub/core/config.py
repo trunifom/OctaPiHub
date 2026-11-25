@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_SCHEMA_VERSION = 5
 MAX_CUBES = 3
+# The Sense HAT joystick is a built-in action source next to the cubes. Its five inputs are
+# the "faces" 1..5; mappings address it by this reserved name.
+JOYSTICK_SOURCE = "Joystick"
+JOYSTICK_FACE_LABELS: tuple[str, ...] = ("Hoch", "Rechts", "Runter", "Links", "Mitte")
+JOYSTICK_FACES = len(JOYSTICK_FACE_LABELS)
+CUBE_FACES = 8
 LEGACY_SCHEMA_VERSION = 1
 DEFAULT_DEBOUNCE_MS = 300
 MAX_DEBOUNCE_MS = 999
@@ -95,6 +101,7 @@ class SenseHatHistoryConfig:
 MATRIX_VIEW_IDS: tuple[str, ...] = (
     "overview",
     "cubes",
+    "control",
     "battery",
     "temperature",
     "humidity",
@@ -710,6 +717,11 @@ def parse_config(data: object) -> AppConfig:
     cubes = tuple(_parse_cube(item, index) for index, item in enumerate(raw_cubes))
     if len({cube.name.casefold() for cube in cubes}) != len(cubes):
         raise ValidationError("Cube names must be unique", details={"field": "cubes"})
+    if any(cube.name.casefold() == JOYSTICK_SOURCE.casefold() for cube in cubes):
+        raise ValidationError(
+            f"The cube name {JOYSTICK_SOURCE!r} is reserved for the joystick",
+            details={"field": "cubes"},
+        )
     if len({cube.address for cube in cubes}) != len(cubes):
         raise ValidationError("Cube addresses must be unique", details={"field": "cubes"})
 
@@ -1067,6 +1079,7 @@ def _parse_mappings(
     raw_mappings: Sequence[object], cubes: Sequence[CubeConfig]
 ) -> tuple[RuleMappingConfig, ...]:
     cube_names = {cube.name.casefold(): cube.name for cube in cubes}
+    cube_names[JOYSTICK_SOURCE.casefold()] = JOYSTICK_SOURCE
     parsed = tuple(
         _parse_mapping(item, index, cube_names) for index, item in enumerate(raw_mappings)
     )
@@ -1094,9 +1107,10 @@ def _parse_mapping(
             details={"field": f"{field}.cube"},
         )
     face = mapping.get("face")
-    if isinstance(face, bool) or not isinstance(face, int) or not 1 <= face <= 8:
+    highest = JOYSTICK_FACES if canonical_cube_name == JOYSTICK_SOURCE else CUBE_FACES
+    if isinstance(face, bool) or not isinstance(face, int) or not 1 <= face <= highest:
         raise ValidationError(
-            "Mapping face must be an integer from 1 to 8",
+            f"Mapping face must be an integer from 1 to {highest}",
             details={"field": f"{field}.face"},
         )
     raw_actions = mapping.get("actions")

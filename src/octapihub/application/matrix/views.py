@@ -159,6 +159,7 @@ class View:
     controls = ""
     animated = False
     has_edit_mode = False
+    captures_joystick = False
 
     def sub_count(self, state: DisplayState) -> int:
         """Number of items ↑/↓ can step through; 0 means ↑/↓ change the brightness."""
@@ -266,6 +267,29 @@ def _vertical_battery(canvas: Canvas, x: int, percent: int | None, t: float) -> 
         color = scale(color, 0.25)
     for step in range(height):
         canvas.set(x, 6 - step, color)
+
+
+class ControlView(View):
+    id = "control"
+    label = "Steuerung"
+    description = "Der Joystick löst hier die für ihn eingerichteten Aktionen aus."
+    controls = "Kurz: Aktion · Lang ◀ ▶: Ansicht wechseln"
+    animated = False
+    captures_joystick = True
+
+    def render(self, ctx: ViewContext) -> Frame:
+        canvas = Canvas()
+        mapped = set(ctx.state.joystick_faces)
+        # face 1 up, 2 right, 3 down, 4 left, 5 middle
+        spots = {1: (3, 0), 2: (6, 3), 3: (3, 6), 4: (0, 3), 5: (3, 3)}
+        for face, (x, y) in spots.items():
+            on = face in mapped
+            canvas.rect(x, y, 2, 2, CYAN if on else scale(GRAY, 0.5))
+        return canvas.frame()
+
+    def describe(self, state: DisplayState) -> str:
+        count = len(state.joystick_faces)
+        return f"STEUERUNG {count} AKTIONEN" if count else "STEUERUNG KEINE AKTION"
 
 
 class BatteryView(View):
@@ -737,6 +761,7 @@ def _build_registry() -> dict[str, View]:
     views: list[View] = [
         OverviewView(),
         CubesView(),
+        ControlView(),
         BatteryView(),
         TemperatureView(),
         HumidityView(),

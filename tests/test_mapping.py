@@ -593,7 +593,7 @@ def test_three_cubes_get_three_editors_and_independent_mappings(tmp_path: Path) 
     client = _loaded_client(rig)
     try:
         text = client.get("/cubes").text
-        assert text.count("face-tile-head") == 24  # 3 cubes x 8 faces
+        assert text.count("face-tile-head") == 29  # 3 cubes x 8 faces + 5 joystick inputs
         assert "Universal" in text
         assert 'name="map.2.6"' in text
         values = forms.mapping_config_to_form(rig.settings.config)

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from octapihub.application.ble_runtime import BleRuntime, CubeRuntimeStatus
 from octapihub.application.outbox import OutboxDispatcher, OutboxEntry
 from octapihub.application.rules import RuleEngine
-from octapihub.core.config import AppConfig
+from octapihub.core.config import JOYSTICK_SOURCE, AppConfig
 from octapihub.core.errors import OctaPiHubError
 from octapihub.domain.cube import OrientationKind
 
@@ -111,11 +111,34 @@ class CubeService:
             asyncio.create_task(self._route(runtime, dispatcher), name="octapihub-router")
         ]
         self._tasks.extend(
-            asyncio.create_task(
-                self._dispatch(dispatcher, cube.name), name=f"octapihub-dispatch-{i}"
-            )
-            for i, cube in enumerate(self._config.cubes)
+            asyncio.create_task(self._dispatch(dispatcher, name), name=f"octapihub-dispatch-{i}")
+            for i, name in enumerate([cube.name for cube in self._config.cubes] + [JOYSTICK_SOURCE])
         )
+
+    def trigger(self, source: str, face: int) -> str | None:
+        """Run the actions mapped to ``face`` of ``source`` as if the cube or joystick did it.
+
+        Used for the Sense HAT joystick and for the web interface's "run now" buttons.
+        Returns the queued batch id, or ``None`` when nothing is mapped, the pipeline is not
+        running, or the request is invalid (the reason is logged, never raised).
+        """
+        dispatcher = self._dispatcher
+        if dispatcher is None:
+            logger.warning(
+                "Cannot trigger %s face %s: the action pipeline is not running", source, face
+            )
+            return None
+        try:
+            batch = dispatcher.enqueue_face_change(source, face)
+        except OctaPiHubError as exc:
+            logger.warning("Cannot trigger %s face %s: %s", source, face, exc)
+            return None
+        except Exception:
+            logger.exception("Could not queue actions for %s face %s", source, face)
+            return None
+        if batch is not None:
+            self._emit(CubeActivity("face", source, face))
+        return batch
 
     def add_listener(self, listener: ActivityListener) -> None:
         """Register a callback for cube activity; failures inside it are logged, not raised."""

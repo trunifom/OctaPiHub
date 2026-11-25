@@ -51,6 +51,7 @@ class DisplayStateBuilder:
         cubes: CubeService | None = None,
         hue: HueService | None = None,
         host_level: HostLevel | None = None,
+        joystick_faces: Callable[[], tuple[int, ...]] | None = None,
         *,
         clock: Clock = lambda: datetime.now(UTC),
         monotonic: Callable[[], float] = time.monotonic,
@@ -61,6 +62,7 @@ class DisplayStateBuilder:
         self._cubes = cubes
         self._hue = hue
         self._host_level = host_level
+        self._joystick_faces = joystick_faces
         self._clock = clock
         self._monotonic = monotonic
         self._host_interval = host_interval
@@ -80,6 +82,7 @@ class DisplayStateBuilder:
             hue_level=self._hue_level(),
             sense_level=self._sense_level(),
             host_level=self._host(),
+            joystick_faces=self._faces(),
             readings=MappingProxyType(readings),
             history=MappingProxyType({g: tuple(v) for g, v in self._history.items()}),
         )
@@ -130,6 +133,14 @@ class DisplayStateBuilder:
         if failing:
             return "warn" if ok else "error"
         return "ok" if ok else "info"
+
+    def _faces(self) -> tuple[int, ...]:
+        if self._joystick_faces is None:
+            return ()
+        try:
+            return tuple(self._joystick_faces())
+        except Exception:  # noqa: BLE001 - optional information
+            return ()
 
     def _host(self) -> str:
         if self._host_level is None:

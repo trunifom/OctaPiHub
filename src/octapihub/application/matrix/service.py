@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import time as clock_time
 
-from octapihub.application.matrix.canvas import BLACK, Frame, apply_brightness
+from octapihub.application.matrix.canvas import BLACK, CYAN, GRAY, Frame, apply_brightness
 from octapihub.application.matrix.controller import DisplayController, Effect
 from octapihub.application.matrix.overlays import (
     AlertDetector,
@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 type PortProvider = Callable[[], SenseHatPort | None]
 type StateProvider = Callable[[], DisplayState]
 type Monotonic = Callable[[], float]
+# Runs the action mapped to joystick input 1..5; returns whether something was queued.
+type JoystickTrigger = Callable[[int], bool]
+
+_TRIGGER_ICONS = {1: "arrow_up", 2: "arrow_right", 3: "arrow_down", 4: "arrow_left", 5: "dot"}
 
 TICK_SECONDS = 0.1
 MAX_BACKOFF_SECONDS = 30.0
@@ -95,11 +99,13 @@ class MatrixDisplayService:
         state_provider: StateProvider,
         *,
         joystick_enabled: bool = True,
+        joystick_trigger: JoystickTrigger | None = None,
         monotonic: Monotonic = time.monotonic,
         tick_seconds: float = TICK_SECONDS,
     ) -> None:
         self._config = config
         self._joystick_enabled = joystick_enabled
+        self._joystick_trigger = joystick_trigger
         self._port_provider = port_provider
         self._state_provider = state_provider
         self._monotonic = monotonic
@@ -283,8 +289,27 @@ class MatrixDisplayService:
         if effect is Effect.SHOW_INFO:
             text = VIEWS[self._controller.view_id].describe(state)
             self._overlay = Overlay.info(text, now)
+        elif effect is Effect.TRIGGER:
+            self._run_joystick_action(now)
         elif effect in (Effect.VIEW_CHANGED, Effect.TOGGLE_DISPLAY):
             self._overlay = None
+
+    def _run_joystick_action(self, now: float) -> None:
+        """Run the action of the pressed joystick input and show what happened."""
+        face = self._controller.take_trigger()
+        if face is None:
+            return
+        queued = False
+        trigger = self._joystick_trigger
+        if trigger is not None:
+            try:
+                queued = trigger(face)
+            except Exception:
+                logger.exception("Joystick action failed to start")
+        if queued:
+            self._overlay = Overlay.icon_flash(_TRIGGER_ICONS[face], CYAN, now, 0.6, 2)
+        else:  # nothing is programmed for this input (or the pipeline is not running)
+            self._overlay = Overlay.icon_flash("cross", GRAY, now, 0.8, 2)
 
     async def _run(self) -> None:
         backoff = 0.0

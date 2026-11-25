@@ -38,13 +38,16 @@
     </div>
     {% endif %}
 
-    {% for cube in tiles %}
+    {% for cube in tiles %}{% set cube_index = loop.index0 %}
     <div class="mapping-cube">
       <h3 class="subhead">{{ cube.name }} <span class="pill pill-role">{{ cube.role }}</span></h3>
+      {% if cube.role == 'Sense HAT' %}
+      <p class="muted">Der Joystick löst diese Aktionen in der LED-Ansicht „Steuerung“ aus: kurz drücken führt die Aktion aus, <strong>links/rechts lang halten</strong> wechselt die Ansicht.{% if not joystick_ready %} <strong>Noch nicht bereit:</strong> {{ joystick_hint }}{% endif %}</p>
+      {% endif %}
       <div class="face-grid">
         {% for tile in cube.tiles %}
         <div class="face-tile{% if tile.scene_id or tile.locked %} is-set{% endif %}{% if tile.locked %} is-locked{% endif %}">
-          <div class="face-tile-head"><span class="face-chip">{{ tile.face }}</span><span class="face-tile-title">Seite {{ tile.face }}</span></div>
+          <div class="face-tile-head"><span class="face-chip">{{ tile.chip }}</span><span class="face-tile-title">{{ tile.label }}</span></div>
           {% if tile.locked %}
           <ul class="locked-actions">{% for text in tile.locked_actions %}<li>{{ text }}</li>{% endfor %}</ul>
           <p class="help">Mehrere oder andere Aktionen: nur in der Konfigurationsdatei änderbar.</p>
@@ -58,6 +61,7 @@
           </select>
           {{ m.field_error(map_errors, tile.field) }}
           {% endif %}
+          {% if tile.saved %}<button type="submit" formaction="/cubes/trigger" name="trigger" value="{{ cube_index }}.{{ tile.face }}" data-source="{{ cube.name }}" class="btn btn-small btn-run"{% if not writable %} disabled{% endif %}>Jetzt auslösen</button>{% endif %}
         </div>
         {% endfor %}
       </div>

@@ -25,6 +25,8 @@ from octapihub.application.sense_hat_worker import (
     SensorGroupStatus,
 )
 from octapihub.core.config import (
+    JOYSTICK_FACE_LABELS,
+    JOYSTICK_SOURCE,
     AppConfig,
     RuleActionConfig,
     SenseHatConfig,
@@ -33,6 +35,7 @@ from octapihub.core.config import (
 )
 from octapihub.core.logging_support import LogLine
 from octapihub.infrastructure.system_info import SystemSnapshot
+from octapihub.web.forms import mapping_sources
 
 # Scalar groups that can be drawn as a time series.
 CHARTABLE_GROUPS = ("temperature", "humidity", "pressure", "compass")
@@ -663,6 +666,9 @@ class FaceTile:
     scene_label: str
     locked: bool
     locked_actions: tuple[str, ...]
+    label: str = ""
+    chip: str = ""
+    saved: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -674,17 +680,21 @@ class CubeTiles:
     tiles: tuple[FaceTile, ...]
 
 
+_JOYSTICK_CHIPS = ("▲", "▶", "▼", "◀", "●")
+
+
 def build_cube_tiles(
     config: AppConfig, scenes: Mapping[str, str], form: Mapping[str, str]
 ) -> tuple[CubeTiles, ...]:
     """Tiles for the editor; ``form`` holds the currently selected scene IDs."""
     lookup = {(m.cube.casefold(), m.face): m for m in config.mappings}
     result: list[CubeTiles] = []
-    for index, cube in enumerate(config.cubes):
+    for index, (name, faces) in enumerate(mapping_sources(config)):
+        is_joystick = name == JOYSTICK_SOURCE
         tiles: list[FaceTile] = []
-        for face in range(1, 9):
+        for face in range(1, faces + 1):
             field = f"map.{index}.{face}"
-            existing = lookup.get((cube.name.casefold(), face))
+            existing = lookup.get((name.casefold(), face))
             locked = existing is not None and field not in form
             scene_id = form.get(field, "")
             label = scenes.get(scene_id, f"{scene_id} (nicht in der Liste)") if scene_id else ""
@@ -698,11 +708,17 @@ def build_cube_tiles(
                     locked_actions=tuple(describe_action(a) for a in existing.actions)
                     if existing is not None and locked
                     else (),
+                    label=JOYSTICK_FACE_LABELS[face - 1] if is_joystick else f"Seite {face}",
+                    chip=_JOYSTICK_CHIPS[face - 1] if is_joystick else str(face),
+                    saved=existing is not None,
                 )
             )
-        result.append(
-            CubeTiles(cube.name, _ROLE_TEXT.get(cube.role.value, cube.role.value), tuple(tiles))
-        )
+        if is_joystick:
+            role = "Sense HAT"
+        else:
+            cube_role = config.cubes[index].role.value
+            role = _ROLE_TEXT.get(cube_role, cube_role)
+        result.append(CubeTiles(name, role, tuple(tiles)))
     return tuple(result)
 
 

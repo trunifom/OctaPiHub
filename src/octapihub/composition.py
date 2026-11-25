@@ -18,7 +18,7 @@ from octapihub.application.plugins import (
 )
 from octapihub.application.rules import RuleEngine
 from octapihub.application.sense_hat_service import SenseHatService
-from octapihub.core.config import AppConfig, HueConfig
+from octapihub.core.config import JOYSTICK_SOURCE, AppConfig, HueConfig
 from octapihub.infrastructure.ble.bleak_transport import BleakTransportFactory
 from octapihub.infrastructure.ble.protocol import (
     BATTERY_LEVEL_CHARACTERISTIC_UUID,
@@ -120,16 +120,30 @@ def build_matrix_service(
     reads its data through a :class:`DisplayStateBuilder`. Cube activity (a face was
     reached, an action succeeded or failed) shows as a short overlay.
     """
-    builder = DisplayStateBuilder(lambda: config.cubes, sense, cubes, hue, host_level)
+
+    def joystick_faces() -> tuple[int, ...]:
+        current = cubes.config if cubes is not None else config
+        return tuple(m.face for m in current.mappings if m.cube == JOYSTICK_SOURCE)
+
+    builder = DisplayStateBuilder(
+        lambda: config.cubes, sense, cubes, hue, host_level, joystick_faces
+    )
     service = MatrixDisplayService(
         config.sense_hat.matrix,
         lambda: sense.port,
         builder.build,
         joystick_enabled=config.sense_hat.joystick_enabled,
+        joystick_trigger=(
+            (lambda face: cubes.trigger(JOYSTICK_SOURCE, face) is not None)
+            if cubes is not None
+            else None
+        ),
     )
     if cubes is not None:
 
         def on_activity(activity: CubeActivity) -> None:
+            if activity.cube_name == JOYSTICK_SOURCE and activity.kind == "face":
+                return  # the display already showed the joystick feedback itself
             if activity.kind == "face":
                 service.notify_face(activity.cube_name, activity.face)
             else:

@@ -419,6 +419,16 @@ ICONS: dict[str, tuple[str, ...]] = {
         "...##...",
         "........",
     ),
+    "dot": (
+        "........",
+        "........",
+        "........",
+        "...##...",
+        "...##...",
+        "........",
+        "........",
+        "........",
+    ),
     "wifi": (
         "........",
         ".######.",
@@ -430,3 +440,17 @@ ICONS: dict[str, tuple[str, ...]] = {
         "........",
     ),
 }
+
+
+def rotate_mask(rows: Sequence[str], quarter_turns: int) -> tuple[str, ...]:
+    """Rotate a square bitmap clockwise by ``quarter_turns`` * 90 degrees."""
+    current = tuple(rows)
+    for _ in range(quarter_turns % 4):
+        size = len(current)
+        current = tuple("".join(current[size - 1 - y][x] for y in range(size)) for x in range(size))
+    return current
+
+
+ICONS["arrow_right"] = rotate_mask(ICONS["arrow_up"], 1)
+ICONS["arrow_down"] = rotate_mask(ICONS["arrow_up"], 2)
+ICONS["arrow_left"] = rotate_mask(ICONS["arrow_up"], 3)

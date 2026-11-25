@@ -29,6 +29,7 @@ from octapihub.application.matrix.views import VIEWS
 from octapihub.application.sense_hat import JoystickAction, JoystickDirection
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.settings import SettingsManager
+from octapihub.core.config import JOYSTICK_FACE_LABELS, JOYSTICK_SOURCE
 from octapihub.core.errors import (
     ConfigurationError,
     HueLinkButtonError,
@@ -192,6 +193,13 @@ async def display_stream(
             yield ": keep-alive\n\n"
         await asyncio.sleep(interval)
         idle += interval
+
+
+def forms_label(source: str, face: int) -> str:
+    """Human label of a cube face or joystick input for messages."""
+    if source == JOYSTICK_SOURCE:
+        return JOYSTICK_FACE_LABELS[face - 1].lower()
+    return f"Seite {face}"
 
 
 class LiveView:
@@ -393,7 +401,34 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "tiles": build_cube_tiles(backend.settings.config, scenes, values),
             "scene_options": [{"id": sid, "name": name} for sid, name in scenes.items()],
             "scenes_known": bool(scenes),
+            **joystick_readiness(),
         }
+
+    def joystick_readiness() -> dict[str, Any]:
+        """Whether programmed joystick actions can actually be triggered, and if not, why."""
+        matrix = backend.matrix
+        if matrix is None:
+            return {
+                "joystick_ready": False,
+                "joystick_hint": "Die LED-Anzeige ist in diesem Modus nicht aktiv.",
+            }
+        sense = backend.settings.config.sense_hat
+        if not sense.joystick_enabled:
+            return {
+                "joystick_ready": False,
+                "joystick_hint": "Der Joystick ist unter Einstellungen ausgeschaltet.",
+            }
+        if not sense.matrix.enabled:
+            return {
+                "joystick_ready": False,
+                "joystick_hint": "Die LED-Anzeige ist unter Einstellungen ausgeschaltet.",
+            }
+        if "control" not in sense.matrix.views:
+            return {
+                "joystick_ready": False,
+                "joystick_hint": "Aktivieren Sie die Ansicht „Steuerung“ unter Einstellungen.",
+            }
+        return {"joystick_ready": True, "joystick_hint": ""}
 
     def system_context(level: str, banner: dict[str, str] | None = None) -> dict[str, Any]:
         levels = {"INFO": logging.INFO, "WARNING": logging.WARNING, "ERROR": logging.ERROR}
@@ -577,6 +612,56 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
     def cubes_page(request: Request) -> Response:
         values = forms.mapping_config_to_form(backend.settings.config)
         return page(request, "cubes.html", "cubes", **mapping_context(values, {}, None))
+
+    @app.post("/cubes/trigger", response_class=HTMLResponse)
+    async def trigger_action(request: Request) -> Response:
+        submitted, supplied = await _read_form(request)
+        errors: dict[str, str] = {}
+
+        def respond(
+            status: int, level: str, title: str, detail: str = "", code: str = ""
+        ) -> Response:
+            banner = {"level": level, "title": title, "detail": detail, "code": code}
+            values = forms.mapping_config_to_form(backend.settings.config)
+            return page(
+                request, "cubes.html", "cubes", status, **mapping_context(values, errors, banner)
+            )
+
+        problem = _access_problem(backend.token, supplied)
+        if problem is not None:
+            status, title, detail, code = problem
+            return respond(status, "error", title, detail, code)
+        sources = forms.mapping_sources(backend.settings.config)
+        index_text, _, face_text = submitted.get("trigger", "").partition(".")
+        if not (index_text.isdigit() and face_text.isdigit()):
+            return respond(422, "error", "Ungültige Auswahl", "", "CH-WEB-011")
+        index, face = int(index_text), int(face_text)
+        if index >= len(sources) or not 1 <= face <= sources[index][1]:
+            return respond(422, "error", "Ungültige Auswahl", "", "CH-WEB-011")
+        name = sources[index][0]
+        if backend.cubes is None:
+            return respond(
+                409,
+                "warn",
+                "Die Aktionssteuerung ist in diesem Modus nicht aktiv",
+                "Starten Sie die Oberfläche mit einer Konfigurationsdatei.",
+                "CH-WEB-012",
+            )
+        if backend.cubes.trigger(name, face) is None:
+            return respond(
+                409,
+                "warn",
+                "Es wurde nichts ausgelöst",
+                "Für diese Seite ist keine Aktion gespeichert, oder die Aktionssteuerung "
+                "läuft nicht.",
+                "CH-WEB-013",
+            )
+        return respond(
+            200,
+            "ok",
+            "Aktion ausgelöst",
+            f"„{name}“, {forms_label(name, face)}: die Aktion wird gleich ausgeführt.",
+        )
 
     @app.post("/cubes/mapping", response_class=HTMLResponse)
     async def save_mapping(request: Request) -> Response:
