@@ -27,8 +27,16 @@
     <footer class="card-foot"><a class="btn btn-quiet" href="/cubes">Würfel ansehen</a></footer>
   </article>
 
+  <article class="card status-card">
+    <header class="card-head">
+      <span class="chip-ico">{{ m.icon('bulb') }}</span>
+      <h2>Licht</h2>
+    </header>
+    <div id="live-hue-mini" class="stack">{% include "_hue_mini.html" %}</div>
+    <footer class="card-foot"><a class="btn btn-quiet" href="/light">Licht einrichten</a></footer>
+  </article>
+
   {% for icon, title, text in [
-    ('bulb', 'Licht', 'Hier erscheinen später die Hue-Verbindung und die Lichtszenen, die Ihre Würfel auslösen.'),
     ('music', 'Musik', 'Hier erscheinen später das Abspielziel und die Musiksteuerung.'),
     ('system', 'System', 'Hier erscheinen später Uhrzeit, Prozessortemperatur, Speicher und Laufzeit des Geräts.'),
   ] %}

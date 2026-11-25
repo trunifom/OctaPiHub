@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, tzinfo
 
 from octapihub.application.ble_runtime import CubeConnectionState, CubeRuntimeStatus
+from octapihub.application.hue_service import HueState, HueStatus
 from octapihub.application.sense_hat import (
     ColorSensorReading,
     Orientation,
@@ -509,3 +510,75 @@ def cube_summary(views: Sequence[CubeView]) -> tuple[str, str]:
         "ok",
     )
     return worst, f"{ready} von {len(views)} Würfeln verbunden."
+
+
+# ---------- hue ----------
+
+
+@dataclass(frozen=True, slots=True)
+class HueView:
+    """Status of the Hue connection in plain language."""
+
+    level: str
+    badge: str
+    headline: str
+    detail: str
+    hint: str
+    error_text: str
+    error_code: str
+    host: str
+    checked_text: str
+    state: str
+
+
+def build_hue_view(status: HueStatus, tz: tzinfo) -> HueView:
+    """Describe the Hue state; connection is only claimed after a successful check."""
+    checked = (
+        f"Zuletzt geprüft am {local_time_text(status.scenes_checked_at, tz)}"
+        if status.scenes_checked_at is not None
+        else "Noch nicht geprüft"
+    )
+    base = {
+        "error_text": status.last_error or "",
+        "error_code": status.last_error_code or "",
+        "host": status.host,
+        "checked_text": checked,
+        "state": status.state.value,
+    }
+    if status.state is HueState.DISABLED:
+        return HueView(
+            "off",
+            "Ausgeschaltet",
+            "Hue ist ausgeschaltet",
+            "Die Würfel können kein Licht steuern.",
+            "Schalten Sie Hue unten ein und tragen Sie die Adresse Ihrer Bridge ein.",
+            **base,
+        )
+    if status.state is HueState.NOT_PAIRED:
+        return HueView(
+            "warn",
+            "Nicht verbunden",
+            "Die Bridge ist noch nicht verbunden",
+            "Der Würfel kann noch kein Licht schalten.",
+            "Drücken Sie die runde Taste auf der Hue Bridge und klicken Sie danach auf "
+            "„Mit Bridge verbinden“.",
+            **base,
+        )
+    if status.last_error:
+        return HueView(
+            "error",
+            "Störung",
+            "Die Bridge antwortet nicht wie erwartet",
+            status.last_error,
+            "Prüfen Sie Netzwerk, Adresse und Zertifikat der Bridge. Fehlgeschlagene Aktionen "
+            "werden automatisch wiederholt.",
+            **base,
+        )
+    return HueView(
+        "ok",
+        "Gekoppelt",
+        "Mit der Bridge gekoppelt",
+        "Die Verbindung wurde bestätigt." if status.scenes_checked_at else "",
+        "" if status.scenes_checked_at else "Laden Sie die Szenen, um die Verbindung zu testen.",
+        **base,
+    )

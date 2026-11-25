@@ -9,12 +9,14 @@ from __future__ import annotations
 import math
 import tempfile
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from octapihub.application.ble import CharacteristicInfo, DeviceProfile
 from octapihub.application.ble_runtime import BleRuntime
 from octapihub.application.cube_service import CubeService
+from octapihub.application.hue_service import HueGateway, HueService, SceneInfo
 from octapihub.application.outbox import OutboxDispatcher
 from octapihub.application.plugins import PluginRegistry
 from octapihub.application.rules import RuleEngine
@@ -22,7 +24,14 @@ from octapihub.application.sense_hat import SenseHatMetric, SenseHatReading
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.sense_hat_worker import SenseHatSample, correct_temperature
 from octapihub.application.settings import SettingsManager
-from octapihub.core.config import AppConfig, SenseHatConfig, parse_config, save_config
+from octapihub.core.config import (
+    AppConfig,
+    HueConfig,
+    SenseHatConfig,
+    parse_config,
+    save_config,
+)
+from octapihub.core.errors import HueLinkButtonError
 from octapihub.infrastructure.ble.fake import FakeTransportFactory
 from octapihub.infrastructure.ble.protocol import (
     ORIENTATION_CHARACTERISTIC_UUID,
@@ -117,7 +126,8 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
     directory = Path(tempfile.mkdtemp(prefix="octapihub-demo-"))
     base: AppConfig = parse_config(
         {
-            "schema_version": 3,
+            "schema_version": 4,
+            "hue": {"enabled": True, "host": "192.168.1.20"},
             "bluetooth": {"adapter": "hci0"},
             "debounce_ms": 300,
             "mappings": [
@@ -173,8 +183,10 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
         lambda _settings: SenseHatAdapter(DemoSenseHat()),
         lambda settings: SQLiteSenseHatHistory(settings.history.database_path),
     )
-    cubes = _demo_cubes(base, directory)
-    return WebBackend(SettingsManager(config_path, base, service), service, token, cubes)
+    hue = _demo_hue(base.hue)
+    cubes = _demo_cubes(base, directory, hue)
+    settings = SettingsManager(config_path, base, service, hue)
+    return WebBackend(settings, service, token, cubes, hue)
 
 
 class _DemoHue:
@@ -186,7 +198,60 @@ class _DemoHue:
         return None
 
 
-def _demo_cubes(config: AppConfig, directory: Path) -> CubeService:
+class _DemoSecrets:
+    """In-memory key storage; nothing is written to disk in the demo."""
+
+    def __init__(self) -> None:
+        self._values: dict[str, str] = {}
+
+    def get(self, key: str) -> str | None:
+        return self._values.get(key)
+
+    def set(self, key: str, value: str) -> None:
+        self._values[key] = value
+
+    def delete(self, key: str) -> bool:
+        return self._values.pop(key, None) is not None
+
+
+@dataclass(frozen=True)
+class _DemoScene:
+    id: str
+    name: str
+
+
+class _DemoGateway:
+    """A bridge that always works and lists a few scenes."""
+
+    async def list_scenes(self) -> tuple[SceneInfo, ...]:
+        return (
+            _DemoScene("wohnzimmer-abend", "Wohnzimmer – Abend"),
+            _DemoScene("wohnzimmer-hell", "Wohnzimmer – Hell"),
+            _DemoScene("aus", "Alles aus"),
+        )
+
+    async def recall_scene(self, scene_id: str) -> None:
+        return None
+
+
+def _demo_hue(config: HueConfig) -> HueService:
+    """Hue with a fake bridge; the first pairing attempt shows the link-button message."""
+    attempts = 0
+
+    async def pair(_settings: HueConfig) -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise HueLinkButtonError("link button not pressed")
+        return "demo-application-key"
+
+    def make_gateway(_settings: HueConfig, _key: str) -> HueGateway:
+        return _DemoGateway()
+
+    return HueService(config, _DemoSecrets(), make_gateway, pair)
+
+
+def _demo_cubes(config: AppConfig, directory: Path, hue: HueService | None = None) -> CubeService:
     """Two simulated cubes that connect instantly; no Bluetooth is used."""
     profile = DeviceProfile(
         (CharacteristicInfo(ORIENTATION_CHARACTERISTIC_UUID, frozenset({"notify"})),)
@@ -203,7 +268,7 @@ def _demo_cubes(config: AppConfig, directory: Path) -> CubeService:
 
     def make_dispatcher(settings: AppConfig) -> OutboxDispatcher:
         plugins = PluginRegistry()
-        plugins.register(_DemoHue())
+        plugins.register(hue if hue is not None else _DemoHue())
         return OutboxDispatcher(
             RuleEngine(settings), SQLiteOutbox(directory / "state.sqlite3"), plugins
         )

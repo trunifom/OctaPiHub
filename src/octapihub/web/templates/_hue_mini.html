@@ -1,0 +1,7 @@
+{% if hue_active %}
+<span class="badge badge-{{ hue_view.level }}"><span class="dot" aria-hidden="true"></span>{{ hue_view.badge }}</span>
+<p class="muted">{{ hue_view.headline }}.{% if hue_view.hint %} {{ hue_view.hint }}{% endif %}</p>
+{% else %}
+<span class="badge badge-off"><span class="dot" aria-hidden="true"></span>Nicht aktiv</span>
+<p class="muted">Hue ist in diesem Modus nicht aktiv.</p>
+{% endif %}

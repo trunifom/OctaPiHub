@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Licht</h1>
+    <p class="lead">Verbinden Sie Ihre Philips-Hue-Bridge, damit die Würfel Lichtszenen schalten können.</p>
+  </div>
+</div>
+
+{% if banner %}
+<div class="notice notice-{{ banner.level }}" role="{{ 'alert' if banner.level == 'error' else 'status' }}">
+  <span class="notice-ico">{{ m.icon(banner.level) }}</span>
+  <div class="notice-body">
+    <p class="notice-title">{{ banner.title }}</p>
+    {% if banner.detail %}<p>{{ banner.detail }}</p>{% endif %}
+    {% if banner.code %}<p class="notice-code">Fehlercode <code>{{ banner.code }}</code></p>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div id="live-hue">{% include "_hue.html" %}</div>
+
+{% if hue_active %}
+{% if not writable %}
+<div class="notice notice-info" role="status">
+  <span class="notice-ico">{{ m.icon('info') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Nur ansehen: Ändern ist noch nicht freigeschaltet</p>
+    <p>Legen Sie ein Zugriffs-Token mit <code>OCTAPIHUB_WEB_TOKEN</code> fest und starten Sie den Dienst neu.</p>
+  </div>
+</div>
+{% endif %}
+
+<form method="post" action="/light" id="light-form" novalidate>
+  <button type="submit" name="action" value="save" class="visually-hidden" tabindex="-1" aria-hidden="true">Speichern</button>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2><span class="step-no">1</span> Bridge eintragen</h2>
+      <p class="muted">Die Adresse finden Sie in der Hue-App unter Einstellungen → Bridges oder in Ihrem Router.</p>
+    </div>
+    {{ m.toggle('hue.enabled', form, 'Hue verwenden', 'Wenn aus, schalten die Würfel kein Licht.') }}
+    <div class="field field-wide">
+      <label for="f-hue.host">Adresse der Bridge</label>
+      <input type="text" name="hue.host" id="f-hue.host" inputmode="url" autocomplete="off" placeholder="192.168.1.20" value="{{ form.get('hue.host', '') }}"{% if errors.get('hue.host') %} aria-invalid="true" aria-describedby="err-hue.host"{% endif %}>
+      {{ m.field_error(errors, 'hue.host') }}
+      <small class="help">Nur die Adresse, ohne „http://“.</small>
+    </div>
+    <details class="more"{% if errors.get('hue.port') or errors.get('hue.ca_file') or errors.get('hue.tls_server_name') %} open{% endif %}>
+      <summary>Erweiterte Verbindungseinstellungen</summary>
+      <div class="fields-2">
+        <div class="field">
+          <label for="f-hue.port">Port</label>
+          <input type="text" name="hue.port" id="f-hue.port" inputmode="numeric" value="{{ form.get('hue.port', '443') }}"{% if errors.get('hue.port') %} aria-invalid="true" aria-describedby="err-hue.port"{% endif %}>
+          {{ m.field_error(errors, 'hue.port') }}
+          <small class="help">Normalerweise 443.</small>
+        </div>
+        <div class="field">
+          <label for="f-hue.tls_server_name">Name im Zertifikat der Bridge</label>
+          <input type="text" name="hue.tls_server_name" id="f-hue.tls_server_name" autocomplete="off" value="{{ form.get('hue.tls_server_name', '') }}"{% if errors.get('hue.tls_server_name') %} aria-invalid="true" aria-describedby="err-hue.tls_server_name"{% endif %}>
+          {{ m.field_error(errors, 'hue.tls_server_name') }}
+          <small class="help">Meist die Bridge-ID. Nötig, wenn das Zertifikat nicht auf die Adresse ausgestellt ist.</small>
+        </div>
+        <div class="field">
+          <label for="f-hue.ca_file">Zertifikatsdatei (CA)</label>
+          <input type="text" name="hue.ca_file" id="f-hue.ca_file" autocomplete="off" value="{{ form.get('hue.ca_file', '') }}"{% if errors.get('hue.ca_file') %} aria-invalid="true" aria-describedby="err-hue.ca_file"{% endif %}>
+          {{ m.field_error(errors, 'hue.ca_file') }}
+          <small class="help">Pfad zur Zertifikatsdatei der Bridge. Die Verbindung wird immer geprüft.</small>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2><span class="step-no">2</span> Mit der Bridge verbinden</h2>
+      <p class="muted">Dafür braucht die Bridge einmalig Ihre Bestätigung.</p>
+    </div>
+    <ol class="steps">
+      <li>Drücken Sie die <strong>runde Taste</strong> oben auf der Hue Bridge.</li>
+      <li>Klicken Sie innerhalb von 30 Sekunden auf „Mit Bridge verbinden“.</li>
+    </ol>
+    <div>
+      <button type="submit" name="action" value="pair" class="btn btn-primary"{% if not writable %} disabled{% endif %}>Mit Bridge verbinden</button>
+    </div>
+  </section>
+
+  {% if hue_view.state == 'paired' %}
+  <section class="panel">
+    <div class="panel-head">
+      <h2><span class="step-no">3</span> Szenen</h2>
+      <p class="muted">Diese Szenen können Sie einer Würfelseite zuordnen. Tragen Sie dafür die Szenen-ID in der Konfigurationsdatei ein.</p>
+    </div>
+    <div>
+      <button type="submit" name="action" value="refresh" class="btn"{% if not writable %} disabled{% endif %}>Szenen laden</button>
+    </div>
+    {% if hue_scenes %}
+    <ul class="scene-list">
+      {% for scene in hue_scenes %}
+      <li class="scene">
+        <div class="scene-info"><strong>{{ scene.name }}</strong><code>{{ scene.id }}</code></div>
+        <button type="submit" name="action" value="test:{{ scene.id }}" class="btn"{% if not writable %} disabled{% endif %}>Testen</button>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">
+      <span class="empty-ico">{{ m.icon('bulb') }}</span>
+      <h3>Noch keine Szenen geladen</h3>
+      <p>Klicken Sie auf „Szenen laden“. Die Szenen legen Sie vorher in der Hue-App an.</p>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Verbindung trennen</h2>
+      <p class="muted">Der gespeicherte Schlüssel wird gelöscht. Danach schalten die Würfel kein Licht mehr, bis Sie neu verbinden.</p>
+    </div>
+    <label class="check"><input type="checkbox" name="confirm_unpair" value="on"> <span>Ja, Verbindung trennen</span></label>
+    <div>
+      <button type="submit" name="action" value="unpair" class="btn btn-danger"{% if not writable %} disabled{% endif %}>Verbindung trennen</button>
+    </div>
+  </section>
+  {% endif %}
+
+  <div class="savebar">
+    <div class="savebar-in">
+      <div class="field field-token">
+        <label for="f-token">Zugriffs-Token</label>
+        <input type="password" name="token" id="f-token" autocomplete="current-password" placeholder="{{ 'Token eingeben' if writable else 'Nicht eingerichtet' }}"{% if not writable %} disabled{% endif %}>
+      </div>
+      <button type="submit" name="action" value="save" class="btn btn-primary"{% if not writable %} disabled{% endif %}>Einstellungen speichern</button>
+    </div>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

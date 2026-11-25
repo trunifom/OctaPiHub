@@ -1,0 +1,23 @@
+{% import "_macros.html" as m %}
+{% if not hue_active %}
+<div class="notice notice-info" role="status">
+  <span class="notice-ico">{{ m.icon('info') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Hue ist in diesem Modus nicht aktiv</p>
+    <p>Starten Sie die Oberfläche mit einer Konfigurationsdatei, um die Hue Bridge einzurichten.</p>
+  </div>
+</div>
+{% else %}
+<article class="card hue-status">
+  <header class="card-head">
+    <span class="chip-ico">{{ m.icon('bulb') }}</span>
+    <h2>Hue Bridge</h2>
+    <span class="badge badge-{{ hue_view.level }}"><span class="dot" aria-hidden="true"></span>{{ hue_view.badge }}</span>
+  </header>
+  <p><strong>{{ hue_view.headline }}</strong></p>
+  {% if hue_view.detail %}<p class="sub">{{ hue_view.detail }}</p>{% endif %}
+  {% if hue_view.hint %}<p class="notice-hint">{{ hue_view.hint }}</p>{% endif %}
+  {% if hue_view.error_code %}<p class="notice-code">Fehlercode <code>{{ hue_view.error_code }}</code></p>{% endif %}
+  {% if hue_view.host %}<p class="sub">Bridge: {{ hue_view.host }}{% if hue_view.state == 'paired' %} · {{ hue_view.checked_text }}{% endif %}</p>{% endif %}
+</article>
+{% endif %}

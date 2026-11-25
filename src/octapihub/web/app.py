@@ -23,9 +23,16 @@ from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from octapihub.application.cube_service import CubeService
+from octapihub.application.hue_service import HueService
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.settings import SettingsManager
-from octapihub.core.errors import ConfigurationError, OctaPiHubError, ValidationError
+from octapihub.core.errors import (
+    ConfigurationError,
+    HueLinkButtonError,
+    HueNotConfiguredError,
+    OctaPiHubError,
+    ValidationError,
+)
 from octapihub.web import forms
 from octapihub.web.presenter import (
     CHARTABLE_GROUPS,
@@ -33,6 +40,7 @@ from octapihub.web.presenter import (
     SECTIONS,
     build_cube_views,
     build_group_views,
+    build_hue_view,
     build_mapping_views,
     build_notices,
     chart_groups,
@@ -83,6 +91,7 @@ class WebBackend:
     sense_hat: SenseHatService
     token: str | None = None
     cubes: CubeService | None = None
+    hue: HueService | None = None
     tz: tzinfo = field(default_factory=display_timezone)
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
 
@@ -93,6 +102,37 @@ def _token_matches(expected: str | None, supplied: str) -> bool:
     return hmac.compare_digest(
         hashlib.sha256(expected.encode()).digest(), hashlib.sha256(supplied.encode()).digest()
     )
+
+
+def _access_problem(token: str | None, supplied: str) -> tuple[int, str, str, str] | None:
+    """Return (status, title, detail, code) when a write request may not proceed."""
+    if not token:
+        return (
+            403,
+            "Speichern ist ausgeschaltet",
+            "Es ist kein Zugriffs-Token eingerichtet. Setzen Sie OCTAPIHUB_WEB_TOKEN "
+            "und starten Sie den Dienst neu.",
+            "CH-WEB-003",
+        )
+    if not _token_matches(token, supplied):
+        return (
+            403,
+            "Das Zugriffs-Token stimmt nicht",
+            "Es wurde nichts geändert. Prüfen Sie das Token und versuchen Sie es erneut.",
+            "CH-WEB-004",
+        )
+    return None
+
+
+async def _read_form(request: Request) -> tuple[dict[str, str], str]:
+    """Parse a small urlencoded body; returns (fields without token, supplied token)."""
+    raw = await request.body()
+    if len(raw) > MAX_FORM_BYTES:
+        raise HTTPException(status_code=413, detail="Request too large")
+    fields = dict(parse_qsl(raw.decode("utf-8", errors="replace"), keep_blank_values=True))
+    supplied = fields.pop("token", "") or request.headers.get("x-octapihub-token", "")
+    fields.pop("_", None)
+    return fields, supplied
 
 
 class LiveView:
@@ -127,7 +167,12 @@ class LiveView:
             cube_level, cube_text = "off", "Die Würfel-Steuerung ist in diesem Modus nicht aktiv."
         elif cubes.error:
             cube_level = "error"
+        hue = backend.hue
+        hue_view = build_hue_view(hue.status, backend.tz) if hue is not None else None
         return {
+            "hue_active": hue is not None,
+            "hue_view": hue_view,
+            "hue_scenes": hue.scenes if hue is not None else (),
             "cubes_active": cubes is not None,
             "cube_views": cube_views,
             "cube_level": cube_level,
@@ -155,6 +200,8 @@ class LiveView:
             "live-badge": render("_badge.html").render(context),
             "live-cubes": render("_cubes.html").render(context),
             "live-cubes-mini": render("_cubes_mini.html").render(context),
+            "live-hue": render("_hue.html").render(context),
+            "live-hue-mini": render("_hue_mini.html").render(context),
         }
 
     async def stream(
@@ -201,6 +248,8 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if manage_service:
             await backend.sense_hat.start()
+            if backend.hue is not None:
+                await backend.hue.start()
             if backend.cubes is not None:
                 await backend.cubes.start()
         try:
@@ -315,12 +364,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
 
     @app.post("/settings/sense-hat", response_class=HTMLResponse)
     async def save_sense_hat(request: Request) -> Response:
-        raw = await request.body()
-        if len(raw) > MAX_FORM_BYTES:
-            raise HTTPException(status_code=413, detail="Request too large")
-        submitted = dict(parse_qsl(raw.decode("utf-8", errors="replace"), keep_blank_values=True))
-        supplied = submitted.pop("token", "") or request.headers.get("x-octapihub-token", "")
-        submitted.pop("_", None)
+        submitted, supplied = await _read_form(request)
 
         def respond(
             status: int, level: str, title: str, detail: str = "", code: str = ""
@@ -335,23 +379,10 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             )
 
         errors_holder: dict[str, str] = {}
-        if not backend.token:
-            return respond(
-                403,
-                "error",
-                "Speichern ist ausgeschaltet",
-                "Es ist kein Zugriffs-Token eingerichtet. Setzen Sie OCTAPIHUB_WEB_TOKEN "
-                "und starten Sie den Dienst neu.",
-                "CH-WEB-003",
-            )
-        if not _token_matches(backend.token, supplied):
-            return respond(
-                403,
-                "error",
-                "Das Zugriffs-Token stimmt nicht",
-                "Es wurde nichts gespeichert. Prüfen Sie das Token und versuchen Sie es erneut.",
-                "CH-WEB-004",
-            )
+        problem = _access_problem(backend.token, supplied)
+        if problem is not None:
+            status, title, detail, code = problem
+            return respond(status, "error", title, detail, code)
         result = forms.parse_form(submitted, backend.settings.config.sense_hat)
         if result.table is None:
             errors_holder.update(result.errors)
@@ -379,6 +410,129 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "Gespeichert und angewendet",
             "Die Messung läuft mit den neuen Einstellungen.",
         )
+
+    def light_context(
+        values: dict[str, str], errors: dict[str, str], banner: dict[str, str] | None
+    ) -> dict[str, Any]:
+        return {
+            "form": values,
+            "errors": errors,
+            "banner": banner,
+            "writable": bool(backend.token),
+        }
+
+    @app.get("/light", response_class=HTMLResponse)
+    def light_page(request: Request) -> Response:
+        values = forms.hue_config_to_form(backend.settings.config.hue)
+        return page(request, "light.html", "light", **light_context(values, {}, None))
+
+    @app.post("/light", response_class=HTMLResponse)
+    async def light_action(request: Request) -> Response:
+        submitted, supplied = await _read_form(request)
+        action = submitted.get("action", "")
+        errors: dict[str, str] = {}
+
+        def respond(
+            status: int, level: str, title: str, detail: str = "", code: str = ""
+        ) -> Response:
+            banner = {"level": level, "title": title, "detail": detail, "code": code}
+            return page(
+                request, "light.html", "light", status, **light_context(submitted, errors, banner)
+            )
+
+        problem = _access_problem(backend.token, supplied)
+        if problem is not None:
+            status, title, detail, code = problem
+            return respond(status, "error", title, detail, code)
+        hue = backend.hue
+        if hue is None:
+            return respond(
+                503,
+                "error",
+                "Hue ist in diesem Modus nicht verfügbar",
+                "Starten Sie die Oberfläche mit einer Konfigurationsdatei.",
+                "CH-WEB-005",
+            )
+        try:
+            if action in {"save", "pair"}:
+                result = forms.parse_hue_form(submitted, backend.settings.config)
+                if result.table is None:
+                    errors.update(result.errors)
+                    return respond(
+                        422,
+                        "error",
+                        "Bitte korrigieren Sie die markierten Felder",
+                        errors.get(forms.FORM_ERROR_KEY, "Es wurde nichts gespeichert."),
+                    )
+                if result.table != _current_hue_table():
+                    await backend.settings.apply_hue(result.table)
+                if action == "save":
+                    submitted.update(forms.hue_config_to_form(backend.settings.config.hue))
+                    return respond(200, "ok", "Gespeichert und angewendet")
+                await hue.pair()
+                submitted.update(forms.hue_config_to_form(backend.settings.config.hue))
+                try:
+                    await hue.refresh_scenes()
+                except OctaPiHubError:
+                    logger.warning("Scenes could not be read right after pairing")
+                return respond(
+                    200,
+                    "ok",
+                    "Mit der Bridge verbunden",
+                    "Die Würfel können jetzt Hue-Szenen schalten.",
+                )
+            if action == "refresh":
+                scenes = await hue.refresh_scenes()
+                return respond(200, "ok", f"{len(scenes)} Szenen geladen")
+            if action == "unpair":
+                if not submitted.get("confirm_unpair"):
+                    return respond(
+                        422,
+                        "warn",
+                        "Bitte bestätigen Sie das Trennen",
+                        "Setzen Sie das Häkchen bei „Ja, Verbindung trennen“.",
+                    )
+                await hue.unpair()
+                return respond(200, "ok", "Verbindung getrennt")
+            if action.startswith("test:"):
+                scene_id = action.removeprefix("test:")
+                if scene_id not in {scene.id for scene in hue.scenes}:
+                    return respond(
+                        422,
+                        "error",
+                        "Diese Szene ist nicht bekannt",
+                        "Laden Sie die Szenen neu und versuchen Sie es erneut.",
+                    )
+                await hue.execute("scene.activate", {"scene_id": scene_id})
+                return respond(200, "ok", "Szene wurde aktiviert")
+            return respond(422, "error", "Unbekannte Aktion", "", "CH-WEB-006")
+        except HueLinkButtonError as exc:
+            return respond(
+                409,
+                "warn",
+                "Die Taste an der Bridge wurde nicht gedrückt",
+                exc.user_message,
+                exc.error_code,
+            )
+        except HueNotConfiguredError as exc:
+            return respond(
+                409, "warn", "Hue ist noch nicht eingerichtet", exc.user_message, exc.error_code
+            )
+        except ValidationError as exc:
+            return respond(
+                422, "error", "Die Eingabe ist ungültig", exc.user_message, exc.error_code
+            )
+        except (ConfigurationError, OctaPiHubError) as exc:
+            logger.error("Hue action %s failed: %s", action.split(":")[0], exc)
+            status = 502 if exc.error_code.startswith("CH-HUE") else 500
+            return respond(
+                status, "error", "Das hat nicht geklappt", exc.user_message, exc.error_code
+            )
+
+    def _current_hue_table() -> dict[str, object]:
+        from octapihub.core.config import hue_table
+
+        return hue_table(backend.settings.config.hue)
 
     @app.get("/api/sense-hat/series/{group}")
     def series(group: str, range: str = "24h", basis: str = "corrected") -> JSONResponse:
@@ -447,6 +601,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "status": "ok",
             "sense_hat_running": backend.sense_hat.running,
             "sense_hat_error": backend.sense_hat.hardware_error_code,
+            "hue_state": backend.hue.state.value if backend.hue is not None else None,
             "cubes_running": backend.cubes.running if backend.cubes is not None else None,
         }
 

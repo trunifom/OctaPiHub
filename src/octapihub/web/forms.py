@@ -7,7 +7,15 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from octapihub.core.config import SenseHatConfig, SensorPresentation, sense_hat_table
+from octapihub.core.config import (
+    AppConfig,
+    HueConfig,
+    SenseHatConfig,
+    SensorPresentation,
+    sense_hat_table,
+    with_hue_table,
+)
+from octapihub.core.errors import ValidationError
 
 SENSOR_IDS = (
     "temperature",
@@ -203,3 +211,59 @@ def _decimal(
     elif positive and value <= 0:
         errors[key] = "Der Faktor muss größer als 0 sein."
     return value
+
+
+# ---------- Hue connection form ----------
+
+HUE_FIELD_MESSAGES: Mapping[str, str] = {
+    "hue.enabled": "Bitte Ein oder Aus wählen.",
+    "hue.host": "Bitte die Adresse der Bridge eintragen, zum Beispiel 192.168.1.20 (ohne „http://“).",
+    "hue.port": "Der Port muss eine Zahl von 1 bis 65535 sein (üblich: 443).",
+    "hue.tls_server_name": (
+        "Bitte einen gültigen Namen eintragen (zum Beispiel die Bridge-ID) oder das Feld "
+        "leer lassen."
+    ),
+    "hue.ca_file": "Der Pfad darf nur eine Zeile enthalten.",
+}
+
+
+def hue_config_to_form(hue: HueConfig) -> dict[str, str]:
+    """Flat string values for rendering the saved Hue settings."""
+    return {
+        "hue.enabled": _flag(hue.enabled),
+        "hue.host": hue.host,
+        "hue.port": str(hue.port),
+        "hue.ca_file": hue.ca_file,
+        "hue.tls_server_name": hue.tls_server_name,
+    }
+
+
+def parse_hue_form(form: Mapping[str, str], current: AppConfig) -> FormResult:
+    """Turn submitted Hue fields into a validated table, or German field errors.
+
+    Final validation is delegated to the configuration schema so the form can never accept
+    something the file would reject.
+    """
+    errors: dict[str, str] = {}
+    port_text = form.get("hue.port", "").strip()
+    try:
+        port = int(port_text)
+    except ValueError:
+        errors["hue.port"] = HUE_FIELD_MESSAGES["hue.port"]
+        port = 443
+    table: dict[str, object] = {
+        "enabled": _checked(form, "hue.enabled"),
+        "host": form.get("hue.host", "").strip(),
+        "port": port,
+        "ca_file": form.get("hue.ca_file", "").strip(),
+        "tls_server_name": form.get("hue.tls_server_name", "").strip(),
+    }
+    if not errors:
+        try:
+            with_hue_table(current, table)
+        except ValidationError as exc:
+            field = str(exc.details.get("field", ""))
+            errors[field if field in HUE_FIELD_MESSAGES else FORM_ERROR_KEY] = (
+                HUE_FIELD_MESSAGES.get(field, exc.user_message)
+            )
+    return FormResult(None if errors else table, errors)

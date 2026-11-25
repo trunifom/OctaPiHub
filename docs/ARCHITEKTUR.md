@@ -330,3 +330,11 @@ Joystick-Einstellungen werden gespeichert, aber noch nicht angewendet.
 ## Hue-Konfiguration (Schema v4)
 
 Schema v4 ergänzt den Abschnitt `[hue]` (`enabled`, `host`, `port`, `ca_file`, `tls_server_name`); v1–v3-Dateien bleiben lesbar und werden beim Speichern migriert. Der Application Key steht bewusst nie in der TOML-Datei (unbekannte Felder wie `application_key` werden abgelehnt), sondern in `secrets.env`. Hue ist standardmäßig ausgeschaltet; ist es eingeschaltet, ist ein gültiger Host Pflicht. Das Zertifikat der Bridge wird immer geprüft; `tls_server_name` ist für Bridges gedacht, deren Zertifikat nicht auf die IP-Adresse ausgestellt ist (nicht an echter Hardware geprüft).
+
+## Hue-Anbindung (Dienst und Oberfläche)
+
+- **`HueService`** (application) ist zugleich das Plugin `hue`. Es ist auch vor dem Koppeln registriert: Aktionen scheitern dann mit `CH-HUE-005` und die Outbox wiederholt sie bis zum Ablauf, sodass eine kurz vor dem Koppeln gemachte Würfelgeste danach noch wirkt (per Test belegt). Gekoppelt, getrennt und ausgeschaltet sind eigene Zustände.
+- **Fehlerverhalten:** Kopplung ist serialisiert und liefert typisierte Fehler (Taste nicht gedrückt `CH-HUE-004`, Zertifikat `CH-HUE-003`, Bridge `CH-HUE-001`, Speicher `CH-SEC-001`); schlägt das Speichern des Schlüssels fehl, gilt nichts als gekoppelt. Unlesbare Secrets oder eine ungültige CA-Datei stoppen den Hub nicht, sondern werden als Status gemeldet; Reconfigure behebt das ohne Neustart. Die Szenenliste bleibt bei Fehlern als veralteter Stand sichtbar.
+- **Geheimnisse:** Der Application Key liegt nur in `secrets.env` (0600, Datei mit offenen Rechten wird abgelehnt), nie in TOML, Status, Seiten oder Fehlermeldungen.
+- **Seite Licht:** Bridge eintragen (Validierung über das Konfigurationsschema), Koppeln per Knopfdruck, Szenen laden, Szenen testen, Verbindung trennen (mit Bestätigung). Alle Änderungen brauchen das Token; ein Formular mit einem Token-Feld. Szenennamen werden nie als HTML ausgegeben.
+- **Grenzen:** Nur gegen lokale TLS-Fakes getestet; Verhalten einer echten Bridge (Zertifikatsname, Kopplungsfenster, Ratenlimit) ist ungeprüft. Szenen-IDs müssen noch in der Konfigurationsdatei zugeordnet werden.

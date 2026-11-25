@@ -11,7 +11,11 @@ from collections.abc import Sequence
 import uvicorn
 
 from octapihub.application.settings import SettingsManager
-from octapihub.composition import build_cube_service, build_sense_hat_service
+from octapihub.composition import (
+    build_cube_service,
+    build_hue_service,
+    build_sense_hat_service,
+)
 from octapihub.core.config import load_config
 from octapihub.core.errors import OctaPiHubError
 from octapihub.web.app import WebBackend, create_app
@@ -25,6 +29,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--config", default="octapihub.toml", help="Pfad zur TOML-Konfiguration")
     parser.add_argument("--host", default="127.0.0.1", help="Adresse (nur im LAN öffnen)")
     parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--secrets", default="secrets.env", help="Datei mit Zugangsdaten")
     parser.add_argument("--data-dir", default="data", help="Ordner für Zustandsdatenbanken")
     parser.add_argument(
         "--demo",
@@ -47,11 +52,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"{exc.error_code}: {exc.user_message}", file=sys.stderr)  # noqa: T201
             return 2
         service = build_sense_hat_service(config)
+        hue = build_hue_service(config, args.secrets)
         backend = WebBackend(
-            SettingsManager(args.config, config, service),
+            SettingsManager(args.config, config, service, hue),
             service,
             os.environ.get(TOKEN_VARIABLE) or None,
-            build_cube_service(config, args.data_dir),
+            build_cube_service(config, args.data_dir, plugins=(hue,)),
+            hue,
         )
     uvicorn.run(
         create_app(backend, manage_service=True),

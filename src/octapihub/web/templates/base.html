@@ -21,6 +21,7 @@
       <nav class="nav" aria-label="Hauptnavigation">
         <a href="/" {% if active == 'overview' %}aria-current="page"{% endif %}>{{ m.icon('overview') }}<span>Übersicht</span></a>
         <a href="/cubes" {% if active == 'cubes' %}aria-current="page"{% endif %}>{{ m.icon('cube') }}<span>Würfel</span></a>
+        <a href="/light" {% if active == 'light' %}aria-current="page"{% endif %}>{{ m.icon('bulb') }}<span>Licht</span></a>
         <a href="/sense-hat" {% if active == 'sense-hat' %}aria-current="page"{% endif %}>{{ m.icon('sense-hat') }}<span>Sense HAT</span></a>
         <a href="/settings" {% if active == 'settings' %}aria-current="page"{% endif %}>{{ m.icon('settings') }}<span>Einstellungen</span></a>
       </nav>
