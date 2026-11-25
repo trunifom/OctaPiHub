@@ -8,8 +8,12 @@ import pytest
 import octapihub.core.config as config_module
 from octapihub.core.config import (
     DEFAULT_DEBOUNCE_MS,
+    DEFAULT_HISTORY_RETENTION_DAYS,
+    DEFAULT_SENSOR_INTERVAL_SECONDS,
     AppConfig,
     CubeRole,
+    SenseHatVersion,
+    SensorPresentation,
     load_config,
     parse_config,
     save_config,
@@ -32,27 +36,40 @@ def test_parse_config_applies_defaults_and_normalizes_addresses() -> None:
     config = parse_config(valid_config())
 
     assert isinstance(config, AppConfig)
-    assert config.schema_version == 2
+    assert config.schema_version == 3
     assert config.bluetooth.adapter == "hci0"
     assert config.debounce_ms == DEFAULT_DEBOUNCE_MS
     assert config.cubes[0].address == "AA:BB:CC:DD:EE:01"
     assert config.cubes[0].role is CubeRole.LIGHT
     assert config.cubes[1].role is CubeRole.MUSIC
+    assert config.sense_hat.hardware_version is SenseHatVersion.AUTO
+    assert config.sense_hat.sensors["temperature"].enabled
+    assert config.sense_hat.sensors["humidity"].enabled
+    assert config.sense_hat.sensors["pressure"].enabled
+    assert not config.sense_hat.sensors["orientation"].enabled
+    assert not config.sense_hat.sensors["color"].enabled
+    assert config.sense_hat.sensors["temperature"].interval_seconds == (
+        DEFAULT_SENSOR_INTERVAL_SECONDS
+    )
+    assert config.sense_hat.history.retention_days == DEFAULT_HISTORY_RETENTION_DAYS
+    assert config.sense_hat.sensors["temperature"].presentation is SensorPresentation.VALUE
 
 
 def test_schema_v1_is_loaded_as_current_config_version() -> None:
     config = parse_config(valid_config())
 
-    assert config.schema_version == 2
+    assert config.schema_version == 3
     assert config.mappings == ()
 
 
-def test_saving_schema_v1_upgrades_it_to_schema_v2(tmp_path: Path) -> None:
+def test_saving_schema_v1_upgrades_it_to_schema_v3(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
     save_config(config_path, parse_config(valid_config()))
 
-    assert load_config(config_path).schema_version == 2
-    assert config_path.read_text(encoding="utf-8").startswith("schema_version = 2\n")
+    saved = config_path.read_text(encoding="utf-8")
+    assert load_config(config_path).schema_version == 3
+    assert saved.startswith("schema_version = 3\n")
+    assert "[sense_hat.sensors.temperature]" in saved
 
 
 def test_schema_v1_rejects_v2_mapping_fields() -> None:
@@ -86,7 +103,7 @@ def test_schema_v2_parses_and_freezes_action_mapping_parameters() -> None:
 
     config = parse_config(data)
 
-    assert config.schema_version == 2
+    assert config.schema_version == 3
     assert config.mappings[0].cube == "Licht"
     assert config.mappings[0].face == 3
     assert config.mappings[0].actions[0].parameters["scene_id"] == "id-with-\\-slash"
@@ -211,7 +228,7 @@ def test_save_config_atomically_round_trips_validated_config(tmp_path: Path) -> 
 
     assert load_config(config_path) == config
     assert config_path.read_text(encoding="utf-8").startswith(
-        "schema_version = 2\ndebounce_ms = 300\n"
+        "schema_version = 3\ndebounce_ms = 300\n"
     )
     assert list(tmp_path.glob(".config.toml.*.tmp")) == []
 
@@ -322,7 +339,7 @@ def test_rejects_invalid_cube_and_adapter_settings(change: str, expected_message
 
 def test_rejects_unsupported_schema_and_unknown_root_keys() -> None:
     data = valid_config()
-    data["schema_version"] = 3
+    data["schema_version"] = 4
     with pytest.raises(ConfigurationError, match="Unsupported configuration schema"):
         parse_config(data)
 
@@ -330,6 +347,94 @@ def test_rejects_unsupported_schema_and_unknown_root_keys() -> None:
     data["web"] = {"port": 8080}
     with pytest.raises(ValidationError, match="unsupported fields"):
         parse_config(data)
+
+
+def test_schema_v3_parses_and_round_trips_sense_hat_settings(tmp_path: Path) -> None:
+    data = valid_config()
+    data["schema_version"] = 3
+    data["sense_hat"] = {
+        "hardware_version": "v2",
+        "temperature_correction_factor": 0.95,
+        "temperature_offset_c": -2.0,
+        "color_gain": 16,
+        "color_integration_cycles": 64,
+        "sensors": {
+            "temperature": {
+                "enabled": True,
+                "interval_seconds": 15,
+                "history_enabled": False,
+                "presentation": "value_and_chart",
+                "precision": 2,
+            },
+            "orientation": {"enabled": True, "presentation": "chart"},
+        },
+        "history": {"retention_days": 14},
+        "matrix": {"rotation": 90, "ambient_brightness": True},
+        "joystick": {"enabled": False},
+    }
+
+    config = parse_config(data)
+    sense_hat = config.sense_hat
+
+    assert sense_hat.hardware_version is SenseHatVersion.V2
+    assert sense_hat.temperature_correction_factor == 0.95
+    assert sense_hat.temperature_offset_c == -2.0
+    assert sense_hat.color_gain == 16
+    assert sense_hat.color_integration_cycles == 64
+    assert sense_hat.sensors["temperature"].interval_seconds == 15
+    assert not sense_hat.sensors["temperature"].history_enabled
+    assert sense_hat.sensors["temperature"].presentation is SensorPresentation.VALUE_AND_CHART
+    assert sense_hat.sensors["orientation"].enabled
+    assert sense_hat.sensors["orientation"].presentation is SensorPresentation.CHART
+    assert sense_hat.history.retention_days == 14
+    assert sense_hat.matrix.rotation == 90
+    assert sense_hat.matrix.ambient_brightness
+    assert not sense_hat.joystick_enabled
+
+    path = tmp_path / "config.toml"
+    save_config(path, config)
+    assert load_config(path) == config
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value"),
+    [
+        ("sensors", "interval_seconds", 0),
+        ("sensors", "precision", 7),
+        ("sensors", "presentation", "graph"),
+        ("history", "retention_days", 0),
+        ("matrix", "rotation", 45),
+    ],
+)
+def test_schema_v3_rejects_invalid_sense_hat_settings(
+    section: str,
+    field: str,
+    value: object,
+) -> None:
+    sense_hat: dict[str, object] = {}
+    data = valid_config()
+    data["schema_version"] = 3
+    data["sense_hat"] = sense_hat
+    if section == "sensors":
+        sense_hat["sensors"] = {"temperature": {field: value}}
+    else:
+        sense_hat[section] = {field: value}
+
+    with pytest.raises(ValidationError):
+        parse_config(data)
+
+
+def test_schema_v2_migrates_mappings_and_defaults_sense_hat_settings() -> None:
+    data = valid_config()
+    data["schema_version"] = 2
+    data["mappings"] = []
+
+    config = parse_config(data)
+
+    assert config.schema_version == 3
+    assert config.mappings == ()
+    assert config.sense_hat.sensors["temperature"].enabled
+    assert not config.sense_hat.sensors["color"].enabled
 
 
 def test_load_config_translates_file_and_toml_errors(tmp_path: Path) -> None:

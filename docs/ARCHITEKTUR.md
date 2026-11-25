@@ -25,9 +25,11 @@ Aktuell implementiert sind:
 Der BLE-Transport und die Laufzeit sind implementiert und lokal mit Fakes getestet.
 Regelzuordnung, generische Outbox und Hue-Adapter sind lokal getestet. Der Hue-Adapter
 wurde nicht gegen eine echte Bridge geprüft; Hue-Kopplung/Key-Verwaltung, Audio-Aktionen,
-ein startbarer Systemdienst/Composition Root, Sense HAT und Weboberfläche sind noch
-nicht implementiert. Die BLE-Laufzeit wurde nicht auf Raspberry Pi oder echter Hardware
-verifiziert.
+ein startbarer Systemdienst/Composition Root, der Sense-HAT-Hardwareadapter, die
+Sensorhistorie und die Weboberfläche sind noch nicht implementiert. Schema v3 enthält
+bereits validierte Sense-HAT-Einstellungen; daraus folgt kein Hardware- oder
+Weboberflächennachweis. Die BLE-Laufzeit wurde nicht auf Raspberry Pi oder echter
+Hardware verifiziert.
 
 ## Abhängigkeitsrichtung
 
@@ -94,6 +96,42 @@ Fehler vor dem Ersetzen werden als `ConfigurationError` mit erhaltener Ursache
 gemeldet, und die vorhandene Konfiguration bleibt unangetastet. Temporäre Dateien
 werden nach Schreib- oder Ersetzungsfehlern entfernt; wenn das nicht gelingt, wird
 der Bereinigungsfehler protokolliert.
+
+Schema v3 ergänzt die bisherigen Würfel-/Regelkonfigurationen um `sense_hat`.
+Schema-v1- und v2-Dateien bleiben lesbar und werden beim nächsten Speichern zu v3
+migriert. Die Hardwareversion ist `auto`, `v1` oder `v2`; `auto` ist für die spätere
+Fähigkeitserkennung vorgesehen, während der manuelle Wert als Override dient.
+Temperatur, Feuchtigkeit und Druck sind standardmäßig aktiviert; Orientierung,
+Kompass, Gyroskop, Beschleunigung und Farbe sind vorbereitet, aber standardmäßig
+deaktiviert. Jede Sensorgruppe hat ein eigenes Intervall, eine Verlaufseinstellung,
+Anzeigeart (`hidden`, `value`, `chart`, `value_and_chart`) und Anzeigepräzision.
+Die Präzision betrifft nur die spätere Darstellung, nicht gespeicherte Messwerte.
+Verlauf (SQLite, standardmäßig 30 Tage), Temperaturkorrektur, Matrixrotation,
+Low-Light-Modus, automatische Helligkeit sowie Joystick und v2-Farb-Sensorparameter
+sind konfigurierbar. Adapter, Versions-/Fähigkeitserkennung, Datenhaltung und GUI
+setzen diese Einstellungen in späteren Schritten um.
+
+```toml
+[sense_hat]
+enabled = true
+hardware_version = "auto"
+temperature_correction_factor = 1.0
+temperature_offset_c = 0.0
+
+[sense_hat.sensors.temperature]
+enabled = true
+interval_seconds = 30
+history_enabled = true
+presentation = "value"
+precision = 1
+
+[sense_hat.sensors.orientation]
+enabled = false
+interval_seconds = 30
+history_enabled = true
+presentation = "hidden"
+precision = 2
+```
 
 ## Regeln und Outbox
 

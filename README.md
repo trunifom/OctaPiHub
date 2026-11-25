@@ -13,6 +13,8 @@ einen typisierten Plugin-Vertrag und Discovery für vertrauenswürdige Python-Pl
 Der BLE-Transportvertrag und ein hardwarefreier Fake sind vorhanden; der produktive
 Bleak-Adapter und eine hardwarefrei getestete Laufzeit für beide Würfel sind ergänzt.
 Schema-v2-Regelzuordnungen und eine generische SQLite-WAL-Outbox sind implementiert.
+Schema v3 ergänzt eine validierte Sense-HAT-Konfiguration mit pro Sensorgruppe
+einstellbaren Messintervallen, Verlauf, Anzeigeart und Präzision.
 Ein automatisierter End-to-End-Test führt ein simuliertes Würfelereignis durch Regeln
 und Outbox bis zu einem Fake-Hue-Plugin. Ein echter Hue-CLIP-v2-Adapter kann Szenen
 auflisten und aktivieren und wird gegen einen lokalen HTTPS-Fake-Server getestet.
@@ -26,7 +28,7 @@ Musikplayer erprobt; das belegt weder OctaPiHub-BLE noch die Hue-Lichtsteuerung.
 | Projektgerüst / Qualitätswerkzeuge | vorhanden |
 | Würfel-Protokolldecoder | erster Stand, nur Unit-getestet |
 | Entprellung / Reconnect-Backoff | erster Stand, nur Unit-getestet |
-| Versionierte TOML-Konfiguration | Laden, Validieren und atomisches Speichern implementiert |
+| Versionierte TOML-Konfiguration | v1/v2-kompatibel; Schema v3 mit Sense-HAT-Einstellungen |
 | Plugin-Vertrag und Entry-Point-Registry | erster Stand, nur Unit-getestet |
 | Regelzuordnungen und SQLite-WAL-Outbox | generisch implementiert, lokal getestet |
 | Fake-Würfel → Regeln → Outbox → Fake Hue | als lokaler End-to-End-Test abgedeckt |
@@ -34,7 +36,8 @@ Musikplayer erprobt; das belegt weder OctaPiHub-BLE noch die Hue-Lichtsteuerung.
 | BLE-Transportvertrag und Fake | implementiert, hardwarefrei getestet |
 | BLE-Laufzeit und Bleak/BlueZ-Adapter | implementiert, mit Fakes getestet |
 | BLE-Verbindung zu echten Würfeln / Raspberry Pi | nicht hardwareverifiziert |
-| Hue-/Musikadapter, Sense HAT und Weboberfläche | nicht implementiert |
+| Sense-HAT-Adapter, Sensorverlauf und Weboberfläche | noch nicht implementiert; Konfiguration vorbereitet |
+| Hue-/Musikadapter | Hue CLIP v2 vorhanden; Pairing/Key-Verwaltung und Musik fehlen |
 
 Lokale Tests:
 

@@ -10,7 +10,7 @@ import re
 import tempfile
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
@@ -19,13 +19,27 @@ from octapihub.core.errors import ConfigurationError, ValidationError
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSION = 3
 LEGACY_SCHEMA_VERSION = 1
 DEFAULT_DEBOUNCE_MS = 300
 MAX_DEBOUNCE_MS = 999
+DEFAULT_SENSOR_INTERVAL_SECONDS = 30
+DEFAULT_HISTORY_RETENTION_DAYS = 30
+MAX_SENSOR_INTERVAL_SECONDS = 3600
+MAX_HISTORY_RETENTION_DAYS = 3650
 _ADAPTER_PATTERN = re.compile(r"^hci[0-9]+$")
 _ADDRESS_PATTERN = re.compile(r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 _ACTION_IDENTIFIER_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
+_SENSE_HAT_SENSOR_IDS = (
+    "temperature",
+    "humidity",
+    "pressure",
+    "orientation",
+    "compass",
+    "gyroscope",
+    "accelerometer",
+    "color",
+)
 
 
 class CubeRole(StrEnum):
@@ -33,6 +47,136 @@ class CubeRole(StrEnum):
 
     LIGHT = "light"
     MUSIC = "music"
+
+
+class SenseHatVersion(StrEnum):
+    """Hardware-version selection for automatic detection or a manual override."""
+
+    AUTO = "auto"
+    V1 = "v1"
+    V2 = "v2"
+
+
+class SensorPresentation(StrEnum):
+    """How a sensor should be presented in a future dashboard."""
+
+    HIDDEN = "hidden"
+    VALUE = "value"
+    CHART = "chart"
+    VALUE_AND_CHART = "value_and_chart"
+
+
+@dataclass(frozen=True, slots=True)
+class SensorConfig:
+    """Settings for one independently configurable Sense HAT sensor group."""
+
+    enabled: bool
+    interval_seconds: int
+    history_enabled: bool
+    presentation: SensorPresentation
+    precision: int
+
+
+@dataclass(frozen=True, slots=True)
+class SenseHatHistoryConfig:
+    """Persistent sensor-history settings."""
+
+    enabled: bool
+    retention_days: int
+    database_path: str
+
+
+@dataclass(frozen=True, slots=True)
+class SenseHatMatrixConfig:
+    """LED matrix operating settings."""
+
+    enabled: bool
+    rotation: int
+    low_light: bool
+    ambient_brightness: bool
+
+
+def _default_sensors() -> Mapping[str, SensorConfig]:
+    return MappingProxyType(
+        {
+            "temperature": SensorConfig(
+                True,
+                DEFAULT_SENSOR_INTERVAL_SECONDS,
+                True,
+                SensorPresentation.VALUE,
+                1,
+            ),
+            "humidity": SensorConfig(
+                True,
+                DEFAULT_SENSOR_INTERVAL_SECONDS,
+                True,
+                SensorPresentation.VALUE,
+                1,
+            ),
+            "pressure": SensorConfig(
+                True,
+                DEFAULT_SENSOR_INTERVAL_SECONDS,
+                True,
+                SensorPresentation.VALUE,
+                1,
+            ),
+            "orientation": SensorConfig(
+                False,
+                DEFAULT_SENSOR_INTERVAL_SECONDS,
+                True,
+                SensorPresentation.HIDDEN,
+                2,
+            ),
+            "compass": SensorConfig(
+                False,
+                DEFAULT_SENSOR_INTERVAL_SECONDS,
+                True,
+                SensorPresentation.HIDDEN,
+                2,
+            ),
+            "gyroscope": SensorConfig(
+                False,
+                DEFAULT_SENSOR_INTERVAL_SECONDS,
+                True,
+                SensorPresentation.HIDDEN,
+                2,
+            ),
+            "accelerometer": SensorConfig(
+                False,
+                DEFAULT_SENSOR_INTERVAL_SECONDS,
+                True,
+                SensorPresentation.HIDDEN,
+                2,
+            ),
+            "color": SensorConfig(
+                False,
+                DEFAULT_SENSOR_INTERVAL_SECONDS,
+                True,
+                SensorPresentation.HIDDEN,
+                0,
+            ),
+        }
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class SenseHatConfig:
+    """Validated configuration for Sense HAT sensors and interfaces."""
+
+    enabled: bool = True
+    hardware_version: SenseHatVersion = SenseHatVersion.AUTO
+    sensors: Mapping[str, SensorConfig] = field(default_factory=_default_sensors)
+    history: SenseHatHistoryConfig = SenseHatHistoryConfig(
+        True,
+        DEFAULT_HISTORY_RETENTION_DAYS,
+        "data/sense-hat-history.sqlite3",
+    )
+    matrix: SenseHatMatrixConfig = SenseHatMatrixConfig(True, 0, False, False)
+    joystick_enabled: bool = True
+    temperature_correction_factor: float = 1.0
+    temperature_offset_c: float = 0.0
+    color_gain: int = 1
+    color_integration_cycles: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +222,7 @@ class AppConfig:
     debounce_ms: int
     cubes: tuple[CubeConfig, CubeConfig]
     mappings: tuple[RuleMappingConfig, ...] = ()
+    sense_hat: SenseHatConfig = field(default_factory=SenseHatConfig)
 
 
 def load_config(path: str | Path) -> AppConfig:
@@ -142,6 +287,36 @@ def save_config(path: str | Path, config: AppConfig) -> None:
 
 
 def _serialize_config(config: AppConfig) -> str:
+    sense_hat_data: dict[str, object] = {
+        "enabled": config.sense_hat.enabled,
+        "hardware_version": config.sense_hat.hardware_version.value,
+        "temperature_correction_factor": config.sense_hat.temperature_correction_factor,
+        "temperature_offset_c": config.sense_hat.temperature_offset_c,
+        "color_gain": config.sense_hat.color_gain,
+        "color_integration_cycles": config.sense_hat.color_integration_cycles,
+        "sensors": {
+            sensor_id: {
+                "enabled": sensor.enabled,
+                "interval_seconds": sensor.interval_seconds,
+                "history_enabled": sensor.history_enabled,
+                "presentation": sensor.presentation.value,
+                "precision": sensor.precision,
+            }
+            for sensor_id, sensor in config.sense_hat.sensors.items()
+        },
+        "history": {
+            "enabled": config.sense_hat.history.enabled,
+            "retention_days": config.sense_hat.history.retention_days,
+            "database_path": config.sense_hat.history.database_path,
+        },
+        "matrix": {
+            "enabled": config.sense_hat.matrix.enabled,
+            "rotation": config.sense_hat.matrix.rotation,
+            "low_light": config.sense_hat.matrix.low_light,
+            "ambient_brightness": config.sense_hat.matrix.ambient_brightness,
+        },
+        "joystick": {"enabled": config.sense_hat.joystick_enabled},
+    }
     data: dict[str, object] = {
         "schema_version": config.schema_version,
         "bluetooth": {"adapter": config.bluetooth.adapter},
@@ -165,6 +340,7 @@ def _serialize_config(config: AppConfig) -> str:
             }
             for mapping in config.mappings
         ],
+        "sense_hat": sense_hat_data,
     }
     validated = parse_config(data)
     lines = [
@@ -203,6 +379,47 @@ def _serialize_config(config: AppConfig) -> str:
                     f"parameters = {_toml_value(action.parameters)}",
                 ]
             )
+    sense_hat = validated.sense_hat
+    lines.extend(
+        [
+            "",
+            "[sense_hat]",
+            f"enabled = {_toml_value(sense_hat.enabled)}",
+            f"hardware_version = {_toml_string(sense_hat.hardware_version.value)}",
+            "temperature_correction_factor = "
+            f"{_toml_value(sense_hat.temperature_correction_factor)}",
+            f"temperature_offset_c = {_toml_value(sense_hat.temperature_offset_c)}",
+            f"color_gain = {sense_hat.color_gain}",
+            f"color_integration_cycles = {sense_hat.color_integration_cycles}",
+            "",
+            "[sense_hat.history]",
+            f"enabled = {_toml_value(sense_hat.history.enabled)}",
+            f"retention_days = {sense_hat.history.retention_days}",
+            f"database_path = {_toml_string(sense_hat.history.database_path)}",
+            "",
+            "[sense_hat.matrix]",
+            f"enabled = {_toml_value(sense_hat.matrix.enabled)}",
+            f"rotation = {sense_hat.matrix.rotation}",
+            f"low_light = {_toml_value(sense_hat.matrix.low_light)}",
+            f"ambient_brightness = {_toml_value(sense_hat.matrix.ambient_brightness)}",
+            "",
+            "[sense_hat.joystick]",
+            f"enabled = {_toml_value(sense_hat.joystick_enabled)}",
+        ]
+    )
+    for sensor_id in _SENSE_HAT_SENSOR_IDS:
+        sensor = sense_hat.sensors[sensor_id]
+        lines.extend(
+            [
+                "",
+                f"[sense_hat.sensors.{sensor_id}]",
+                f"enabled = {_toml_value(sensor.enabled)}",
+                f"interval_seconds = {sensor.interval_seconds}",
+                f"history_enabled = {_toml_value(sensor.history_enabled)}",
+                f"presentation = {_toml_string(sensor.presentation.value)}",
+                f"precision = {sensor.precision}",
+            ]
+        )
     contents = "\n".join(lines) + "\n"
     try:
         round_tripped = parse_config(tomllib.loads(contents))
@@ -279,7 +496,7 @@ def parse_config(data: object) -> AppConfig:
         raise ValidationError(
             "schema_version must be an integer", details={"field": "schema_version"}
         )
-    if schema_version not in {LEGACY_SCHEMA_VERSION, SUPPORTED_SCHEMA_VERSION}:
+    if schema_version not in {LEGACY_SCHEMA_VERSION, 2, SUPPORTED_SCHEMA_VERSION}:
         raise ConfigurationError(
             "Unsupported configuration schema version",
             details={
@@ -288,8 +505,10 @@ def parse_config(data: object) -> AppConfig:
             },
         )
     allowed_root_keys = {"schema_version", "bluetooth", "debounce_ms", "cubes"}
-    if schema_version == SUPPORTED_SCHEMA_VERSION:
+    if schema_version >= 2:
         allowed_root_keys.add("mappings")
+    if schema_version >= 3:
+        allowed_root_keys.add("sense_hat")
     _check_keys(root, allowed_root_keys, "root")
 
     bluetooth_table = _require_table(root.get("bluetooth"), "bluetooth")
@@ -330,7 +549,7 @@ def parse_config(data: object) -> AppConfig:
         raise ValidationError("Cube addresses must be unique", details={"field": "cubes"})
 
     mappings: tuple[RuleMappingConfig, ...] = ()
-    if schema_version == SUPPORTED_SCHEMA_VERSION:
+    if schema_version >= 2:
         raw_mappings = root.get("mappings", [])
         if not isinstance(raw_mappings, list):
             raise ValidationError("mappings must be an array", details={"field": "mappings"})
@@ -347,12 +566,216 @@ def parse_config(data: object) -> AppConfig:
             )
         mappings = parsed_mappings
 
+    sense_hat = (
+        _parse_sense_hat(root.get("sense_hat", {})) if schema_version >= 3 else SenseHatConfig()
+    )
+
     return AppConfig(
         schema_version=SUPPORTED_SCHEMA_VERSION,
         bluetooth=BluetoothConfig(adapter=adapter),
         debounce_ms=debounce_ms,
         cubes=(cubes[0], cubes[1]),
         mappings=mappings,
+        sense_hat=sense_hat,
+    )
+
+
+def _parse_sense_hat(value: object) -> SenseHatConfig:
+    table = _require_table(value, "sense_hat")
+    _check_keys(
+        table,
+        {
+            "enabled",
+            "hardware_version",
+            "sensors",
+            "history",
+            "matrix",
+            "joystick",
+            "temperature_correction_factor",
+            "temperature_offset_c",
+            "color_gain",
+            "color_integration_cycles",
+        },
+        "sense_hat",
+    )
+    defaults = SenseHatConfig()
+    hardware_version_value = _require_string(
+        table.get("hardware_version", defaults.hardware_version.value),
+        "sense_hat.hardware_version",
+    )
+    try:
+        hardware_version = SenseHatVersion(hardware_version_value)
+    except ValueError as exc:
+        raise ValidationError(
+            "sense_hat.hardware_version must be 'auto', 'v1', or 'v2'",
+            details={"field": "sense_hat.hardware_version"},
+        ) from exc
+
+    raw_sensors = _require_table(table.get("sensors", {}), "sense_hat.sensors")
+    _check_keys(raw_sensors, set(_SENSE_HAT_SENSOR_IDS), "sense_hat.sensors")
+    sensors = {
+        sensor_id: (
+            _parse_sensor(
+                raw_sensors[sensor_id],
+                f"sense_hat.sensors.{sensor_id}",
+                defaults.sensors[sensor_id],
+            )
+            if sensor_id in raw_sensors
+            else defaults.sensors[sensor_id]
+        )
+        for sensor_id in _SENSE_HAT_SENSOR_IDS
+    }
+
+    raw_history = _require_table(table.get("history", {}), "sense_hat.history")
+    _check_keys(raw_history, {"enabled", "retention_days", "database_path"}, "sense_hat.history")
+    history = defaults.history
+    retention_days = raw_history.get("retention_days", history.retention_days)
+    if (
+        isinstance(retention_days, bool)
+        or not isinstance(retention_days, int)
+        or not 1 <= retention_days <= MAX_HISTORY_RETENTION_DAYS
+    ):
+        raise ValidationError(
+            f"sense_hat.history.retention_days must be from 1 to {MAX_HISTORY_RETENTION_DAYS}",
+            details={"field": "sense_hat.history.retention_days"},
+        )
+    history = SenseHatHistoryConfig(
+        enabled=_require_bool(
+            raw_history.get("enabled", history.enabled),
+            "sense_hat.history.enabled",
+        ),
+        retention_days=retention_days,
+        database_path=_require_string(
+            raw_history.get("database_path", history.database_path),
+            "sense_hat.history.database_path",
+        ),
+    )
+
+    raw_matrix = _require_table(table.get("matrix", {}), "sense_hat.matrix")
+    _check_keys(
+        raw_matrix,
+        {"enabled", "rotation", "low_light", "ambient_brightness"},
+        "sense_hat.matrix",
+    )
+    matrix = defaults.matrix
+    rotation = raw_matrix.get("rotation", matrix.rotation)
+    if (
+        isinstance(rotation, bool)
+        or not isinstance(rotation, int)
+        or rotation not in {0, 90, 180, 270}
+    ):
+        raise ValidationError(
+            "sense_hat.matrix.rotation must be 0, 90, 180, or 270",
+            details={"field": "sense_hat.matrix.rotation"},
+        )
+    matrix = SenseHatMatrixConfig(
+        enabled=_require_bool(
+            raw_matrix.get("enabled", matrix.enabled), "sense_hat.matrix.enabled"
+        ),
+        rotation=rotation,
+        low_light=_require_bool(
+            raw_matrix.get("low_light", matrix.low_light), "sense_hat.matrix.low_light"
+        ),
+        ambient_brightness=_require_bool(
+            raw_matrix.get("ambient_brightness", matrix.ambient_brightness),
+            "sense_hat.matrix.ambient_brightness",
+        ),
+    )
+
+    raw_joystick = _require_table(table.get("joystick", {}), "sense_hat.joystick")
+    _check_keys(raw_joystick, {"enabled"}, "sense_hat.joystick")
+    correction_factor = _require_finite_number(
+        table.get("temperature_correction_factor", defaults.temperature_correction_factor),
+        "sense_hat.temperature_correction_factor",
+    )
+    if correction_factor <= 0:
+        raise ValidationError(
+            "sense_hat.temperature_correction_factor must be greater than zero",
+            details={"field": "sense_hat.temperature_correction_factor"},
+        )
+    color_gain = table.get("color_gain", defaults.color_gain)
+    if (
+        isinstance(color_gain, bool)
+        or not isinstance(color_gain, int)
+        or color_gain not in {1, 4, 16, 60}
+    ):
+        raise ValidationError(
+            "sense_hat.color_gain must be 1, 4, 16, or 60",
+            details={"field": "sense_hat.color_gain"},
+        )
+    integration_cycles = table.get("color_integration_cycles", defaults.color_integration_cycles)
+    if (
+        isinstance(integration_cycles, bool)
+        or not isinstance(integration_cycles, int)
+        or not 1 <= integration_cycles <= 256
+    ):
+        raise ValidationError(
+            "sense_hat.color_integration_cycles must be from 1 to 256",
+            details={"field": "sense_hat.color_integration_cycles"},
+        )
+    return SenseHatConfig(
+        enabled=_require_bool(table.get("enabled", defaults.enabled), "sense_hat.enabled"),
+        hardware_version=hardware_version,
+        sensors=MappingProxyType(sensors),
+        history=history,
+        matrix=matrix,
+        joystick_enabled=_require_bool(
+            raw_joystick.get("enabled", defaults.joystick_enabled),
+            "sense_hat.joystick.enabled",
+        ),
+        temperature_correction_factor=correction_factor,
+        temperature_offset_c=_require_finite_number(
+            table.get("temperature_offset_c", defaults.temperature_offset_c),
+            "sense_hat.temperature_offset_c",
+        ),
+        color_gain=color_gain,
+        color_integration_cycles=integration_cycles,
+    )
+
+
+def _parse_sensor(value: object, field: str, defaults: SensorConfig) -> SensorConfig:
+    table = _require_table(value, field)
+    _check_keys(
+        table,
+        {"enabled", "interval_seconds", "history_enabled", "presentation", "precision"},
+        field,
+    )
+    interval_seconds = table.get("interval_seconds", defaults.interval_seconds)
+    if (
+        isinstance(interval_seconds, bool)
+        or not isinstance(interval_seconds, int)
+        or not 1 <= interval_seconds <= MAX_SENSOR_INTERVAL_SECONDS
+    ):
+        raise ValidationError(
+            f"{field}.interval_seconds must be from 1 to {MAX_SENSOR_INTERVAL_SECONDS}",
+            details={"field": f"{field}.interval_seconds"},
+        )
+    precision = table.get("precision", defaults.precision)
+    if isinstance(precision, bool) or not isinstance(precision, int) or not 0 <= precision <= 6:
+        raise ValidationError(
+            f"{field}.precision must be an integer from 0 to 6",
+            details={"field": f"{field}.precision"},
+        )
+    presentation_value = _require_string(
+        table.get("presentation", defaults.presentation.value),
+        f"{field}.presentation",
+    )
+    try:
+        presentation = SensorPresentation(presentation_value)
+    except ValueError as exc:
+        raise ValidationError(
+            f"{field}.presentation must be hidden, value, chart, or value_and_chart",
+            details={"field": f"{field}.presentation"},
+        ) from exc
+    return SensorConfig(
+        enabled=_require_bool(table.get("enabled", defaults.enabled), f"{field}.enabled"),
+        interval_seconds=interval_seconds,
+        history_enabled=_require_bool(
+            table.get("history_enabled", defaults.history_enabled),
+            f"{field}.history_enabled",
+        ),
+        presentation=presentation,
+        precision=precision,
     )
 
 
@@ -450,6 +873,21 @@ def _require_string(value: object, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValidationError("Expected a non-empty string", details={"field": field})
     return value.strip()
+
+
+def _require_bool(value: object, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValidationError("Expected a boolean", details={"field": field})
+    return value
+
+
+def _require_finite_number(value: object, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValidationError("Expected a finite number", details={"field": field})
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValidationError("Expected a finite number", details={"field": field})
+    return number
 
 
 def _check_keys(table: Mapping[str, object], allowed: set[str], field: str) -> None:
