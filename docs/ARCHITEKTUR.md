@@ -282,3 +282,15 @@ Aufbewahrung (`retention_days`) wird höchstens stündlich per Löschung angewan
 `query_series` liefert Zeitreihen, optional als Mittelwert je Zeitfenster für Graphen.
 Beim Beenden muss der Dienst `flush()` aufrufen (Composition Root, noch offen); bei hartem
 Stromverlust können die zuletzt gepufferten Samples fehlen.
+
+## Sense-HAT-Dienst und Composition Root
+
+`SenseHatService` (application) besitzt den Lebenszyklus: Port erzeugen, Farbsensor-
+Parameter anwenden (nur bei aktivierter Farbgruppe), Verlaufsspeicher öffnen, Recorder und
+Messworker starten; `stop()` beendet den Worker und schreibt gepufferte Samples
+(`flush`). Fehlt Board oder Bibliothek, läuft der Dienst ohne Sensoren weiter
+(`hardware_error`); ist die Verlaufsdatenbank unbenutzbar, wird weiter gemessen, aber
+nicht gespeichert (`history_error`). `octapihub/composition.py` verdrahtet die
+echten Adapter (`build_sense_hat_service`). Ein startbarer Hub-Prozess, der BLE-Runtime,
+Regeln und diesen Dienst gemeinsam startet, fehlt noch. `set_imu_config` wird noch nicht
+aus der Konfiguration angewandt.
