@@ -321,29 +321,36 @@ allow_anonymous true
 
 ## Kapitel 12 – OctaPiHub als Dienst: Autostart, Überwachung, Update
 
-> Die Software gibt es noch nicht. Dieses Kapitel ist die Vorlage für die Unit-Datei. `octapihub` steht für das später gebaute Python-Paket (`python -m octapihub`).
+> Der Python-Kern enthält derzeit nur Protokoll-/Entprellungslogik und einen
+> TOML-Konfigurationsloader; BLE-Transport und Dienststart sind noch nicht
+> implementiert. Die folgenden Betriebsbefehle und die systemd-Unit bleiben
+> Vorlagen und sind nicht auf Hardware geprüft.
 
-**1. Konfigurationsdatei** `/etc/octapihub/config.toml` (Beispielgerüst, versioniert):
+**1. Konfigurationsdatei** `/etc/octapihub/config.toml` (unterstützter
+Konfigurationsumfang des aktuellen Loaders):
 ```toml
 schema_version = 1
+debounce_ms = 300
 
 [bluetooth]
 adapter = "hci0"            # hci1, falls Onboard-BT bleibt und der Dongle zweiter Adapter ist
 
 [[cubes]]
 name = "Licht"
-address = "<ADRESSE-WÜRFEL-1>"
+address = "AA:BB:CC:DD:EE:01"
 role = "light"
 
 [[cubes]]
 name = "Musik"
-address = "<ADRESSE-WÜRFEL-2>"
+address = "AA:BB:CC:DD:EE:02"
 role = "music"
-
-[web]
-bind = "0.0.0.0"            # nur LAN! Im Router kein Port nach außen
-port = 8080
 ```
+Die Adressen sind Platzhalter und müssen durch die eigenen BLE-MAC-Adressen
+ersetzt werden. Der Loader verlangt genau zwei Würfel mit eindeutigen Namen und
+Adressen, einmal Rolle `light` und einmal `music`. Unbekannte Felder und
+Schema-Versionen werden abgelehnt; die Entprellzeit darf 0–999 ms betragen und
+ist ohne Angabe 300 ms. Das ist nur Laden/Validieren: Speichern, Rückfall auf
+eine letzte gültige Datei und Dienststart sind noch nicht implementiert.
 
 **2. systemd-Unit** `/etc/systemd/system/octapihub.service`:
 ```ini

@@ -6,15 +6,17 @@ von OctaLedger und Timeular.
 
 ## Stand
 
-Die Umsetzung hat begonnen. Aktuell gibt es ein schlankes Python-Projektgerüst
-sowie hardwareunabhängige Tests für die Würfelprotokoll- und Entprellungslogik.
-Der Dienst selbst und echte Hardwareadapter sind noch nicht implementiert.
+Die Umsetzung hat begonnen. Es gibt ein schlankes Python-Projektgerüst,
+hardwareunabhängige Würfelprotokoll- und Entprellungslogik sowie einen streng
+validierten Loader für die erste versionierte TOML-Konfiguration. Der Dienst
+und echte Hardwareadapter sind noch nicht implementiert.
 
 | Teil | Status |
 |---|---|
 | Projektgerüst / Qualitätswerkzeuge | vorhanden |
 | Würfel-Protokolldecoder | erster Stand, nur Unit-getestet |
 | Entprellung / Reconnect-Backoff | erster Stand, nur Unit-getestet |
+| Versioniertes TOML-Konfigurationsladen | erster Stand, nur lokal getestet |
 | BLE-Verbindung zu echten Würfeln | nicht hardwareverifiziert |
 | Hue, Sense HAT, Musik und Weboberfläche | nicht implementiert |
 
