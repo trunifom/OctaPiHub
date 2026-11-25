@@ -11,7 +11,7 @@ from octapihub.application.outbox import OutboxDispatcher, OutboxState
 from octapihub.application.plugins import PluginRegistry
 from octapihub.application.rules import RuleEngine
 from octapihub.core.config import AppConfig, parse_config
-from octapihub.core.errors import PluginError
+from octapihub.core.errors import PluginError, RetryableError
 from octapihub.domain.cube import OrientationEvent, OrientationKind
 from octapihub.infrastructure.sqlite_outbox import SQLiteOutbox
 
@@ -243,5 +243,39 @@ def test_run_cube_polls_until_retry_succeeds_and_stops_cleanly(tmp_path: Path) -
         await asyncio.wait_for(task, timeout=1.0)
         assert plugin.attempts == 2
         assert outbox.get_batch(batch)[0].state is OutboxState.SUCCEEDED
+
+    asyncio.run(scenario())
+
+
+def test_dispatcher_honors_retry_after_hint_from_adapter(tmp_path: Path) -> None:
+    class RateLimitedPlugin:
+        kind = "test"
+
+        async def execute(self, action: str, parameters: Mapping[str, object]) -> None:
+            raise RetryableError("rate limited", retry_after_seconds=8.0)
+
+    async def scenario() -> None:
+        now = [100.0]
+        registry = PluginRegistry()
+        registry.register(RateLimitedPlugin())
+        outbox = SQLiteOutbox(tmp_path / "state.db")
+        dispatcher = OutboxDispatcher(
+            RuleEngine(rule_config()),
+            outbox,
+            registry,
+            backoff_base_seconds=1.0,
+            backoff_cap_seconds=2.0,
+            clock=lambda: now[0],
+            jitter=lambda delay: delay,
+        )
+        batch = dispatcher.enqueue_event(event("Licht", "light", 2))
+        assert batch is not None
+
+        assert await dispatcher.dispatch_next("Licht")
+
+        entry = outbox.get_batch(batch)[0]
+        assert entry.available_at == 108.0
+        assert entry.last_error == "RetryableError"
+        assert entry.state is OutboxState.PENDING
 
     asyncio.run(scenario())

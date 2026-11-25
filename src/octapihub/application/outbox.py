@@ -15,7 +15,7 @@ from octapihub.application.ble_runtime import CubeEvent
 from octapihub.application.plugins import PluginRegistry
 from octapihub.application.rules import RuleEngine
 from octapihub.core.config import RuleActionConfig
-from octapihub.core.errors import ValidationError
+from octapihub.core.errors import RetryableError, ValidationError
 from octapihub.domain.cube import OrientationKind, reconnect_delay_seconds
 
 logger = logging.getLogger(__name__)
@@ -180,6 +180,8 @@ class OutboxDispatcher:
             if not math.isfinite(jittered):
                 raise ValidationError("Outbox retry jitter must be finite") from exc
             delay = min(self._backoff_cap_seconds, max(0.0, jittered))
+            if isinstance(exc, RetryableError) and exc.retry_after_seconds is not None:
+                delay = max(delay, float(exc.retry_after_seconds))
             state = self._outbox.retry(
                 entry.id,
                 now=now,

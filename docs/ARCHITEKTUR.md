@@ -18,13 +18,16 @@ Aktuell implementiert sind:
 - `application.rules` und `application.outbox`: stabile Würfelseiten auf Plugin-Aktionen
   abbilden und Aktionen isoliert aus der persistenten Warteschlange ausführen.
 - `infrastructure.ble`: Bleak/BlueZ-Adapter, Fake und Decoder der bekannten BLE-Nutzdaten.
+- `infrastructure.hue`: lokaler CLIP-v2-Client und Plugin für Szenenliste/-Recall mit
+  verifizierter TLS-Verbindung und begrenzter Anfragerate.
 - `infrastructure.sqlite_outbox`: SQLite-WAL-Speicherung, FIFO je Würfel und Retry-Status.
 
 Der BLE-Transport und die Laufzeit sind implementiert und lokal mit Fakes getestet.
-Regelzuordnung und generische Outbox sind lokal getestet; konkrete Hue-/Audio-Aktionsadapter,
+Regelzuordnung, generische Outbox und Hue-Adapter sind lokal getestet. Der Hue-Adapter
+wurde nicht gegen eine echte Bridge geprüft; Hue-Kopplung/Key-Verwaltung, Audio-Aktionen,
 ein startbarer Systemdienst/Composition Root, Sense HAT und Weboberfläche sind noch
-nicht implementiert. Die BLE-Laufzeit wurde nicht auf Raspberry Pi oder echter
-Hardware verifiziert.
+nicht implementiert. Die BLE-Laufzeit wurde nicht auf Raspberry Pi oder echter Hardware
+verifiziert.
 
 ## Abhängigkeitsrichtung
 
@@ -183,3 +186,29 @@ Musikplayer erprobt. Das ist hilfreiche externe Praxiserfahrung, aber kein Testn
 für die OctaPiHub-Implementierung; insbesondere wurde keine reale Hue-Lichtsteuerung
 bestätigt. OctaPiHub selbst wurde weiterhin nicht auf echter BLE-Hardware oder einem
 Raspberry Pi verifiziert.
+
+## Hue CLIP-v2-Adapter
+
+`infrastructure.hue.HueBridgeClient` liest Szenen unter
+`/clip/v2/resource/scene` und aktiviert eine Szene mit dem CLIP-v2-Recall-Aufruf.
+`HueActionPlugin` stellt `scene.activate` für die Outbox bereit. Die Verbindung nutzt
+HTTPS ab TLS 1.2, System-Vertrauensanker und optional eine zusätzlich konfigurierte
+CA-Datei; die Hostnamenprüfung bleibt immer aktiv. Ist CA oder Hostname falsch, schlägt
+der Aufruf mit `CH-HUE-003` fehl. Es gibt keinen unsicheren HTTP-, Redirect- oder
+Zertifikatsprüfungs-Fallback.
+
+Der Application Key wird zur Laufzeit injiziert und aus Objekt-Repräsentationen,
+Fehlermeldungen und Logs herausgehalten; er gehört nicht in die TOML-Konfiguration.
+Standardmäßig wird höchstens eine Anfrage alle 0,5 Sekunden gesendet; das Intervall wird
+beim Erzeugen des Clients festgelegt. HTTP 429 wird als `CH-HUE-002` gemeldet; ein
+numerischer oder HTTP-Datumswert aus `Retry-After` wird als Mindestwartezeit an die
+generische Outbox weitergegeben. Der Adapter unterstützt derzeit nicht das Bridge-Pairing,
+Dimm-/Lichtaktionen oder den Eventstream.
+
+`tests/test_hue.py` prüft Zertifikatskette und Hostnamenprüfung an einem lokalen HTTPS-
+Server sowie Szenenliste, Recall, Ratenbegrenzung, 429/Retry-After und Redirect-Ablehnung.
+Das dazugehörige Zertifikat und der private Schlüssel unter `tests/fixtures/` sind
+ausschließlich öffentliche Testmaterialien und dürfen nicht für reale Bridges verwendet
+werden. Ein erfolgreicher Fake-Server-Test ist kein Nachweis für das tatsächlich von der
+Bridge präsentierte Signify-Zertifikat, deren Hostnamen oder die Szenen-Recall-Anfrage
+an einer realen Bridge.

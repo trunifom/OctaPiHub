@@ -14,8 +14,10 @@ Der BLE-Transportvertrag und ein hardwarefreier Fake sind vorhanden; der produkt
 Bleak-Adapter und eine hardwarefrei getestete Laufzeit für beide Würfel sind ergänzt.
 Schema-v2-Regelzuordnungen und eine generische SQLite-WAL-Outbox sind implementiert.
 Ein automatisierter End-to-End-Test führt ein simuliertes Würfelereignis durch Regeln
-und Outbox bis zu einem Fake-Hue-Plugin. Es gibt noch keinen startbaren Systemdienst
-oder echten Hue-/Musik-Aktionsadapter; OctaPiHub wurde nicht mit echter Hardware geprüft.
+und Outbox bis zu einem Fake-Hue-Plugin. Ein echter Hue-CLIP-v2-Adapter kann Szenen
+auflisten und aktivieren und wird gegen einen lokalen HTTPS-Fake-Server getestet.
+Kopplung/Key-Verwaltung, ein startbarer Systemdienst und ein Musik-Aktionsadapter fehlen.
+OctaPiHub wurde nicht mit echter Hardware oder einer Hue Bridge geprüft.
 Nach Nutzerangabe wurde im separaten OctaLedger-Projekt ein echter Würfel mit dem
 Musikplayer erprobt; das belegt weder OctaPiHub-BLE noch die Hue-Lichtsteuerung.
 
@@ -28,6 +30,7 @@ Musikplayer erprobt; das belegt weder OctaPiHub-BLE noch die Hue-Lichtsteuerung.
 | Plugin-Vertrag und Entry-Point-Registry | erster Stand, nur Unit-getestet |
 | Regelzuordnungen und SQLite-WAL-Outbox | generisch implementiert, lokal getestet |
 | Fake-Würfel → Regeln → Outbox → Fake Hue | als lokaler End-to-End-Test abgedeckt |
+| Hue CLIP v2 (Szenenliste/-Recall) | implementiert, TLS und API lokal gefaket; nicht hardwareverifiziert |
 | BLE-Transportvertrag und Fake | implementiert, hardwarefrei getestet |
 | BLE-Laufzeit und Bleak/BlueZ-Adapter | implementiert, mit Fakes getestet |
 | BLE-Verbindung zu echten Würfeln / Raspberry Pi | nicht hardwareverifiziert |

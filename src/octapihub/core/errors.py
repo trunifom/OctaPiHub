@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
@@ -87,3 +88,54 @@ class OutboxError(OctaPiHubError):
 
     code = "CH-DB-001"
     default_user_message = "Die Aktionswarteschlange konnte nicht gelesen oder gespeichert werden."
+
+
+class RetryableError(OctaPiHubError):
+    """A failure that can recommend a minimum delay before retrying."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after_seconds: float | None = None,
+        user_message: str | None = None,
+        details: Mapping[str, Any] | None = None,
+        code: str | None = None,
+    ) -> None:
+        if retry_after_seconds is not None and (
+            isinstance(retry_after_seconds, bool)
+            or not isinstance(retry_after_seconds, (int, float))
+            or not math.isfinite(retry_after_seconds)
+            or retry_after_seconds < 0
+        ):
+            raise ValueError("retry_after_seconds must be finite and non-negative")
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__(
+            message,
+            user_message=user_message,
+            details=details,
+            code=code,
+        )
+
+
+class HueBridgeError(RetryableError):
+    """A Hue Bridge request failed."""
+
+    code = "CH-HUE-001"
+    default_user_message = "Die Hue Bridge konnte nicht sicher angesprochen werden."
+
+
+class HueRateLimitError(HueBridgeError):
+    """The Hue Bridge rejected a request because of rate limiting."""
+
+    code = "CH-HUE-002"
+    default_user_message = "Die Hue Bridge begrenzt Anfragen. Die Aktion wird später wiederholt."
+
+
+class HueCertificateError(HueBridgeError):
+    """The Hue Bridge TLS certificate could not be verified."""
+
+    code = "CH-HUE-003"
+    default_user_message = (
+        "Das Zertifikat der Hue Bridge ist nicht vertrauenswürdig oder passt nicht zum Hostnamen."
+    )
