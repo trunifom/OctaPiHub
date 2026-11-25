@@ -27,6 +27,16 @@ class CubeDisplay:
 
 
 @dataclass(frozen=True, slots=True)
+class MusicDisplay:
+    """What the music view shows: ``state`` is playing, paused, buffering, idle or error."""
+
+    state: str = "idle"
+    volume: int | None = None
+    title: str = ""
+    target: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class Reading:
     """The latest value of one Sense HAT sensor group (scalar, vector, or colour)."""
 
@@ -49,6 +59,7 @@ class DisplayState:
     sense_level: str = "off"
     host_level: str = "off"
     joystick_faces: tuple[int, ...] = ()
+    music: MusicDisplay | None = None  # ``None``: music is switched off or not available
     readings: Mapping[str, Reading] = field(default_factory=lambda: MappingProxyType({}))
     history: Mapping[str, tuple[float, ...]] = field(default_factory=lambda: MappingProxyType({}))
 
@@ -102,6 +113,8 @@ def status_messages(state: DisplayState) -> list[tuple[str, str]]:
             messages.append(
                 (f"{cube.name} AKKU {cube.battery_percent}%", battery_level(cube.battery_percent))
             )
+    if state.music is not None and state.music.state == "playing":
+        messages.append((f"MUSIK {state.music.title or state.music.target}".strip(), "info"))
     messages.append((f"HUE {level_word(state.hue_level)}", state.hue_level))
     messages.append((f"SENSOR {level_word(state.sense_level)}", state.sense_level))
     temperature = state.readings.get("temperature")

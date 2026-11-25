@@ -141,6 +141,7 @@ def build_matrix_service(
     cubes: CubeService | None = None,
     hue: HueService | None = None,
     host_level: Callable[[], str] | None = None,
+    music: MusicService | None = None,
 ) -> MatrixDisplayService:
     """Create the LED matrix display and connect cube feedback to it.
 
@@ -154,7 +155,7 @@ def build_matrix_service(
         return tuple(m.face for m in current.mappings if m.cube == JOYSTICK_SOURCE)
 
     builder = DisplayStateBuilder(
-        lambda: config.cubes, sense, cubes, hue, host_level, joystick_faces
+        lambda: config.cubes, sense, cubes, hue, host_level, joystick_faces, music
     )
     service = MatrixDisplayService(
         config.sense_hat.matrix,

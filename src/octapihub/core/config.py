@@ -108,6 +108,7 @@ MATRIX_VIEW_IDS: tuple[str, ...] = (
     "overview",
     "cubes",
     "control",
+    "music",
     "battery",
     "temperature",
     "humidity",

@@ -11,7 +11,8 @@ from types import MappingProxyType
 from octapihub.application.ble_runtime import CubeConnectionState, CubeRuntimeStatus
 from octapihub.application.cube_service import CubeService
 from octapihub.application.hue_service import HueService, HueState
-from octapihub.application.matrix.state import CubeDisplay, DisplayState, Reading
+from octapihub.application.matrix.state import CubeDisplay, DisplayState, MusicDisplay, Reading
+from octapihub.application.music.service import MusicService
 from octapihub.application.sense_hat import ColorSensorReading, Orientation, Vector3
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.sense_hat_worker import SensorGroupState
@@ -52,6 +53,7 @@ class DisplayStateBuilder:
         hue: HueService | None = None,
         host_level: HostLevel | None = None,
         joystick_faces: Callable[[], tuple[int, ...]] | None = None,
+        music: MusicService | None = None,
         *,
         clock: Clock = lambda: datetime.now(UTC),
         monotonic: Callable[[], float] = time.monotonic,
@@ -63,6 +65,7 @@ class DisplayStateBuilder:
         self._hue = hue
         self._host_level = host_level
         self._joystick_faces = joystick_faces
+        self._music = music
         self._clock = clock
         self._monotonic = monotonic
         self._host_interval = host_interval
@@ -83,6 +86,7 @@ class DisplayStateBuilder:
             sense_level=self._sense_level(),
             host_level=self._host(),
             joystick_faces=self._faces(),
+            music=self._music_display(),
             readings=MappingProxyType(readings),
             history=MappingProxyType({g: tuple(v) for g, v in self._history.items()}),
         )
@@ -133,6 +137,28 @@ class DisplayStateBuilder:
         if failing:
             return "warn" if ok else "error"
         return "ok" if ok else "info"
+
+    def _music_display(self) -> MusicDisplay | None:
+        if self._music is None:
+            return None
+        try:
+            status = self._music.status
+            if not status.enabled:
+                return None
+            ranked = {"playing": 0, "buffering": 1, "paused": 2, "error": 3}
+            active = sorted(
+                status.targets,
+                key=lambda t: (ranked.get("error" if t.error else t.state.value, 9), not t.current),
+            )
+            if not active:
+                return MusicDisplay()
+            best = active[0]
+            state = "error" if best.error else best.state.value
+            if state not in ranked:
+                state = "idle"
+            return MusicDisplay(state, best.volume, best.track_title or best.title, best.name)
+        except Exception:  # noqa: BLE001 - the display must never fail because of music
+            return None
 
     def _faces(self) -> tuple[int, ...]:
         if self._joystick_faces is None:

@@ -292,6 +292,96 @@ class ControlView(View):
         return f"STEUERUNG {count} AKTIONEN" if count else "STEUERUNG KEINE AKTION"
 
 
+_MUSIC_ICONS: dict[str, tuple[str, ...]] = {
+    "playing": (
+        "#.......",
+        "##......",
+        "###.....",
+        "####....",
+        "####....",
+        "###.....",
+        "##......",
+        "#.......",
+    ),
+    "paused": (
+        "##..##..",
+        "##..##..",
+        "##..##..",
+        "##..##..",
+        "##..##..",
+        "##..##..",
+        "##..##..",
+        "##..##..",
+    ),
+    "idle": (
+        "........",
+        "..####..",
+        "..#..#..",
+        "..#..#..",
+        "..#.##..",
+        "###.##..",
+        "###.....",
+        "........",
+    ),
+    "error": (
+        "#....#..",
+        ".#..#...",
+        "..##....",
+        "..##....",
+        ".#..#...",
+        "#....#..",
+        "........",
+        "........",
+    ),
+}
+
+
+class MusicView(View):
+    id = "music"
+    label = "Musik"
+    description = "Zeigt, ob Musik spielt (▶), pausiert (‖) oder bereit ist, und die Lautstärke."
+    controls = "Mitte: Titel"
+    animated = True
+
+    def render(self, ctx: ViewContext) -> Frame:
+        canvas = Canvas()
+        music = ctx.state.music
+        if music is None:
+            canvas.mask(_MUSIC_ICONS["idle"], DIM_GRAY)
+            return canvas.frame()
+        state = music.state if music.state in _MUSIC_ICONS else "idle"
+        color = {
+            "playing": GREEN,
+            "paused": YELLOW,
+            "buffering": CYAN,
+            "error": RED,
+        }.get(music.state, GRAY)
+        if music.state in ("playing", "buffering") and not blink(ctx.t, 1.0):
+            color = scale(color, 0.55)
+        canvas.mask(_MUSIC_ICONS[state], color)
+        if music.volume is not None and music.state != "error":
+            rows = max(1, round(_clamp(music.volume, 0, 100) * SIZE / 100)) if music.volume else 0
+            canvas.rect(7, SIZE - rows, 1, rows, CYAN)
+        return canvas.frame()
+
+    def describe(self, state: DisplayState) -> str:
+        music = state.music
+        if music is None:
+            return "MUSIK AUS"
+        words = {
+            "playing": "SPIELT",
+            "paused": "PAUSE",
+            "buffering": "LAEDT",
+            "error": "FEHLER",
+        }
+        text = f"MUSIK {words.get(music.state, 'BEREIT')}"
+        if music.title and music.state in ("playing", "paused"):
+            text += f" {music.title}"
+        if music.volume is not None:
+            text += f" {music.volume}%"
+        return text
+
+
 class BatteryView(View):
     id = "battery"
     label = "Akku"
@@ -762,6 +852,7 @@ def _build_registry() -> dict[str, View]:
         OverviewView(),
         CubesView(),
         ControlView(),
+        MusicView(),
         BatteryView(),
         TemperatureView(),
         HumidityView(),

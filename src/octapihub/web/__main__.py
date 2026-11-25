@@ -148,7 +148,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         music, media = build_music_service(config, args.port)
         cubes = build_cube_service(config, args.data_dir, plugins=(hue, music))
         system = SystemInfoReader(args.data_dir)
-        matrix = build_matrix_service(config, service, cubes, hue, host_level_from(system))
+        matrix = build_matrix_service(config, service, cubes, hue, host_level_from(system), music)
         backend = WebBackend(
             SettingsManager(args.config, config, service, hue, cubes, matrix, music),
             service,
