@@ -20,7 +20,8 @@ from octapihub.core.errors import ConfigurationError, ValidationError
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 4
+SUPPORTED_SCHEMA_VERSION = 5
+MAX_CUBES = 3
 LEGACY_SCHEMA_VERSION = 1
 DEFAULT_DEBOUNCE_MS = 300
 MAX_DEBOUNCE_MS = 999
@@ -50,6 +51,7 @@ class CubeRole(StrEnum):
 
     LIGHT = "light"
     MUSIC = "music"
+    GENERAL = "general"
 
 
 class SenseHatVersion(StrEnum):
@@ -89,14 +91,63 @@ class SenseHatHistoryConfig:
     database_path: str
 
 
+# Every view the LED matrix can show; the order here is the default order.
+MATRIX_VIEW_IDS: tuple[str, ...] = (
+    "overview",
+    "cubes",
+    "battery",
+    "temperature",
+    "humidity",
+    "pressure",
+    "graph",
+    "clock",
+    "clock_binary",
+    "ticker",
+    "compass",
+    "level",
+    "ambient",
+    "lamp",
+    "rainbow",
+    "breathing",
+    "palette",
+    "brightness",
+    "off",
+)
+DEFAULT_MATRIX_VIEWS: tuple[str, ...] = (
+    "overview",
+    "cubes",
+    "battery",
+    "temperature",
+    "humidity",
+    "pressure",
+    "clock",
+    "brightness",
+)
+MATRIX_NIGHT_MODES = ("off", "dim")
+_TIME_PATTERN = re.compile(r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+
+
 @dataclass(frozen=True, slots=True)
 class SenseHatMatrixConfig:
-    """LED matrix operating settings."""
+    """LED matrix operating settings.
+
+    ``views`` lists the enabled views in joystick order; ``brightness`` is a percentage
+    applied in software on top of ``low_light``. During the optional night window the
+    display is switched off or dimmed.
+    """
 
     enabled: bool
     rotation: int
     low_light: bool
     ambient_brightness: bool
+    brightness: int = 60
+    default_view: str = "overview"
+    views: tuple[str, ...] = DEFAULT_MATRIX_VIEWS
+    auto_cycle_seconds: int = 0
+    night_enabled: bool = False
+    night_start: str = "22:00"
+    night_end: str = "07:00"
+    night_mode: str = "off"
 
 
 def _default_sensors() -> Mapping[str, SensorConfig]:
@@ -239,7 +290,7 @@ class AppConfig:
     schema_version: int
     bluetooth: BluetoothConfig
     debounce_ms: int
-    cubes: tuple[CubeConfig, CubeConfig]
+    cubes: tuple[CubeConfig, ...]
     mappings: tuple[RuleMappingConfig, ...] = ()
     sense_hat: SenseHatConfig = field(default_factory=SenseHatConfig)
     hue: HueConfig = field(default_factory=HueConfig)
@@ -335,6 +386,14 @@ def sense_hat_table(sense_hat: SenseHatConfig) -> dict[str, object]:
             "rotation": sense_hat.matrix.rotation,
             "low_light": sense_hat.matrix.low_light,
             "ambient_brightness": sense_hat.matrix.ambient_brightness,
+            "brightness": sense_hat.matrix.brightness,
+            "default_view": sense_hat.matrix.default_view,
+            "views": list(sense_hat.matrix.views),
+            "auto_cycle_seconds": sense_hat.matrix.auto_cycle_seconds,
+            "night_enabled": sense_hat.matrix.night_enabled,
+            "night_start": sense_hat.matrix.night_start,
+            "night_end": sense_hat.matrix.night_end,
+            "night_mode": sense_hat.matrix.night_mode,
         },
         "joystick": {"enabled": sense_hat.joystick_enabled},
     }
@@ -491,6 +550,14 @@ def _serialize_config(config: AppConfig) -> str:
             f"rotation = {sense_hat.matrix.rotation}",
             f"low_light = {_toml_value(sense_hat.matrix.low_light)}",
             f"ambient_brightness = {_toml_value(sense_hat.matrix.ambient_brightness)}",
+            f"brightness = {sense_hat.matrix.brightness}",
+            f"default_view = {_toml_string(sense_hat.matrix.default_view)}",
+            f"views = {_toml_value(list(sense_hat.matrix.views))}",
+            f"auto_cycle_seconds = {sense_hat.matrix.auto_cycle_seconds}",
+            f"night_enabled = {_toml_value(sense_hat.matrix.night_enabled)}",
+            f"night_start = {_toml_string(sense_hat.matrix.night_start)}",
+            f"night_end = {_toml_string(sense_hat.matrix.night_end)}",
+            f"night_mode = {_toml_string(sense_hat.matrix.night_mode)}",
             "",
             "[sense_hat.joystick]",
             f"enabled = {_toml_value(sense_hat.joystick_enabled)}",
@@ -597,7 +664,7 @@ def parse_config(data: object) -> AppConfig:
         raise ValidationError(
             "schema_version must be an integer", details={"field": "schema_version"}
         )
-    if schema_version not in {LEGACY_SCHEMA_VERSION, 2, 3, SUPPORTED_SCHEMA_VERSION}:
+    if schema_version not in {LEGACY_SCHEMA_VERSION, 2, 3, 4, SUPPORTED_SCHEMA_VERSION}:
         raise ConfigurationError(
             "Unsupported configuration schema version",
             details={
@@ -635,17 +702,12 @@ def parse_config(data: object) -> AppConfig:
         )
 
     raw_cubes = root.get("cubes")
-    if not isinstance(raw_cubes, list) or len(raw_cubes) != 2:
+    if not isinstance(raw_cubes, list) or not 1 <= len(raw_cubes) <= MAX_CUBES:
         raise ValidationError(
-            "cubes must contain exactly one light cube and one music cube",
+            f"cubes must contain from 1 to {MAX_CUBES} cubes",
             details={"field": "cubes"},
         )
     cubes = tuple(_parse_cube(item, index) for index, item in enumerate(raw_cubes))
-    if {cube.role for cube in cubes} != {CubeRole.LIGHT, CubeRole.MUSIC}:
-        raise ValidationError(
-            "cubes must contain exactly one light cube and one music cube",
-            details={"field": "cubes"},
-        )
     if len({cube.name.casefold() for cube in cubes}) != len(cubes):
         raise ValidationError("Cube names must be unique", details={"field": "cubes"})
     if len({cube.address for cube in cubes}) != len(cubes):
@@ -668,7 +730,7 @@ def parse_config(data: object) -> AppConfig:
         schema_version=SUPPORTED_SCHEMA_VERSION,
         bluetooth=BluetoothConfig(adapter=adapter),
         debounce_ms=debounce_ms,
-        cubes=(cubes[0], cubes[1]),
+        cubes=cubes,
         mappings=mappings,
         sense_hat=sense_hat,
         hue=hue,
@@ -800,7 +862,20 @@ def _parse_sense_hat(value: object) -> SenseHatConfig:
     raw_matrix = _require_table(table.get("matrix", {}), "sense_hat.matrix")
     _check_keys(
         raw_matrix,
-        {"enabled", "rotation", "low_light", "ambient_brightness"},
+        {
+            "enabled",
+            "rotation",
+            "low_light",
+            "ambient_brightness",
+            "brightness",
+            "default_view",
+            "views",
+            "auto_cycle_seconds",
+            "night_enabled",
+            "night_start",
+            "night_end",
+            "night_mode",
+        },
         "sense_hat.matrix",
     )
     matrix = defaults.matrix
@@ -814,19 +889,7 @@ def _parse_sense_hat(value: object) -> SenseHatConfig:
             "sense_hat.matrix.rotation must be 0, 90, 180, or 270",
             details={"field": "sense_hat.matrix.rotation"},
         )
-    matrix = SenseHatMatrixConfig(
-        enabled=_require_bool(
-            raw_matrix.get("enabled", matrix.enabled), "sense_hat.matrix.enabled"
-        ),
-        rotation=rotation,
-        low_light=_require_bool(
-            raw_matrix.get("low_light", matrix.low_light), "sense_hat.matrix.low_light"
-        ),
-        ambient_brightness=_require_bool(
-            raw_matrix.get("ambient_brightness", matrix.ambient_brightness),
-            "sense_hat.matrix.ambient_brightness",
-        ),
-    )
+    matrix = _parse_matrix_extras(raw_matrix, matrix, rotation)
 
     raw_joystick = _require_table(table.get("joystick", {}), "sense_hat.joystick")
     _check_keys(raw_joystick, {"enabled"}, "sense_hat.joystick")
@@ -876,6 +939,81 @@ def _parse_sense_hat(value: object) -> SenseHatConfig:
         ),
         color_gain=color_gain,
         color_integration_cycles=integration_cycles,
+    )
+
+
+def _parse_matrix_extras(
+    raw: Mapping[str, object], defaults: SenseHatMatrixConfig, rotation: int
+) -> SenseHatMatrixConfig:
+    brightness = raw.get("brightness", defaults.brightness)
+    if (
+        isinstance(brightness, bool)
+        or not isinstance(brightness, int)
+        or not 5 <= brightness <= 100
+    ):
+        raise ValidationError(
+            "sense_hat.matrix.brightness must be from 5 to 100",
+            details={"field": "sense_hat.matrix.brightness"},
+        )
+    cycle = raw.get("auto_cycle_seconds", defaults.auto_cycle_seconds)
+    if isinstance(cycle, bool) or not isinstance(cycle, int) or not 0 <= cycle <= 600:
+        raise ValidationError(
+            "sense_hat.matrix.auto_cycle_seconds must be from 0 to 600",
+            details={"field": "sense_hat.matrix.auto_cycle_seconds"},
+        )
+    raw_views = raw.get("views", list(defaults.views))
+    if (
+        not isinstance(raw_views, (list, tuple))
+        or not raw_views
+        or any(not isinstance(view, str) or view not in MATRIX_VIEW_IDS for view in raw_views)
+        or len(set(raw_views)) != len(raw_views)
+    ):
+        raise ValidationError(
+            "sense_hat.matrix.views must be a non-empty list of unique, known view names",
+            details={"field": "sense_hat.matrix.views"},
+        )
+    views = tuple(str(view) for view in raw_views)
+    default_view = raw.get("default_view", defaults.default_view)
+    if not isinstance(default_view, str) or default_view not in views:
+        raise ValidationError(
+            "sense_hat.matrix.default_view must be one of the enabled views",
+            details={"field": "sense_hat.matrix.default_view"},
+        )
+    times: list[str] = []
+    for key, default in (("night_start", defaults.night_start), ("night_end", defaults.night_end)):
+        value = raw.get(key, default)
+        if not isinstance(value, str) or not _TIME_PATTERN.fullmatch(value):
+            raise ValidationError(
+                f"sense_hat.matrix.{key} must be a time such as 22:00",
+                details={"field": f"sense_hat.matrix.{key}"},
+            )
+        times.append(value)
+    night_mode = raw.get("night_mode", defaults.night_mode)
+    if not isinstance(night_mode, str) or night_mode not in MATRIX_NIGHT_MODES:
+        raise ValidationError(
+            "sense_hat.matrix.night_mode must be 'off' or 'dim'",
+            details={"field": "sense_hat.matrix.night_mode"},
+        )
+    return SenseHatMatrixConfig(
+        enabled=_require_bool(raw.get("enabled", defaults.enabled), "sense_hat.matrix.enabled"),
+        rotation=rotation,
+        low_light=_require_bool(
+            raw.get("low_light", defaults.low_light), "sense_hat.matrix.low_light"
+        ),
+        ambient_brightness=_require_bool(
+            raw.get("ambient_brightness", defaults.ambient_brightness),
+            "sense_hat.matrix.ambient_brightness",
+        ),
+        brightness=brightness,
+        default_view=default_view,
+        views=views,
+        auto_cycle_seconds=cycle,
+        night_enabled=_require_bool(
+            raw.get("night_enabled", defaults.night_enabled), "sense_hat.matrix.night_enabled"
+        ),
+        night_start=times[0],
+        night_end=times[1],
+        night_mode=night_mode,
     )
 
 

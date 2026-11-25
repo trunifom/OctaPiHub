@@ -1,13 +1,14 @@
-# Beispielkonfiguration für OctaPiHub (Schema v4).
+# Beispielkonfiguration für OctaPiHub (Schema v5).
 # Kopieren nach /etc/octapihub/octapihub.toml und anpassen.
 # Zugangsdaten (Hue-Schlüssel) gehören NICHT hierher, sondern in secrets.env.
-schema_version = 4
+schema_version = 5
 debounce_ms = 300
 
 [bluetooth]
 adapter = "hci0"
 
-# Die Bluetooth-Adressen Ihrer beiden Würfel (z. B. mit "bluetoothctl scan on" finden).
+# Die Bluetooth-Adressen Ihrer Würfel (1 bis 3; z. B. mit "bluetoothctl scan on" finden).
+# Rolle: light, music oder general (universell) - sie dient nur der Beschriftung.
 [[cubes]]
 name = "Licht"
 address = "AA:BB:CC:DD:EE:01"

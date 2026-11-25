@@ -197,7 +197,7 @@ def test_bundled_config_is_valid_toml_and_the_real_config_is_untouched(
     with TestClient(create_app(rig.backend)) as client:
         files = _archive(_post(client).content)
     parsed = tomllib.loads(files["config.toml"])
-    assert parsed["schema_version"] == 4
+    assert parsed["schema_version"] == 5
     assert parsed["hue"]["host"] == "hidden.invalid"
     assert (tmp_path / "octapihub.toml").read_text(encoding="utf-8") == before
     assert load_config(tmp_path / "octapihub.toml").hue.host == BRIDGE

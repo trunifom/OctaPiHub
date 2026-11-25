@@ -39,7 +39,7 @@ def test_parse_config_applies_defaults_and_normalizes_addresses() -> None:
     config = parse_config(valid_config())
 
     assert isinstance(config, AppConfig)
-    assert config.schema_version == 4
+    assert config.schema_version == 5
     assert config.bluetooth.adapter == "hci0"
     assert config.debounce_ms == DEFAULT_DEBOUNCE_MS
     assert config.cubes[0].address == "AA:BB:CC:DD:EE:01"
@@ -63,7 +63,7 @@ def test_parse_config_applies_defaults_and_normalizes_addresses() -> None:
 def test_schema_v1_is_loaded_as_current_config_version() -> None:
     config = parse_config(valid_config())
 
-    assert config.schema_version == 4
+    assert config.schema_version == 5
     assert config.mappings == ()
 
 
@@ -72,8 +72,8 @@ def test_saving_schema_v1_upgrades_it_to_current_schema(tmp_path: Path) -> None:
     save_config(config_path, parse_config(valid_config()))
 
     saved = config_path.read_text(encoding="utf-8")
-    assert load_config(config_path).schema_version == 4
-    assert saved.startswith("schema_version = 4\n")
+    assert load_config(config_path).schema_version == 5
+    assert saved.startswith("schema_version = 5\n")
     assert "[sense_hat.sensors.temperature]" in saved
 
 
@@ -108,7 +108,7 @@ def test_schema_v2_parses_and_freezes_action_mapping_parameters() -> None:
 
     config = parse_config(data)
 
-    assert config.schema_version == 4
+    assert config.schema_version == 5
     assert config.mappings[0].cube == "Licht"
     assert config.mappings[0].face == 3
     assert config.mappings[0].actions[0].parameters["scene_id"] == "id-with-\\-slash"
@@ -233,7 +233,7 @@ def test_save_config_atomically_round_trips_validated_config(tmp_path: Path) -> 
 
     assert load_config(config_path) == config
     assert config_path.read_text(encoding="utf-8").startswith(
-        "schema_version = 4\ndebounce_ms = 300\n"
+        "schema_version = 5\ndebounce_ms = 300\n"
     )
     assert list(tmp_path.glob(".config.toml.*.tmp")) == []
 
@@ -246,10 +246,10 @@ def test_save_config_rejects_invalid_config_without_changing_existing_file(
     config = parse_config(valid_config())
     invalid_config = replace(
         config,
-        cubes=(replace(config.cubes[0], role=CubeRole.MUSIC), config.cubes[1]),
+        cubes=(config.cubes[0], replace(config.cubes[1], address=config.cubes[0].address)),
     )
 
-    with pytest.raises(ValidationError, match="exactly one light cube"):
+    with pytest.raises(ValidationError, match="addresses must be unique"):
         save_config(config_path, invalid_config)
 
     assert config_path.read_text(encoding="utf-8") == "existing configuration"
@@ -292,18 +292,31 @@ def test_rejects_invalid_debounce(field: str, value: object) -> None:
         parse_config(data)
 
 
-def test_rejects_missing_cube_or_duplicate_roles() -> None:
+def test_one_to_three_cubes_with_any_roles_are_accepted() -> None:
+    cube = {"name": "A", "address": "AA:BB:CC:DD:EE:01", "role": "general"}
+    for count in (1, 2, 3):
+        data = valid_config()
+        data["cubes"] = [
+            {"name": f"Cube {i}", "address": f"AA:BB:CC:DD:EE:0{i}", "role": "general"}
+            for i in range(1, count + 1)
+        ]
+        assert len(parse_config(data).cubes) == count
     data = valid_config()
-    data["cubes"] = [{"name": "Licht", "address": "AA:BB:CC:DD:EE:01", "role": "light"}]
+    data["cubes"] = [
+        dict(cube, role="light"),
+        dict(cube, name="B", address="AA:BB:CC:DD:EE:02", role="light"),
+    ]
+    assert len(parse_config(data).cubes) == 2  # repeating a role is fine
 
-    with pytest.raises(ValidationError, match="exactly one light cube"):
-        parse_config(data)
 
+@pytest.mark.parametrize("count", [0, 4, 5])
+def test_cube_count_outside_one_to_three_is_rejected(count: int) -> None:
     data = valid_config()
-    cubes = data["cubes"]
-    assert isinstance(cubes, list)
-    cubes[1] = {"name": "Zweitlicht", "address": "AA:BB:CC:DD:EE:02", "role": "light"}
-    with pytest.raises(ValidationError, match="exactly one light cube"):
+    data["cubes"] = [
+        {"name": f"Cube {i}", "address": f"AA:BB:CC:DD:EE:0{i}", "role": "general"}
+        for i in range(1, count + 1)
+    ]
+    with pytest.raises(ValidationError, match="from 1 to 3 cubes"):
         parse_config(data)
 
 
@@ -344,7 +357,7 @@ def test_rejects_invalid_cube_and_adapter_settings(change: str, expected_message
 
 def test_rejects_unsupported_schema_and_unknown_root_keys() -> None:
     data = valid_config()
-    data["schema_version"] = 5
+    data["schema_version"] = 6
     with pytest.raises(ConfigurationError, match="Unsupported configuration schema"):
         parse_config(data)
 
@@ -436,7 +449,7 @@ def test_schema_v2_migrates_mappings_and_defaults_sense_hat_settings() -> None:
 
     config = parse_config(data)
 
-    assert config.schema_version == 4
+    assert config.schema_version == 5
     assert config.mappings == ()
     assert config.sense_hat.sensors["temperature"].enabled
     assert not config.sense_hat.sensors["color"].enabled

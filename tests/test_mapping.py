@@ -51,15 +51,19 @@ TOKEN = "s3cret-token"
 LIGHT = "AA:BB:CC:DD:EE:01"
 
 
-def _config(tmp_path: Path, mappings: list[dict[str, object]] | None = None) -> AppConfig:
+def _config(
+    tmp_path: Path, mappings: list[dict[str, object]] | None = None, cube_count: int = 2
+) -> AppConfig:
+    cubes = [
+        {"name": "Licht", "address": LIGHT, "role": "light"},
+        {"name": "Musik", "address": "AA:BB:CC:DD:EE:02", "role": "music"},
+        {"name": "Extra", "address": "AA:BB:CC:DD:EE:03", "role": "general"},
+    ][:cube_count]
     return parse_config(
         {
             "schema_version": 4,
             "bluetooth": {"adapter": "hci0"},
-            "cubes": [
-                {"name": "Licht", "address": LIGHT, "role": "light"},
-                {"name": "Musik", "address": "AA:BB:CC:DD:EE:02", "role": "music"},
-            ],
+            "cubes": cubes,
             "mappings": mappings if mappings is not None else [],
             "hue": {"enabled": True, "host": "192.168.1.20"},
             "sense_hat": {"history": {"database_path": str(tmp_path / "h.sqlite3")}},
@@ -146,9 +150,14 @@ def test_dispatcher_switches_rules_and_keeps_old_ones_when_plugin_is_missing(
 class _Rig:
     """Cube service with fake Bluetooth, a paired fake Hue, and a web backend."""
 
-    def __init__(self, tmp_path: Path, mappings: list[dict[str, object]] | None = None) -> None:
+    def __init__(
+        self,
+        tmp_path: Path,
+        mappings: list[dict[str, object]] | None = None,
+        cube_count: int = 2,
+    ) -> None:
         self.tmp_path = tmp_path
-        self.config = _config(tmp_path, mappings)
+        self.config = _config(tmp_path, mappings, cube_count)
         self.path = tmp_path / "octapihub.toml"
         save_config(self.path, self.config)
         self.recalled: list[str] = []
@@ -577,3 +586,24 @@ def test_locked_face_is_shown_read_only(tmp_path: Path) -> None:
         text = client.get("/cubes").text
         assert "nur in der Konfigurationsdatei änderbar" in text
         assert 'name="map.0.2"' not in text
+
+
+def test_three_cubes_get_three_editors_and_independent_mappings(tmp_path: Path) -> None:
+    rig = _Rig(tmp_path, [_mapping("Extra", 6, _scene_action("scene-abend"))], cube_count=3)
+    client = _loaded_client(rig)
+    try:
+        text = client.get("/cubes").text
+        assert text.count("face-tile-head") == 24  # 3 cubes x 8 faces
+        assert "Universal" in text
+        assert 'name="map.2.6"' in text
+        values = forms.mapping_config_to_form(rig.settings.config)
+        assert values["map.2.6"] == "scene-abend"
+        values["map.0.1"] = "scene-hell"
+        values["map.2.6"] = ""
+        response = _post(client, values)
+        assert response.status_code == 200
+    finally:
+        client.__exit__(None, None, None)
+    saved = load_config(rig.path).mappings
+    assert [(m.cube, m.face) for m in saved] == [("Licht", 1)]
+    assert len(rig.cubes.statuses) in {0, 3}

@@ -352,3 +352,7 @@ Auf der Seite Würfel hat jede der acht Seiten beider Würfel eine Auswahl „Ke
 ## Diagnose-Paket (F-U8)
 
 Die Seite System bietet ein ZIP mit `status.json` (Komponentenzustände, Fehlercodes, keine Adressen), `system.json`, `config.toml` und `logs.txt`. Es ist nur mit Token abrufbar und wird im Speicher erzeugt. Zugangsdaten und Token werden entfernt, Bluetooth-Adressen gekürzt, die Bridge-Adresse und der CA-Pfad ersetzt bzw. überall maskiert (auch innerhalb von Logzeilen); für die Konfiguration wird eine Kopie verwendet, die echte Datei und die laufende Konfiguration bleiben unverändert. Fehler beim Erzeugen werden mit Code gemeldet, ohne Details auszugeben. Auch dieses Paket sollte vor der Weitergabe kurz geprüft werden.
+
+## Bis zu drei Würfel und Schema v5
+
+Schema v5 erlaubt **1 bis 3 Würfel** mit beliebiger Rolle (`light`, `music`, `general`; die Rolle beschriftet nur, jede Rolle darf mehrfach vorkommen) und ergänzt die LED-Matrix-Einstellungen: `brightness` (5–100 %), `default_view`, `views` (aktivierte Ansichten in Joystick-Reihenfolge), `auto_cycle_seconds`, Nachtmodus (`night_enabled`, `night_start`, `night_end`, `night_mode` = `off` oder `dim`). Ältere Dateien (v1–v4) bleiben lesbar und erhalten Standardwerte. Die BLE-Laufzeit verbindet die Würfel nacheinander und hält sie gleichzeitig; Zuordnungseditor, Statuskarten und Zuordnung arbeiten mit beliebig vielen konfigurierten Würfeln.

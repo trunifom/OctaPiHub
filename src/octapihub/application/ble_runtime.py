@@ -169,8 +169,8 @@ class BleRuntime:
         self._stop = asyncio.Event()
         self._connection_lock = asyncio.Lock()
         self._tasks = [
-            asyncio.create_task(self._run_cube(cube), name=f"octapihub-ble-{cube.role.value}")
-            for cube in self._config.cubes
+            asyncio.create_task(self._run_cube(cube), name=f"octapihub-ble-{index}")
+            for index, cube in enumerate(self._config.cubes)
         ]
 
     async def stop(self) -> None:

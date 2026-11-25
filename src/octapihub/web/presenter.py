@@ -371,7 +371,7 @@ def local_time_text(moment: datetime, tz: tzinfo) -> str:
 
 # ---------- cubes ----------
 
-_ROLE_TEXT = {"light": "Licht", "music": "Musik"}
+_ROLE_TEXT = {"light": "Licht", "music": "Musik", "general": "Universal"}
 # state -> (level, headline, what the user can do)
 _CUBE_STATE: Mapping[CubeConnectionState, tuple[str, str, str]] = {
     CubeConnectionState.WAITING_FOR_RADIO: (
