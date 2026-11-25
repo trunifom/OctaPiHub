@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Würfel</h1>
+    <p class="lead">Verbindung der beiden Würfel und was jede Seite auslöst.</p>
+  </div>
+</div>
+
+<div id="live-cubes">{% include "_cubes.html" %}</div>
+
+<section class="panel" aria-labelledby="zuordnung-title">
+  <div class="panel-head">
+    <h2 id="zuordnung-title">Zuordnung</h2>
+    <p class="muted">Welche Aktion ein Würfel auslöst, wenn er auf eine Seite gelegt wird.</p>
+  </div>
+  {% if mapping_views %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th scope="col">Würfel</th><th scope="col">Seite</th><th scope="col">Aktionen (der Reihe nach)</th></tr></thead>
+      <tbody>
+        {% for row in mapping_views %}
+        <tr>
+          <th scope="row">{{ row.cube }}</th>
+          <td><span class="face-chip">{{ row.face }}</span></td>
+          <td><ol class="actions">{% for action in row.actions %}<li>{{ action }}</li>{% endfor %}</ol></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="hint">Die Zuordnung steht in der Konfigurationsdatei (Abschnitt <code>mappings</code>). Das Bearbeiten in der Oberfläche folgt in einer späteren Version.</p>
+  {% else %}
+  <div class="empty">
+    <span class="empty-ico">{{ m.icon('cube') }}</span>
+    <h3>Noch keine Zuordnung</h3>
+    <p>Legen Sie in der Konfigurationsdatei im Abschnitt <code>mappings</code> fest, welche Aktion welche Würfelseite auslöst.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -12,6 +12,7 @@ import pytest
 from fastapi.templating import Jinja2Templates
 from fastapi.testclient import TestClient
 
+from octapihub.application.outbox import OutboxDispatcher
 from octapihub.application.sense_hat import SenseHatMetric, SenseHatReading
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.sense_hat_worker import (
@@ -424,3 +425,85 @@ def test_live_stream_pushes_rendered_fragments(tmp_path: Path) -> None:
     assert set(payload) >= {"live-cards", "live-notices", "live-badge", "live-mini"}
     assert "Temperatur" in payload["live-cards"]
     assert "In Ordnung" in payload["live-badge"]
+
+
+# ---------- cubes page ----------
+
+
+def _cube_config(tmp_path: Path) -> AppConfig:
+    base = _base_config(tmp_path)
+    return parse_config(
+        {
+            "schema_version": 3,
+            "bluetooth": {"adapter": "hci0"},
+            "debounce_ms": 300,
+            "cubes": [
+                {"name": "Licht", "address": "AA:BB:CC:DD:EE:01", "role": "light"},
+                {"name": "Musik", "address": "AA:BB:CC:DD:EE:02", "role": "music"},
+            ],
+            "mappings": [
+                {
+                    "cube": "Licht",
+                    "face": 3,
+                    "actions": [
+                        {
+                            "kind": "hue",
+                            "action": "scene.activate",
+                            "parameters": {"scene_id": "abend"},
+                        }
+                    ],
+                }
+            ],
+            "sense_hat": {"history": {"database_path": base.sense_hat.history.database_path}},
+        }
+    )
+
+
+def test_cubes_page_without_cube_service_explains_and_lists_mapping(tmp_path: Path) -> None:
+    backend = _backend(tmp_path)
+    backend.settings._config = _cube_config(tmp_path)
+    with TestClient(create_app(backend)) as client:
+        text = client.get("/cubes").text
+        assert "nicht aktiv" in text
+        assert "Szene aktivieren" in text
+        assert "scene_id: abend" in text
+        assert "AA:BB:CC" not in text  # addresses are never shown
+        assert "nicht aktiv" in client.get("/").text
+
+
+def test_cubes_page_shows_pipeline_error_with_code(tmp_path: Path) -> None:
+    from octapihub.application.cube_service import CubeService
+    from octapihub.core.errors import PluginError
+
+    def no_plugin(_config: AppConfig) -> OutboxDispatcher:
+        raise PluginError("missing hue plugin")
+
+    backend = _backend(tmp_path)
+    config = _cube_config(tmp_path)
+    backend.settings._config = config
+    backend.cubes = CubeService(config, lambda _c: pytest.fail("no runtime"), no_plugin)
+    with TestClient(create_app(backend, manage_service=True)) as client:
+        text = client.get("/cubes").text
+        assert "nicht gestartet werden" in text
+        assert "CH-PLUG" in text
+        assert client.get("/healthz").json()["cubes_running"] is False
+
+
+def test_cubes_page_shows_connected_cubes(tmp_path: Path) -> None:
+    from octapihub.web.demo import _demo_cubes
+
+    backend = _backend(tmp_path)
+    config = _cube_config(tmp_path)
+    backend.settings._config = config
+    backend.cubes = _demo_cubes(config, tmp_path)
+    with TestClient(create_app(backend, manage_service=True)) as client:
+        deadline = time.monotonic() + 3
+        text = ""
+        while time.monotonic() < deadline:
+            text = client.get("/cubes").text
+            if text.count("Verbunden") >= 2:
+                break
+            time.sleep(0.02)
+        assert text.count("Verbunden") >= 2
+        assert "Noch keine Seite erkannt" in text
+        assert "2 von 2 Würfeln verbunden" in client.get("/").text

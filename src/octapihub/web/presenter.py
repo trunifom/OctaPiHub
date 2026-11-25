@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, tzinfo
 
+from octapihub.application.ble_runtime import CubeConnectionState, CubeRuntimeStatus
 from octapihub.application.sense_hat import (
     ColorSensorReading,
     Orientation,
@@ -21,7 +22,13 @@ from octapihub.application.sense_hat_worker import (
     SensorGroupState,
     SensorGroupStatus,
 )
-from octapihub.core.config import SenseHatConfig, SenseHatVersion, SensorPresentation
+from octapihub.core.config import (
+    AppConfig,
+    RuleActionConfig,
+    SenseHatConfig,
+    SenseHatVersion,
+    SensorPresentation,
+)
 
 # Scalar groups that can be drawn as a time series.
 CHARTABLE_GROUPS = ("temperature", "humidity", "pressure", "compass")
@@ -357,3 +364,148 @@ def describe_hardware(capabilities: SenseHatCapabilities | None, config: SenseHa
 def local_time_text(moment: datetime, tz: tzinfo) -> str:
     """Wall-clock time in the display time zone."""
     return moment.astimezone(tz).strftime("%d.%m.%Y %H:%M:%S")
+
+
+# ---------- cubes ----------
+
+_ROLE_TEXT = {"light": "Licht", "music": "Musik"}
+# state -> (level, headline, what the user can do)
+_CUBE_STATE: Mapping[CubeConnectionState, tuple[str, str, str]] = {
+    CubeConnectionState.WAITING_FOR_RADIO: (
+        "info",
+        "Wartet auf Bluetooth",
+        "Der Würfel wird gesucht.",
+    ),
+    CubeConnectionState.CONNECTING: ("info", "Verbindet …", "Das kann einige Sekunden dauern."),
+    CubeConnectionState.DISCOVERING: ("info", "Prüft das Gerät …", ""),
+    CubeConnectionState.SUBSCRIBING: ("info", "Richtet die Verbindung ein …", ""),
+    CubeConnectionState.WAITING_FOR_BASELINE: (
+        "info",
+        "Verbunden",
+        "Legen Sie den Würfel einmal auf eine Seite, damit er sich meldet.",
+    ),
+    CubeConnectionState.READY: ("ok", "Bereit", ""),
+    CubeConnectionState.RECONNECT_WAIT: (
+        "warn",
+        "Verbindung unterbrochen",
+        "Es wird automatisch neu verbunden. Halten Sie den Würfel in Reichweite.",
+    ),
+    CubeConnectionState.UNSUPPORTED: (
+        "error",
+        "Gerät nicht unterstützt",
+        "Dieses Bluetooth-Gerät sendet nicht die erwarteten Daten. "
+        "Prüfen Sie die Adresse in der Konfiguration.",
+    ),
+    CubeConnectionState.FAILED: (
+        "error",
+        "Fehler",
+        "Details stehen im Protokoll. Starten Sie den Dienst neu.",
+    ),
+    CubeConnectionState.STOPPED: ("off", "Angehalten", ""),
+}
+_CUBE_ERROR_CODES = {
+    CubeConnectionState.RECONNECT_WAIT: "CH-BLE-002",
+    CubeConnectionState.UNSUPPORTED: "CH-BLE-003",
+    CubeConnectionState.FAILED: "CH-GENERIC-000",
+}
+_ACTION_TEXT = {
+    "scene.activate": "Szene aktivieren",
+    "light.brightness": "Helligkeit setzen",
+}
+_KIND_TEXT = {"hue": "Hue-Licht"}
+
+
+@dataclass(frozen=True, slots=True)
+class CubeView:
+    """One cube card; the Bluetooth address is deliberately not included."""
+
+    name: str
+    role: str
+    level: str
+    connected: bool
+    state_text: str
+    hint: str
+    face_text: str
+    face_number: str
+    error_text: str
+    error_code: str
+    attempts: int
+
+
+@dataclass(frozen=True, slots=True)
+class MappingView:
+    """One configured cube face and the actions it triggers."""
+
+    cube: str
+    face: int
+    actions: tuple[str, ...]
+
+
+def _face_text(value: int | None) -> tuple[str, str]:
+    if value is None:
+        return "Noch keine Seite erkannt", "–"
+    if value == 0:
+        return "Zuletzt: keine Seite (Würfel in Zwischenlage)", "0"
+    return "Zuletzt erkannte Seite", str(value)
+
+
+def build_cube_views(
+    config: AppConfig, statuses: Sequence[CubeRuntimeStatus]
+) -> tuple[CubeView, ...]:
+    """Cards for all configured cubes; cubes without a status show as stopped."""
+    by_name = {status.name: status for status in statuses}
+    views: list[CubeView] = []
+    for cube in config.cubes:
+        status = by_name.get(cube.name)
+        state = status.state if status is not None else CubeConnectionState.STOPPED
+        level, headline, hint = _CUBE_STATE[state]
+        face_text, face_number = _face_text(status.last_value if status else None)
+        views.append(
+            CubeView(
+                name=cube.name,
+                role=_ROLE_TEXT.get(cube.role.value, cube.role.value),
+                level=level,
+                connected=status.connected if status else False,
+                state_text=headline,
+                hint=hint,
+                face_text=face_text,
+                face_number=face_number,
+                error_text=(status.last_error or "") if status else "",
+                error_code=_CUBE_ERROR_CODES.get(state, "") if status and status.last_error else "",
+                attempts=status.reconnect_attempt if status else 0,
+            )
+        )
+    return tuple(views)
+
+
+def describe_action(action: RuleActionConfig) -> str:
+    """Readable one-line summary of a configured action."""
+    kind = _KIND_TEXT.get(action.kind, action.kind)
+    name = _ACTION_TEXT.get(action.action, action.action)
+    parameters = ", ".join(f"{key}: {value}" for key, value in action.parameters.items())
+    return f"{kind}: {name}" + (f" ({parameters})" if parameters else "")
+
+
+def build_mapping_views(config: AppConfig) -> tuple[MappingView, ...]:
+    """Configured mappings ordered by cube order, then face."""
+    order = {cube.name.casefold(): index for index, cube in enumerate(config.cubes)}
+    mappings = sorted(config.mappings, key=lambda m: (order.get(m.cube.casefold(), 99), m.face))
+    return tuple(
+        MappingView(m.cube, m.face, tuple(describe_action(a) for a in m.actions)) for m in mappings
+    )
+
+
+def cube_summary(views: Sequence[CubeView]) -> tuple[str, str]:
+    """(level, text) for the overview card."""
+    if not views:
+        return "off", "Keine Würfel eingerichtet."
+    ready = sum(1 for v in views if v.connected)
+    worst = next(
+        (
+            lvl
+            for lvl in ("error", "warn", "info", "off", "ok")
+            if any(v.level == lvl for v in views)
+        ),
+        "ok",
+    )
+    return worst, f"{ready} von {len(views)} Würfeln verbunden."

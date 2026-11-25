@@ -1,0 +1,41 @@
+{% import "_macros.html" as m %}
+{% set labels = {'ok': 'In Ordnung', 'warn': 'Hinweis', 'error': 'Störung', 'info': 'Startet', 'off': 'Nicht aktiv'} %}
+{% if cube_error %}
+<div class="notice notice-error" role="alert">
+  <span class="notice-ico">{{ m.icon('error') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Die Würfel-Steuerung konnte nicht gestartet werden</p>
+    <p>{{ cube_error }}</p>
+    <p class="notice-hint">Prüfen Sie, ob für jede eingerichtete Aktion das passende Erweiterungsmodul installiert ist und der Datenordner beschreibbar ist. Danach den Dienst neu starten.</p>
+    {% if cube_error_code %}<p class="notice-code">Fehlercode <code>{{ cube_error_code }}</code></p>{% endif %}
+  </div>
+</div>
+{% elif not cubes_active %}
+<div class="notice notice-info" role="status">
+  <span class="notice-ico">{{ m.icon('info') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Die Würfel-Steuerung ist in diesem Modus nicht aktiv</p>
+    <p>Im Demo-Modus gibt es keine Bluetooth-Verbindung. Die eingerichteten Würfel sind unten zu sehen.</p>
+  </div>
+</div>
+{% endif %}
+<div class="cards">
+  {% for v in cube_views %}
+  <article class="card cube level-{{ v.level }}">
+    <header class="card-head">
+      <span class="chip-ico">{{ m.icon('cube') }}</span>
+      <h3>{{ v.name }}</h3>
+      <span class="pill pill-role">{{ v.role }}</span>
+    </header>
+    <p><span class="badge badge-{{ v.level }}"><span class="dot" aria-hidden="true"></span>{{ v.state_text }}</span></p>
+    {% if v.hint %}<p class="sub">{{ v.hint }}</p>{% endif %}
+    <div class="face">
+      <span class="face-num" aria-hidden="true">{{ v.face_number }}</span>
+      <span class="face-text">{{ v.face_text }}</span>
+    </div>
+    {% if v.error_text and v.level != 'ok' %}
+    <p class="problem">{{ v.error_text }}{% if v.error_code %} <span class="code">{{ v.error_code }}</span>{% endif %}{% if v.attempts %} · Versuch {{ v.attempts }}{% endif %}</p>
+    {% endif %}
+  </article>
+  {% endfor %}
+</div>

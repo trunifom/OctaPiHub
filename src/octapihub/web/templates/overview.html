@@ -18,8 +18,16 @@
     <footer class="card-foot"><a class="btn btn-quiet" href="/sense-hat">Messwerte ansehen</a></footer>
   </article>
 
+  <article class="card status-card">
+    <header class="card-head">
+      <span class="chip-ico">{{ m.icon('cube') }}</span>
+      <h2>Würfel</h2>
+    </header>
+    <div id="live-cubes-mini" class="stack">{% include "_cubes_mini.html" %}</div>
+    <footer class="card-foot"><a class="btn btn-quiet" href="/cubes">Würfel ansehen</a></footer>
+  </article>
+
   {% for icon, title, text in [
-    ('cube', 'Würfel', 'Hier erscheinen später beide Würfel mit Verbindungsstatus, Batteriestand und der zuletzt erkannten Seite.'),
     ('bulb', 'Licht', 'Hier erscheinen später die Hue-Verbindung und die Lichtszenen, die Ihre Würfel auslösen.'),
     ('music', 'Musik', 'Hier erscheinen später das Abspielziel und die Musiksteuerung.'),
     ('system', 'System', 'Hier erscheinen später Uhrzeit, Prozessortemperatur, Speicher und Laufzeit des Geräts.'),

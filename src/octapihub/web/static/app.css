@@ -279,3 +279,16 @@ select:hover, input:hover { border-color: var(--muted); }
 @media (max-width: 44rem) { .savebar { bottom: var(--tabbar-h); } .savebar-in { flex-direction: column; align-items: stretch; } .field-token { max-width: none; } }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ---------- cubes ---------- */
+.stack { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+.pill-role { background: var(--accent-soft); color: var(--accent-strong); }
+.face { display: flex; align-items: center; gap: 0.9rem; background: var(--surface-2); border-radius: 12px; padding: 0.6rem 0.8rem; }
+.face-num { display: inline-grid; place-items: center; width: 3rem; height: 3rem; border-radius: 12px; background: var(--surface); border: 2px solid var(--accent); color: var(--accent-strong); font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; flex: none; }
+.face-text { color: var(--muted); font-size: 0.9rem; }
+.face-chip { display: inline-grid; place-items: center; min-width: 2rem; height: 2rem; border-radius: 8px; background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { text-align: left; padding: 0.7rem 0.8rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.table thead th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.actions { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.15rem; }

@@ -300,8 +300,8 @@ aus der Konfiguration angewandt.
 `octapihub/web` ist die Oberflächenschicht (FastAPI, Jinja2, kein Build-Schritt, keine
 externen Fonts oder Skripte; die Seiten funktionieren offline im LAN).
 
-- **Seiten:** Übersicht, Sense HAT (Live-Karten, Verlaufsdiagramm), Einstellungen
-  (alle Sense-HAT-Optionen). Würfel, Licht, Musik und System fehlen und erscheinen auf der
+- **Seiten:** Übersicht, Würfel (Verbindungsstatus je Würfel, zuletzt erkannte Seite, Zuordnung nur lesend; Adressen werden nie angezeigt), Sense HAT (Live-Karten, Verlaufsdiagramm), Einstellungen
+  (alle Sense-HAT-Optionen). Licht, Musik und System fehlen und erscheinen auf der
   Übersicht ehrlich als „Noch nicht angebunden“.
 - **Live-Daten:** Server-Sent Events (`/events`). Der Server rendert HTML-Fragmente und
   sendet sie nur bei Änderungen; das Browserskript pollt nicht. Das Diagramm lädt höchstens

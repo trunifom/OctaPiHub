@@ -1,0 +1,3 @@
+{% set labels = {'ok': 'In Ordnung', 'warn': 'Hinweis', 'error': 'Störung', 'info': 'Startet', 'off': 'Nicht aktiv'} %}
+<span class="badge badge-{{ cube_level }}"><span class="dot" aria-hidden="true"></span>{{ labels.get(cube_level, cube_level) }}</span>
+<p class="muted">{{ cube_text }}{% if cube_error %} {{ cube_error }}{% endif %}</p>

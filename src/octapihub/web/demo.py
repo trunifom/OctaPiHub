@@ -12,13 +12,26 @@ import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from octapihub.application.ble import CharacteristicInfo, DeviceProfile
+from octapihub.application.ble_runtime import BleRuntime
+from octapihub.application.cube_service import CubeService
+from octapihub.application.outbox import OutboxDispatcher
+from octapihub.application.plugins import PluginRegistry
+from octapihub.application.rules import RuleEngine
 from octapihub.application.sense_hat import SenseHatMetric, SenseHatReading
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.sense_hat_worker import SenseHatSample, correct_temperature
 from octapihub.application.settings import SettingsManager
 from octapihub.core.config import AppConfig, SenseHatConfig, parse_config, save_config
+from octapihub.infrastructure.ble.fake import FakeTransportFactory
+from octapihub.infrastructure.ble.protocol import (
+    ORIENTATION_CHARACTERISTIC_UUID,
+    decode_orientation,
+    supports_orientation_notifications,
+)
 from octapihub.infrastructure.fake_sense_hat import FakeSenseHat
 from octapihub.infrastructure.sense_hat import SenseHatAdapter
+from octapihub.infrastructure.sqlite_outbox import SQLiteOutbox
 from octapihub.infrastructure.sqlite_sense_hat_history import SQLiteSenseHatHistory
 from octapihub.web.app import WebBackend
 
@@ -107,6 +120,31 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
             "schema_version": 3,
             "bluetooth": {"adapter": "hci0"},
             "debounce_ms": 300,
+            "mappings": [
+                {
+                    "cube": "Licht",
+                    "face": 3,
+                    "actions": [
+                        {
+                            "kind": "hue",
+                            "action": "scene.activate",
+                            "parameters": {"scene_id": "wohnzimmer-abend"},
+                        },
+                        {"kind": "hue", "action": "light.brightness", "parameters": {"level": 0.6}},
+                    ],
+                },
+                {
+                    "cube": "Licht",
+                    "face": 5,
+                    "actions": [
+                        {
+                            "kind": "hue",
+                            "action": "scene.activate",
+                            "parameters": {"scene_id": "aus"},
+                        }
+                    ],
+                },
+            ],
             "cubes": [
                 {"name": "Licht", "address": "AA:BB:CC:DD:EE:01", "role": "light"},
                 {"name": "Musik", "address": "AA:BB:CC:DD:EE:02", "role": "music"},
@@ -135,4 +173,39 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
         lambda _settings: SenseHatAdapter(DemoSenseHat()),
         lambda settings: SQLiteSenseHatHistory(settings.history.database_path),
     )
-    return WebBackend(SettingsManager(config_path, base, service), service, token)
+    cubes = _demo_cubes(base, directory)
+    return WebBackend(SettingsManager(config_path, base, service), service, token, cubes)
+
+
+class _DemoHue:
+    """Accepts every action without contacting any bridge."""
+
+    kind = "hue"
+
+    async def execute(self, action: str, parameters: object) -> None:
+        return None
+
+
+def _demo_cubes(config: AppConfig, directory: Path) -> CubeService:
+    """Two simulated cubes that connect instantly; no Bluetooth is used."""
+    profile = DeviceProfile(
+        (CharacteristicInfo(ORIENTATION_CHARACTERISTIC_UUID, frozenset({"notify"})),)
+    )
+
+    def make_runtime(settings: AppConfig) -> BleRuntime:
+        return BleRuntime(
+            settings,
+            FakeTransportFactory(profile),
+            orientation_characteristic_uuid=ORIENTATION_CHARACTERISTIC_UUID,
+            decode_orientation=decode_orientation,
+            supports_orientation=supports_orientation_notifications,
+        )
+
+    def make_dispatcher(settings: AppConfig) -> OutboxDispatcher:
+        plugins = PluginRegistry()
+        plugins.register(_DemoHue())
+        return OutboxDispatcher(
+            RuleEngine(settings), SQLiteOutbox(directory / "state.sqlite3"), plugins
+        )
+
+    return CubeService(config, make_runtime, make_dispatcher)

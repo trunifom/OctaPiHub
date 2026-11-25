@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from octapihub.application.cube_service import CubeService
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.settings import SettingsManager
 from octapihub.core.errors import ConfigurationError, OctaPiHubError, ValidationError
@@ -30,10 +31,13 @@ from octapihub.web.presenter import (
     CHARTABLE_GROUPS,
     GROUP_INFO,
     SECTIONS,
+    build_cube_views,
     build_group_views,
+    build_mapping_views,
     build_notices,
     chart_groups,
     correction_active,
+    cube_summary,
     describe_hardware,
     display_unit,
     local_time_text,
@@ -78,6 +82,7 @@ class WebBackend:
     settings: SettingsManager
     sense_hat: SenseHatService
     token: str | None = None
+    cubes: CubeService | None = None
     tz: tzinfo = field(default_factory=display_timezone)
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
 
@@ -113,7 +118,23 @@ class LiveView:
             running=service.running,
         )
         views = build_group_views(config, statuses, backend.tz)
+        cubes = backend.cubes
+        cube_views = build_cube_views(
+            backend.settings.config, cubes.statuses if cubes is not None else ()
+        )
+        cube_level, cube_text = cube_summary(cube_views)
+        if cubes is None:
+            cube_level, cube_text = "off", "Die Würfel-Steuerung ist in diesem Modus nicht aktiv."
+        elif cubes.error:
+            cube_level = "error"
         return {
+            "cubes_active": cubes is not None,
+            "cube_views": cube_views,
+            "cube_level": cube_level,
+            "cube_text": cube_text,
+            "cube_error": cubes.error if cubes is not None else None,
+            "cube_error_code": cubes.error_code if cubes is not None else None,
+            "mapping_views": build_mapping_views(backend.settings.config),
             "sense_config": config,
             "views": views,
             "notices": notices,
@@ -132,6 +153,8 @@ class LiveView:
             "live-notices-quiet": render("_notices.html").render({**context, "quiet_ok": True}),
             "live-mini": render("_mini.html").render(context),
             "live-badge": render("_badge.html").render(context),
+            "live-cubes": render("_cubes.html").render(context),
+            "live-cubes-mini": render("_cubes_mini.html").render(context),
         }
 
     async def stream(
@@ -178,10 +201,14 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if manage_service:
             await backend.sense_hat.start()
+            if backend.cubes is not None:
+                await backend.cubes.start()
         try:
             yield
         finally:
             if manage_service:
+                if backend.cubes is not None:
+                    await backend.cubes.stop()
                 await backend.sense_hat.stop()
 
     app = FastAPI(
@@ -238,6 +265,10 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request) -> Response:
         return page(request, "overview.html", "overview")
+
+    @app.get("/cubes", response_class=HTMLResponse)
+    def cubes_page(request: Request) -> Response:
+        return page(request, "cubes.html", "cubes")
 
     @app.get("/sense-hat", response_class=HTMLResponse)
     def sense_hat_page(request: Request) -> Response:
@@ -416,6 +447,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "status": "ok",
             "sense_hat_running": backend.sense_hat.running,
             "sense_hat_error": backend.sense_hat.hardware_error_code,
+            "cubes_running": backend.cubes.running if backend.cubes is not None else None,
         }
 
     return app
