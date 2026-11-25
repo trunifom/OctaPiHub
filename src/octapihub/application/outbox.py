@@ -6,7 +6,7 @@ import asyncio
 import logging
 import math
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
@@ -99,6 +99,7 @@ class OutboxDispatcher:
         plugins: PluginRegistry,
         *,
         ttl_seconds: float = 900.0,
+        ttl_by_kind: Mapping[str, float] | None = None,
         backoff_base_seconds: float = 1.0,
         backoff_cap_seconds: float = 60.0,
         clock: Clock = time.time,
@@ -127,6 +128,10 @@ class OutboxDispatcher:
         self._outbox = outbox
         self._plugins = plugins
         self._ttl_seconds = ttl_seconds
+        self._ttl_by_kind = dict(ttl_by_kind or {})
+        for kind, value in self._ttl_by_kind.items():
+            if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
+                raise ValidationError(f"Outbox TTL for {kind!r} must be positive and finite")
         self._backoff_base_seconds = backoff_base_seconds
         self._backoff_cap_seconds = backoff_cap_seconds
         self._clock = clock
@@ -175,7 +180,12 @@ class OutboxDispatcher:
             cube_name,
             actions,
             created_at=created_at,
-            expires_at=created_at + self._ttl_seconds,
+            # an action that must not run late (music) gives the whole batch a short life
+            expires_at=created_at
+            + min(
+                [self._ttl_seconds]
+                + [self._ttl_by_kind[a.kind] for a in actions if a.kind in self._ttl_by_kind]
+            ),
         )
 
     async def dispatch_next(self, cube: str) -> bool:
@@ -208,10 +218,12 @@ class OutboxDispatcher:
             delay = min(self._backoff_cap_seconds, max(0.0, jittered))
             if isinstance(exc, RetryableError) and exc.retry_after_seconds is not None:
                 delay = max(delay, float(exc.retry_after_seconds))
+            # errors the user must fix (invalid source, missing target) are never retried
+            permanent = getattr(exc, "retryable", True) is False
             state = self._outbox.retry(
                 entry.id,
                 now=now,
-                retry_at=now + delay,
+                retry_at=entry.expires_at if permanent else now + delay,
                 error_code=type(exc).__name__,
             )
             logger.warning(

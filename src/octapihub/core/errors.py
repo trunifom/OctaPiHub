@@ -107,6 +107,43 @@ class SecretsError(OctaPiHubError):
     )
 
 
+class MusicError(OctaPiHubError):
+    """Music could not be played or controlled."""
+
+    code = "CH-MUS-001"
+    default_user_message = "Die Musik konnte nicht abgespielt werden."
+    # Errors the user has to fix are not retried by the action outbox.
+    retryable: ClassVar[bool] = True
+
+
+class MusicTargetError(MusicError):
+    """A playback target (speaker, display, audio output) did not respond."""
+
+    code = "CH-MUS-002"
+    default_user_message = (
+        "Das Wiedergabegerät antwortet nicht. Bitte prüfen, ob es eingeschaltet und im "
+        "Netzwerk erreichbar ist."
+    )
+
+
+class MusicSourceError(MusicError):
+    """A music source (link, file, folder) is invalid, unsupported, or unavailable."""
+
+    code = "CH-MUS-003"
+    default_user_message = "Diese Musikquelle kann nicht abgespielt werden."
+    retryable = False
+
+
+class MusicNotConfiguredError(MusicError):
+    """Music is switched off, or the action names no usable target or playlist."""
+
+    code = "CH-MUS-004"
+    default_user_message = (
+        "Musik ist nicht eingerichtet. Schalten Sie sie ein und wählen Sie ein Wiedergabegerät."
+    )
+    retryable = False
+
+
 class PluginError(OctaPiHubError):
     """A plugin could not be loaded, validated or resolved."""
 
