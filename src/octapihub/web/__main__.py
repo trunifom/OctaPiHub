@@ -6,7 +6,7 @@ import argparse
 import logging
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import uvicorn
 
@@ -50,12 +50,46 @@ def register_secrets(redactor: Redactor, secrets_path: str) -> None:
         )
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """Start the interface; returns a process exit code."""
-    parser = argparse.ArgumentParser(prog="octapihub.web", description=__doc__)
+def _port(text: str) -> int:
+    try:
+        port = int(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"ungültiger Port: {text!r}") from exc
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("Der Port muss zwischen 1 und 65535 liegen")
+    return port
+
+
+MIN_TOKEN_LENGTH = 12
+_PLACEHOLDER_PREFIX = "HIER-EIN"
+
+
+def token_problem(token: str | None) -> str | None:
+    """Explain why a configured web token is unsafe, or return ``None`` when it is fine.
+
+    No token is allowed (the interface is then read-only); a weak or copied placeholder
+    token is not, because it would protect nothing.
+    """
+    if token is None:
+        return None
+    if token.startswith(_PLACEHOLDER_PREFIX):
+        return "Das Token ist noch der Platzhalter aus der Beispieldatei. Bitte ein eigenes setzen."
+    if len(token) < MIN_TOKEN_LENGTH:
+        return f"Das Token ist zu kurz (mindestens {MIN_TOKEN_LENGTH} Zeichen)."
+    return None
+
+
+def build_parser(environ: Mapping[str, str] | None = None) -> argparse.ArgumentParser:
+    """Command-line parser; host and port may also come from OCTAPIHUB_HOST / OCTAPIHUB_PORT."""
+    env = os.environ if environ is None else environ
+    parser = argparse.ArgumentParser(prog="octapihub", description=__doc__)
     parser.add_argument("--config", default="octapihub.toml", help="Pfad zur TOML-Konfiguration")
-    parser.add_argument("--host", default="127.0.0.1", help="Adresse (nur im LAN öffnen)")
-    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument(
+        "--host",
+        default=env.get("OCTAPIHUB_HOST") or "127.0.0.1",
+        help="Adresse, an die gebunden wird (Standard: nur dieses Gerät)",
+    )
+    parser.add_argument("--port", type=_port, default=_port(env.get("OCTAPIHUB_PORT") or "8080"))
     parser.add_argument("--secrets", default="secrets.env", help="Datei mit Zugangsdaten")
     parser.add_argument("--data-dir", default="data", help="Ordner für Zustandsdatenbanken")
     parser.add_argument(
@@ -63,7 +97,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Simuliertes Sense HAT mit Beispieldaten (Token: demo), ohne Hardware",
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Start the interface; returns a process exit code."""
+    args = build_parser().parse_args(argv)
     redactor = Redactor()
     logs = install_logging(redactor)
 
@@ -88,6 +127,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             cubes,
             hue,
         )
+    problem = token_problem(backend.token) if not args.demo else None
+    if problem is not None:
+        print(f"CH-WEB-008: {problem}", file=sys.stderr)  # noqa: T201
+        return 2
     backend.logs = logs
     if backend.system is None:
         backend.system = SystemInfoReader(args.data_dir)

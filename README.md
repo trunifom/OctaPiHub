@@ -82,3 +82,7 @@ python -m octapihub.web --config octapihub.toml --secrets secrets.env # echter B
 Der Demo-Modus zeigt simulierte Werte und Beispieldaten und ist keine Messung. Ohne
 `OCTAPIHUB_WEB_TOKEN` ist die Oberfläche nur lesend. Standardmäßig lauscht sie nur auf
 `127.0.0.1`; für den Zugriff im LAN `--host` bewusst setzen und keine Router-Ports öffnen.
+
+## Als Dienst auf dem Raspberry Pi
+
+Dateien und Anleitung liegen in `deploy/` (systemd-Unit mit Härtung, Beispielkonfiguration, Umgebungsdatei, `INSTALL.md`); der Befehl `octapihub` startet die Oberfläche. Ein zu kurzes Token oder das Platzhalter-Token aus der Beispieldatei verhindert den Start (`CH-WEB-008`). **Noch nicht auf einem echten Raspberry Pi ausprobiert**; die Tests prüfen nur die Übereinstimmung der Dateien mit der Software.

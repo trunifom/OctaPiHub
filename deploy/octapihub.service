@@ -1,0 +1,51 @@
+# systemd-Dienst für OctaPiHub (Raspberry Pi OS / Debian).
+# Installation: siehe deploy/INSTALL.md. Noch nicht auf einem echten Raspberry Pi geprüft.
+[Unit]
+Description=OctaPiHub - lokaler, von Würfeln gesteuerter Smart-Home-Hub
+Documentation=file:///opt/octapihub/README.md
+After=network-online.target bluetooth.target
+Wants=network-online.target bluetooth.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=octapihub
+Group=octapihub
+# Zugriff auf Bluetooth (BlueZ), I2C (Sense HAT) und den Joystick (input).
+SupplementaryGroups=bluetooth i2c input
+WorkingDirectory=/var/lib/octapihub
+
+# Standardwerte; octapihub.env (optional, Rechte 0600) darf sie überschreiben und
+# enthält OCTAPIHUB_WEB_TOKEN.
+Environment=OCTAPIHUB_HOST=127.0.0.1
+Environment=OCTAPIHUB_PORT=8080
+EnvironmentFile=-/etc/octapihub/octapihub.env
+
+ExecStart=/opt/octapihub/venv/bin/python -m octapihub.web --config /etc/octapihub/octapihub.toml --secrets /etc/octapihub/secrets.env --data-dir /var/lib/octapihub --host ${OCTAPIHUB_HOST} --port ${OCTAPIHUB_PORT}
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+# Ressourcen schonen (Raspberry Pi mit wenig Arbeitsspeicher).
+MemoryHigh=250M
+MemoryMax=350M
+TasksMax=128
+
+# Absicherung: kein Root, kaum Schreibrechte, keine neuen Rechte.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# Konfiguration und Zugangsdaten werden atomar im selben Ordner neu geschrieben.
+ReadWritePaths=/var/lib/octapihub /etc/octapihub
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

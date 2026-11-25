@@ -16,6 +16,9 @@ dependencies = [
   "tzdata>=2024.1",
 ]
 
+[project.scripts]
+octapihub = "octapihub.web.__main__:main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8,<10",
