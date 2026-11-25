@@ -12,6 +12,7 @@ from datetime import UTC, datetime, tzinfo
 from octapihub.application.ble_runtime import CubeConnectionState, CubeRuntimeStatus
 from octapihub.application.hue_service import HueState, HueStatus
 from octapihub.application.matrix.canvas import BLACK, Frame
+from octapihub.application.music.service import MusicStatus
 from octapihub.application.sense_hat import (
     ColorSensorReading,
     Orientation,
@@ -969,3 +970,60 @@ _DISPLAY_STATE_TEXT = {
 def describe_display_state(state: str) -> tuple[str, str]:
     """(level, text) for the matrix state."""
     return _DISPLAY_STATE_TEXT.get(state, ("off", state))
+
+
+# ---------- music ----------
+
+
+@dataclass(frozen=True, slots=True)
+class MusicSummary:
+    """The music card of the overview in plain language."""
+
+    level: str
+    badge: str
+    headline: str
+    detail: str = ""
+
+
+def build_music_summary(status: MusicStatus | None, playlists: int = 0) -> MusicSummary:
+    """Describe what plays; errors of one device never hide that another one plays."""
+    if status is None:
+        return MusicSummary("off", "Nicht aktiv", "Musik ist in diesem Modus nicht aktiv.")
+    if not status.enabled:
+        return MusicSummary(
+            "off", "Aus", "Musik ist ausgeschaltet.", "Einschalten auf der Seite Musik."
+        )
+    if not status.targets:
+        return MusicSummary(
+            "info",
+            "Kein Gerät",
+            "Es ist noch kein Wiedergabegerät eingerichtet.",
+            "Legen Sie auf der Seite Musik ein Gerät an.",
+        )
+    active = [t for t in status.targets if t.state.value in ("playing", "paused", "buffering")]
+    if active:
+        best = sorted(active, key=lambda t: (t.state.value != "playing", not t.current))[0]
+        label = {"playing": "Spielt", "paused": "Pausiert", "buffering": "Lädt"}[best.state.value]
+        what = " · ".join(x for x in (best.track_title, best.title) if x) or "Musik"
+        volume = f" · Lautstärke {best.volume} %" if best.volume is not None else ""
+        return MusicSummary(
+            "ok" if best.state.value == "playing" else "info",
+            label,
+            f"{what} auf {best.name}{volume}",
+        )
+    failing = [t for t in status.targets if t.error]
+    if failing:
+        first = failing[0]
+        return MusicSummary(
+            "warn",
+            "Fehler",
+            f"{first.name}: {first.error}",
+            f"Fehlercode {first.error_code}" if first.error_code else "",
+        )
+    count = len(status.targets)
+    return MusicSummary(
+        "ok",
+        "Bereit",
+        f"{count} Wiedergabegerät{'e' if count != 1 else ''}, "
+        f"{playlists} Playlist{'s' if playlists != 1 else ''}.",
+    )

@@ -52,8 +52,8 @@ class FakeSession:
             raise OSError("network")
         self.calls.append(call)
 
-    def play_url(self, url: str, content_type: str, title: str) -> None:
-        self._do("url", url, content_type, title)
+    def play_url(self, url: str, content_type: str, title: str, live: bool) -> None:
+        self._do("url", url, content_type, title, live)
 
     def play_youtube(self, video_id: str, playlist_id: str | None) -> None:
         self._do("youtube", video_id, playlist_id)
@@ -129,9 +129,10 @@ async def test_play_sends_volume_and_the_right_kind_of_address() -> None:
     await player.play(request(tracks(TrackKind.FILE, TrackKind.URL), volume=20))
     calls = backend.sessions[0].calls
     assert calls[0] == ("volume", 20)
-    assert calls[1] == ("url", "http://pi:8080/media/music/0.mp3", "audio/mpeg", "t0")
+    assert calls[1] == ("url", "http://pi:8080/media/music/0.mp3", "audio/mpeg", "t0", False)
     await player.next()
     assert backend.sessions[0].calls[-1][1] == "https://radio.example.org/1"
+    assert backend.sessions[0].calls[-1][4] is True  # a stream is live
     await player.close()
 
 

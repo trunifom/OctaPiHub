@@ -27,8 +27,8 @@ from octapihub.core.errors import MusicSourceError, ValidationError
 
 FORM_ERROR_KEY = "_form"
 TARGET_KIND_LABELS = {
-    MusicTargetKind.CAST.value: "Google Nest / Home / Nest Hub",
-    MusicTargetKind.LOCAL.value: "Audioausgang dieses Raspberry Pi",
+    MusicTargetKind.CAST.value: "Google Nest / Hub",
+    MusicTargetKind.LOCAL.value: "Raspberry-Pi-Ausgang",
     MusicTargetKind.BLUETOOTH.value: "Bluetooth-Box",
 }
 REPEAT_LABELS = {

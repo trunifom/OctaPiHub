@@ -32,6 +32,13 @@
 
 <form method="post" action="/backup" id="backup-form" novalidate>
   <section class="panel">
+    <div class="field field-token">
+      <label for="f-token">Zugriffs-Token (für Export und Import)</label>
+      <input type="password" name="token" id="f-token" autocomplete="current-password" placeholder="{{ 'Token eingeben' if writable else 'Nicht eingerichtet' }}"{% if not writable %} disabled{% endif %}>
+    </div>
+  </section>
+
+  <section class="panel">
     <div class="panel-head">
       <h2><span class="step-no">1</span> Einstellungen exportieren</h2>
       <p class="muted">Sie erhalten eine Datei, die Sie später wieder einspielen können. Sie enthält keine Passwörter oder Schlüssel, und nicht die Liste der Würfel (die gehört zu diesem Gerät).</p>
@@ -79,14 +86,6 @@
     {% endif %}
   </section>
 
-  <div class="savebar">
-    <div class="savebar-in">
-      <div class="field field-token">
-        <label for="f-token">Zugriffs-Token</label>
-        <input type="password" name="token" id="f-token" autocomplete="current-password" placeholder="{{ 'Token eingeben' if writable else 'Nicht eingerichtet' }}"{% if not writable %} disabled{% endif %}>
-      </div>
-    </div>
-  </div>
 </form>
 
 <section class="panel">

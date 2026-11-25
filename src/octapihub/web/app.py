@@ -57,6 +57,7 @@ from octapihub.web.presenter import (
     build_hue_view,
     build_log_rows,
     build_mapping_views,
+    build_music_summary,
     build_notices,
     build_system_items,
     chart_groups,
@@ -205,6 +206,24 @@ async def display_stream(
         idle += interval
 
 
+MUSIC_POLL_SECONDS = 5.0
+
+
+async def _watch_music(music: MusicService) -> None:
+    """Ask connected players for their state while something plays (a track may end by itself)."""
+    while True:
+        await asyncio.sleep(MUSIC_POLL_SECONDS)
+        try:
+            if any(
+                t.state.value in ("playing", "paused", "buffering") for t in music.status.targets
+            ):
+                await music.refresh()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("Music status refresh failed", exc_info=True)
+
+
 def forms_label(source: str, face: int) -> str:
     """Human label of a cube face or joystick input for messages."""
     if source == JOYSTICK_SOURCE:
@@ -260,6 +279,10 @@ class LiveView:
             "cube_error": cubes.error if cubes is not None else None,
             "cube_error_code": cubes.error_code if cubes is not None else None,
             "mapping_views": build_mapping_views(backend.settings.config),
+            "music_summary": build_music_summary(
+                backend.music.status if backend.music is not None else None,
+                len(backend.settings.config.music.playlists),
+            ),
             "sense_config": config,
             "views": views,
             "notices": notices,
@@ -282,6 +305,7 @@ class LiveView:
             "live-cubes-mini": render("_cubes_mini.html").render(context),
             "live-hue": render("_hue.html").render(context),
             "live-hue-mini": render("_hue_mini.html").render(context),
+            "live-music-mini": render("_music_mini.html").render(context),
         }
 
     async def stream(
@@ -326,6 +350,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
 
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        music_task: asyncio.Task[None] | None = None
         if manage_service:
             await backend.sense_hat.start()
             if backend.hue is not None:
@@ -334,9 +359,17 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
                 await backend.matrix.start()
             if backend.cubes is not None:
                 await backend.cubes.start()
+            if backend.music is not None:
+                music_task = asyncio.get_running_loop().create_task(
+                    _watch_music(backend.music), name="music-status"
+                )
         try:
             yield
         finally:
+            if music_task is not None:
+                music_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await music_task
             if manage_service:
                 if backend.cubes is not None:
                     await backend.cubes.stop()

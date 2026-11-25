@@ -52,8 +52,8 @@ class CastSession(Protocol):
     def alive(self) -> bool:
         """Whether the connection is still usable."""
 
-    def play_url(self, url: str, content_type: str, title: str) -> None:
-        """Play an HTTP address."""
+    def play_url(self, url: str, content_type: str, title: str, live: bool) -> None:
+        """Play an HTTP address (``live`` for radio streams, otherwise a finite file)."""
 
     def play_youtube(self, video_id: str, playlist_id: str | None) -> None:
         """Start a YouTube video or playlist."""
@@ -152,9 +152,15 @@ class _PyChromecastSession:
         socket_client = getattr(self._cast, "socket_client", None)
         return bool(socket_client is not None and not getattr(socket_client, "is_stopped", False))
 
-    def play_url(self, url: str, content_type: str, title: str) -> None:
+    def play_url(self, url: str, content_type: str, title: str, live: bool) -> None:
         controller = self._cast.media_controller
-        controller.play_media(url, content_type, title=title, autoplay=True)
+        controller.play_media(
+            url,
+            content_type,
+            title=title,
+            autoplay=True,
+            stream_type="LIVE" if live else "BUFFERED",  # files can end, seek and report FINISHED
+        )
         controller.block_until_active(timeout=CONNECT_TIMEOUT_SECONDS)
         self._played = True
 
@@ -261,8 +267,9 @@ class CastPlayer:
                 )
             await self._call(session.play_youtube, source.ref, source.playlist)
             return
-        url = track.location if track.kind is TrackKind.URL else self._url_for(track.location)
-        await self._call(session.play_url, url, content_type_for(track.location), track.title)
+        live = track.kind is TrackKind.URL
+        url = track.location if live else self._url_for(track.location)
+        await self._call(session.play_url, url, content_type_for(track.location), track.title, live)
 
     async def play(self, request: PlayRequest) -> None:
         if not request.tracks:
