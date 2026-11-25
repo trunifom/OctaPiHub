@@ -144,6 +144,14 @@ class MusicNotConfiguredError(MusicError):
     retryable = False
 
 
+class MusicUnsupportedError(MusicError):
+    """A target or source needs something this installation cannot do (missing package, OS)."""
+
+    code = "CH-MUS-005"
+    default_user_message = "Diese Wiedergabe wird auf diesem Gerät nicht unterstützt."
+    retryable = False
+
+
 class PluginError(OctaPiHubError):
     """A plugin could not be loaded, validated or resolved."""
 

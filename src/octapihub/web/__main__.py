@@ -16,6 +16,7 @@ from octapihub.composition import (
     build_cube_service,
     build_hue_service,
     build_matrix_service,
+    build_music_service,
     build_sense_hat_service,
 )
 from octapihub.core.config import load_config
@@ -136,17 +137,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
         service = build_sense_hat_service(config)
         hue = build_hue_service(config, args.secrets)
-        cubes = build_cube_service(config, args.data_dir, plugins=(hue,))
+        music, media = build_music_service(config, args.port)
+        cubes = build_cube_service(config, args.data_dir, plugins=(hue, music))
         system = SystemInfoReader(args.data_dir)
         matrix = build_matrix_service(config, service, cubes, hue, host_level_from(system))
         backend = WebBackend(
-            SettingsManager(args.config, config, service, hue, cubes, matrix),
+            SettingsManager(args.config, config, service, hue, cubes, matrix, music),
             service,
             os.environ.get(TOKEN_VARIABLE) or None,
             cubes,
             hue,
             system,
             matrix=matrix,
+            music=music,
+            media=media,
         )
     problem = token_problem(backend.token) if not args.demo else None
     if problem is not None:

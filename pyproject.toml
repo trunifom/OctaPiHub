@@ -20,6 +20,7 @@ dependencies = [
 octapihub = "octapihub.web.__main__:main"
 
 [project.optional-dependencies]
+music = ["pychromecast>=14,<15"]
 dev = [
   "pytest>=8,<10",
   "ruff>=0.9,<1",

@@ -10,6 +10,7 @@ from octapihub.application.cube_service import CubeActivity, CubeService
 from octapihub.application.hue_service import HueService
 from octapihub.application.matrix.builder import DisplayStateBuilder
 from octapihub.application.matrix.service import MatrixDisplayService
+from octapihub.application.music.service import MusicService
 from octapihub.application.outbox import OutboxDispatcher
 from octapihub.application.plugins import (
     ActionPlugin,
@@ -29,10 +30,15 @@ from octapihub.infrastructure.ble.protocol import (
     supports_orientation_notifications,
 )
 from octapihub.infrastructure.hue import HueBridgeClient, HueBridgeSettings, pair_bridge
+from octapihub.infrastructure.music.library import LibraryResolver
+from octapihub.infrastructure.music.media import MediaRegistry, MediaUrls
+from octapihub.infrastructure.music.players import DefaultPlayerFactory
 from octapihub.infrastructure.secrets import SecretsFile
 from octapihub.infrastructure.sense_hat import create_sense_hat_port
 from octapihub.infrastructure.sqlite_outbox import SQLiteOutbox
 from octapihub.infrastructure.sqlite_sense_hat_history import SQLiteSenseHatHistory
+
+MUSIC_ACTION_TTL_SECONDS = 60.0  # a pressed play button must not start music minutes later
 
 
 def build_sense_hat_service(config: AppConfig) -> SenseHatService:
@@ -69,6 +75,25 @@ def build_hue_service(config: AppConfig, secrets_path: str | Path = "secrets.env
     return HueService(config.hue, SecretsFile(secrets_path), make_gateway, pair)
 
 
+def build_music_service(config: AppConfig, port: int = 8080) -> tuple[MusicService, MediaRegistry]:
+    """Create the music service with real players; ``port`` is where this program serves files.
+
+    The registry is returned as well because the web layer serves ``/media/<token>`` from it.
+    """
+    service: MusicService | None = None
+
+    def library_dir() -> str:
+        return service.config.library_dir if service is not None else config.music.library_dir
+
+    def media_host() -> str:
+        return service.config.media_host if service is not None else config.music.media_host
+
+    registry = MediaRegistry(library_dir)
+    urls = MediaUrls(registry, port=port, configured_host=media_host)
+    service = MusicService(config.music, DefaultPlayerFactory(urls), LibraryResolver())
+    return service, registry
+
+
 def build_cube_service(
     config: AppConfig,
     state_dir: str | Path = "data",
@@ -101,7 +126,10 @@ def build_cube_service(
         load_installed_plugins(registry)
         registry.register_many(extra_plugins)
         return OutboxDispatcher(
-            RuleEngine(settings), SQLiteOutbox(directory / "state.sqlite3"), registry
+            RuleEngine(settings),
+            SQLiteOutbox(directory / "state.sqlite3"),
+            registry,
+            ttl_by_kind={"music": MUSIC_ACTION_TTL_SECONDS},
         )
 
     return CubeService(config, make_runtime, make_dispatcher)

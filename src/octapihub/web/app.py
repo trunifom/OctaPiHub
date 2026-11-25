@@ -17,7 +17,7 @@ from urllib.parse import parse_qsl
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -26,6 +26,7 @@ from octapihub.application.cube_service import CubeService
 from octapihub.application.hue_service import HueService
 from octapihub.application.matrix.service import MatrixDisplayService
 from octapihub.application.matrix.views import VIEWS
+from octapihub.application.music.service import MusicService
 from octapihub.application.sense_hat import JoystickAction, JoystickDirection
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.settings import SettingsManager
@@ -38,6 +39,7 @@ from octapihub.core.errors import (
     ValidationError,
 )
 from octapihub.core.logging_support import LogRing, Redactor
+from octapihub.infrastructure.music.media import MediaRegistry, content_type_for
 from octapihub.infrastructure.system_info import SystemInfoReader
 from octapihub.web import forms
 from octapihub.web.diagnostics import build_zip, collect_diagnostics
@@ -109,6 +111,8 @@ class WebBackend:
     hue: HueService | None = None
     system: SystemInfoReader | None = None
     matrix: MatrixDisplayService | None = None
+    music: MusicService | None = None
+    media: MediaRegistry | None = None
     logs: LogRing | None = None
     redactor: Redactor | None = None
     tz: tzinfo = field(default_factory=display_timezone)
@@ -332,6 +336,8 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
                     await backend.cubes.stop()
                 if backend.matrix is not None:
                     await backend.matrix.stop()
+                if backend.music is not None:
+                    await backend.music.close()
                 await backend.sense_hat.stop()
 
     app = FastAPI(
@@ -991,6 +997,14 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             media_type="text/event-stream",
             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
         )
+
+    @app.api_route("/media/{token}", methods=["GET", "HEAD"])
+    def media_file(token: str) -> Response:
+        """Serve a music file to a Cast device; the unguessable token is the only access."""
+        path = backend.media.resolve(token) if backend.media is not None else None
+        if path is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        return FileResponse(path, media_type=content_type_for(path.name))
 
     @app.get("/healthz")
     def healthz() -> dict[str, object]:

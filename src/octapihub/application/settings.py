@@ -10,12 +10,14 @@ from pathlib import Path
 from octapihub.application.cube_service import CubeService
 from octapihub.application.hue_service import HueService
 from octapihub.application.matrix.service import MatrixDisplayService
+from octapihub.application.music.service import MusicService
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.core.config import (
     AppConfig,
     save_config,
     with_hue_table,
     with_mappings_table,
+    with_music_table,
     with_sense_hat_table,
 )
 
@@ -38,6 +40,7 @@ class SettingsManager:
         hue: HueService | None = None,
         cubes: CubeService | None = None,
         matrix: MatrixDisplayService | None = None,
+        music: MusicService | None = None,
     ) -> None:
         self._path = Path(path)
         self._config = config
@@ -45,6 +48,7 @@ class SettingsManager:
         self._hue = hue
         self._cubes = cubes
         self._matrix = matrix
+        self._music = music
         self._lock = asyncio.Lock()
 
     @property
@@ -116,4 +120,20 @@ class SettingsManager:
                 raise
             self._config = candidate
             logger.info("Cube mappings saved and applied")
+            return candidate
+
+    async def apply_music(self, table: Mapping[str, object]) -> AppConfig:
+        """Validate, save, and apply new music settings (targets, playlists, folder).
+
+        Raises:
+            ValidationError: If the table is invalid (nothing is saved).
+            ConfigurationError: If the file cannot be written (service is unchanged).
+        """
+        async with self._lock:
+            candidate = with_music_table(self._config, table)
+            await asyncio.to_thread(save_config, self._path, candidate)
+            self._config = candidate
+            if self._music is not None:
+                await self._music.reconfigure(candidate.music)
+            logger.info("Music settings saved and applied")
             return candidate
