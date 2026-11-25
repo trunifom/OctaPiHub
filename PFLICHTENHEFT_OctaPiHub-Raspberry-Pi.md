@@ -174,7 +174,7 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 - **Geheimnisse:** `secrets.env` (Hue-Key, MQTT-Passwort, Web-Token, optional Spotify).
 
 ## 8. Fehlercode-Schema (Vorschlag)
-`CH-CFG-0xx` Konfiguration · `CH-BLE-0xx` Würfel/Bluetooth · `CH-HUE-0xx` Hue · `CH-CAST-0xx` Cast/Audio · `CH-MQTT-0xx` MQTT · `CH-SENSE-0xx` Sense HAT · `CH-WEB-0xx` Oberfläche/API · `CH-SYS-0xx` System (RAM, Spannung, Speicher) · `CH-DB-0xx` Datenbank.
+`CH-CFG-0xx` Konfiguration · `CH-BLE-0xx` Würfel/Bluetooth · `CH-PLUG-0xx` Erweiterungsmodule · `CH-HUE-0xx` Hue · `CH-CAST-0xx` Cast/Audio · `CH-MQTT-0xx` MQTT · `CH-SENSE-0xx` Sense HAT · `CH-WEB-0xx` Oberfläche/API · `CH-SYS-0xx` System (RAM, Spannung, Speicher) · `CH-DB-0xx` Datenbank.
 Jeder Code: stabil, dokumentiert (Ursache, Benutzermeldung, Abhilfe), in der Weboberfläche und im Log.
 
 ## 9. Abnahmekriterien (Gesamt)

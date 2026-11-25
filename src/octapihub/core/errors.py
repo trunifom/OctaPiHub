@@ -66,3 +66,10 @@ class BleConnectionError(OctaPiHubError):
         "Die Bluetooth-Verbindung zum Würfel ist fehlgeschlagen. "
         "Bitte prüfen Sie Bluetooth und die Entfernung zum Würfel."
     )
+
+
+class PluginError(OctaPiHubError):
+    """A plugin could not be loaded, validated or resolved."""
+
+    code = "CH-PLUG-001"
+    default_user_message = "Ein Erweiterungsmodul ist ungültig oder konnte nicht geladen werden."

@@ -8,8 +8,9 @@ von OctaLedger und Timeular.
 
 Die Umsetzung hat begonnen. Es gibt ein schlankes Python-Projektgerüst,
 hardwareunabhängige Würfelprotokoll- und Entprellungslogik sowie einen streng
-validierten Loader für die erste versionierte TOML-Konfiguration. Der Dienst
-und echte Hardwareadapter sind noch nicht implementiert.
+validierten Loader für die erste versionierte TOML-Konfiguration. Es gibt außerdem
+einen typisierten Plugin-Vertrag und Discovery für vertrauenswürdige Python-Plugins.
+Der Dienst und echte Hardwareadapter sind noch nicht implementiert.
 
 | Teil | Status |
 |---|---|
@@ -17,6 +18,7 @@ und echte Hardwareadapter sind noch nicht implementiert.
 | Würfel-Protokolldecoder | erster Stand, nur Unit-getestet |
 | Entprellung / Reconnect-Backoff | erster Stand, nur Unit-getestet |
 | Versioniertes TOML-Konfigurationsladen | erster Stand, nur lokal getestet |
+| Plugin-Vertrag und Entry-Point-Registry | erster Stand, nur Unit-getestet |
 | BLE-Verbindung zu echten Würfeln | nicht hardwareverifiziert |
 | Hue, Sense HAT, Musik und Weboberfläche | nicht implementiert |
 
@@ -35,6 +37,7 @@ Python-Version kann pytest derzeit mit `PYTHONPATH=src` ausgeführt werden, sofe
 die verwendete Version die Quellsyntax unterstützt.
 
 - [Pflichtenheft](PFLICHTENHEFT_OctaPiHub-Raspberry-Pi.md)
+- [Architektur](docs/ARCHITEKTUR.md)
 - [Handbuch und Hardwaretests](HANDBUCH_OctaPiHub-Raspberry-Pi.md)
 - [Recherche und offene Fragen](RECHERCHE_OctaPiHub-Raspberry-Pi.md)
 
