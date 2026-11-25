@@ -1,0 +1,8 @@
+{% set env = views | selectattr('group', 'in', ['temperature', 'humidity', 'pressure']) | list %}
+{% if env %}
+<ul class="mini">
+  {% for v in env %}
+  <li><span class="mini-label">{{ v.label }}</span><span class="mini-value">{{ v.primary }}{% if v.unit %} <small>{{ v.unit }}</small>{% endif %}</span></li>
+  {% endfor %}
+</ul>
+{% endif %}

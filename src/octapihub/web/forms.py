@@ -1,0 +1,205 @@
+"""Sense HAT settings form: flat string fields <-> validated configuration table."""
+
+from __future__ import annotations
+
+import copy
+import math
+from collections.abc import Mapping
+from dataclasses import dataclass
+
+from octapihub.core.config import SenseHatConfig, SensorPresentation, sense_hat_table
+
+SENSOR_IDS = (
+    "temperature",
+    "humidity",
+    "pressure",
+    "orientation",
+    "compass",
+    "gyroscope",
+    "accelerometer",
+    "color",
+)
+
+INTERVAL_LABELS: Mapping[int, str] = {
+    1: "jede Sekunde",
+    2: "alle 2 Sekunden",
+    5: "alle 5 Sekunden",
+    10: "alle 10 Sekunden",
+    30: "alle 30 Sekunden",
+    60: "jede Minute",
+    120: "alle 2 Minuten",
+    300: "alle 5 Minuten",
+    600: "alle 10 Minuten",
+    900: "alle 15 Minuten",
+    1800: "alle 30 Minuten",
+    3600: "jede Stunde",
+}
+RETENTION_LABELS: Mapping[int, str] = {
+    1: "1 Tag",
+    7: "7 Tage",
+    14: "14 Tage",
+    30: "30 Tage",
+    90: "90 Tage",
+    180: "180 Tage",
+    365: "1 Jahr",
+}
+PRECISION_LABELS: Mapping[int, str] = {
+    0: "ganze Zahl (21)",
+    1: "1 Stelle (21.3)",
+    2: "2 Stellen (21.34)",
+    3: "3 Stellen (21.347)",
+}
+PRESENTATION_LABELS: Mapping[str, str] = {
+    SensorPresentation.HIDDEN.value: "Ausgeblendet",
+    SensorPresentation.VALUE.value: "Nur aktueller Wert",
+    SensorPresentation.CHART.value: "Nur Verlaufsdiagramm",
+    SensorPresentation.VALUE_AND_CHART.value: "Wert und Diagramm",
+}
+VERSION_LABELS: Mapping[str, str] = {
+    "auto": "Automatisch erkennen (empfohlen)",
+    "v1": "Sense HAT v1 (ohne Farbsensor)",
+    "v2": "Sense HAT v2 (mit Farbsensor)",
+}
+GAIN_LABELS: Mapping[int, str] = {1: "1× (hell)", 4: "4×", 16: "16×", 60: "60× (dunkel)"}
+ROTATION_LABELS: Mapping[int, str] = {0: "0°", 90: "90°", 180: "180°", 270: "270°"}
+
+FORM_ERROR_KEY = "_form"
+
+
+@dataclass(frozen=True, slots=True)
+class FormResult:
+    """Parsed submission: either a validated table or per-field error messages."""
+
+    table: dict[str, object] | None
+    errors: dict[str, str]
+
+
+def config_to_form(config: SenseHatConfig) -> dict[str, str]:
+    """Flat string values for rendering the saved settings."""
+    table = sense_hat_table(config)
+    form: dict[str, str] = {}
+    form["enabled"] = _flag(table["enabled"])
+    form["hardware_version"] = str(table["hardware_version"])
+    form["temperature_correction_factor"] = _number_text(table["temperature_correction_factor"])
+    form["temperature_offset_c"] = _number_text(table["temperature_offset_c"])
+    form["color_gain"] = str(table["color_gain"])
+    form["color_integration_cycles"] = str(table["color_integration_cycles"])
+    history = _table(table["history"])
+    form["history.enabled"] = _flag(history["enabled"])
+    form["history.retention_days"] = str(history["retention_days"])
+    matrix = _table(table["matrix"])
+    form["matrix.enabled"] = _flag(matrix["enabled"])
+    form["matrix.rotation"] = str(matrix["rotation"])
+    form["matrix.low_light"] = _flag(matrix["low_light"])
+    form["matrix.ambient_brightness"] = _flag(matrix["ambient_brightness"])
+    form["joystick.enabled"] = _flag(_table(table["joystick"])["enabled"])
+    for sensor_id, raw in _table(table["sensors"]).items():
+        sensor = _table(raw)
+        form[f"sensor.{sensor_id}.enabled"] = _flag(sensor["enabled"])
+        form[f"sensor.{sensor_id}.interval_seconds"] = str(sensor["interval_seconds"])
+        form[f"sensor.{sensor_id}.history_enabled"] = _flag(sensor["history_enabled"])
+        form[f"sensor.{sensor_id}.presentation"] = str(sensor["presentation"])
+        form[f"sensor.{sensor_id}.precision"] = str(sensor["precision"])
+    return form
+
+
+def parse_form(form: Mapping[str, str], current: SenseHatConfig) -> FormResult:
+    """Turn submitted fields into a configuration table, or German field errors."""
+    errors: dict[str, str] = {}
+    table = copy.deepcopy(sense_hat_table(current))
+    table["enabled"] = _checked(form, "enabled")
+    table["hardware_version"] = _choice(form, "hardware_version", set(VERSION_LABELS), errors)
+    table["temperature_correction_factor"] = _decimal(
+        form, "temperature_correction_factor", errors, positive=True
+    )
+    table["temperature_offset_c"] = _decimal(form, "temperature_offset_c", errors)
+    table["color_gain"] = _integer_choice(form, "color_gain", set(GAIN_LABELS), errors)
+    table["color_integration_cycles"] = _integer(form, "color_integration_cycles", 1, 256, errors)
+    history = _table(table["history"])
+    history["enabled"] = _checked(form, "history.enabled")
+    history["retention_days"] = _integer(form, "history.retention_days", 1, 3650, errors)
+    matrix = _table(table["matrix"])
+    matrix["enabled"] = _checked(form, "matrix.enabled")
+    matrix["rotation"] = _integer_choice(form, "matrix.rotation", set(ROTATION_LABELS), errors)
+    matrix["low_light"] = _checked(form, "matrix.low_light")
+    matrix["ambient_brightness"] = _checked(form, "matrix.ambient_brightness")
+    _table(table["joystick"])["enabled"] = _checked(form, "joystick.enabled")
+    for sensor_id in SENSOR_IDS:
+        sensor = _table(_table(table["sensors"])[sensor_id])
+        prefix = f"sensor.{sensor_id}."
+        sensor["enabled"] = _checked(form, prefix + "enabled")
+        sensor["interval_seconds"] = _integer(form, prefix + "interval_seconds", 1, 3600, errors)
+        sensor["history_enabled"] = _checked(form, prefix + "history_enabled")
+        sensor["presentation"] = _choice(
+            form, prefix + "presentation", set(PRESENTATION_LABELS), errors
+        )
+        sensor["precision"] = _integer(form, prefix + "precision", 0, 6, errors)
+    if errors:
+        return FormResult(None, errors)
+    return FormResult(table, {})
+
+
+def _table(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise TypeError("Expected a table")
+    return value
+
+
+def _flag(value: object) -> str:
+    return "on" if value else ""
+
+
+def _number_text(value: object) -> str:
+    return str(float(str(value)))
+
+
+def _checked(form: Mapping[str, str], key: str) -> bool:
+    return form.get(key, "") not in {"", "off", "0", "false"}
+
+
+def _choice(form: Mapping[str, str], key: str, allowed: set[str], errors: dict[str, str]) -> str:
+    value = form.get(key, "")
+    if value not in allowed:
+        errors[key] = "Bitte eine der angebotenen Möglichkeiten wählen."
+    return value
+
+
+def _integer(form: Mapping[str, str], key: str, low: int, high: int, errors: dict[str, str]) -> int:
+    raw = form.get(key, "").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        errors[key] = f"Bitte eine ganze Zahl von {low} bis {high} eingeben."
+        return low
+    if not low <= value <= high:
+        errors[key] = f"Der Wert muss zwischen {low} und {high} liegen."
+    return value
+
+
+def _integer_choice(
+    form: Mapping[str, str], key: str, allowed: set[int], errors: dict[str, str]
+) -> int:
+    try:
+        value = int(form.get(key, "").strip())
+    except ValueError:
+        value = -1
+    if value not in allowed:
+        errors[key] = "Bitte eine der angebotenen Möglichkeiten wählen."
+        return min(allowed)
+    return value
+
+
+def _decimal(
+    form: Mapping[str, str], key: str, errors: dict[str, str], *, positive: bool = False
+) -> float:
+    raw = form.get(key, "").strip().replace(",", ".")
+    try:
+        value = float(raw)
+    except ValueError:
+        errors[key] = "Bitte eine Zahl eingeben, zum Beispiel 0.9 oder -1.5."
+        return 1.0 if positive else 0.0
+    if not math.isfinite(value) or abs(value) > 1000:
+        errors[key] = "Bitte eine Zahl zwischen -1000 und 1000 eingeben."
+    elif positive and value <= 0:
+        errors[key] = "Der Faktor muss größer als 0 sein."
+    return value

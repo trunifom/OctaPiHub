@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Sense HAT</h1>
+    <p class="lead">Aktuelle Messwerte und ihr zeitlicher Verlauf.</p>
+  </div>
+  <span id="live-badge">{% include "_badge.html" %}</span>
+</div>
+
+<div id="live-notices">{% include "_notices.html" %}</div>
+<div id="live-cards">{% include "_cards.html" %}</div>
+
+<section class="panel" id="verlauf" aria-labelledby="verlauf-title"
+         data-history-on="{{ 1 if history_on else 0 }}" data-correction="{{ 1 if correction else 0 }}">
+  <div class="panel-head">
+    <h2 id="verlauf-title">Verlauf</h2>
+    <p class="muted">Wie sich die Werte über die Zeit verändert haben.</p>
+  </div>
+  {% if chart_options %}
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Messwert wählen" id="chart-groups">
+      {% for opt in chart_options %}
+      <button type="button" class="seg-btn" data-group="{{ opt.group }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ opt.label }}</button>
+      {% endfor %}
+    </div>
+    <div class="seg" role="group" aria-label="Zeitraum wählen" id="chart-ranges">
+      {% for r in ranges %}
+      <button type="button" class="seg-btn" data-range="{{ r.key }}" aria-pressed="{{ 'true' if r.key == '24h' else 'false' }}">{{ r.label }}</button>
+      {% endfor %}
+    </div>
+    {% if correction %}
+    <label class="check"><input type="checkbox" id="raw-toggle"> <span>Temperatur ohne Korrektur zeigen</span></label>
+    {% endif %}
+  </div>
+  <div class="chart-wrap">
+    <div id="chart" class="chart" role="img" aria-label="Verlaufsdiagramm"></div>
+    <div id="chart-tip" class="tip" hidden></div>
+  </div>
+  <p id="chart-empty" class="empty-inline" hidden></p>
+  <dl class="stats" id="chart-stats" hidden>
+    <div><dt>Niedrigster Wert</dt><dd data-stat="min"></dd></div>
+    <div><dt>Durchschnitt</dt><dd data-stat="avg"></dd></div>
+    <div><dt>Höchster Wert</dt><dd data-stat="max"></dd></div>
+  </dl>
+  <p class="hint">Der Verlauf wird gebündelt gespeichert, um die SD-Karte zu schonen. Neue Werte erscheinen deshalb mit einigen Minuten Verzögerung im Diagramm.</p>
+  {% else %}
+  <div class="empty">
+    <span class="empty-ico">{{ m.icon('pressure') }}</span>
+    <h3>Es ist noch kein Diagramm ausgewählt</h3>
+    <p>Wählen Sie unter <a href="/settings">Einstellungen</a> bei Temperatur, Luftfeuchtigkeit oder Luftdruck
+    „Wert und Diagramm“, dann erscheint hier der Verlauf.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

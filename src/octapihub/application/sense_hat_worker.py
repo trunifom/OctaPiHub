@@ -72,6 +72,7 @@ class SensorGroupStatus:
     last_sample: SenseHatSample | None
     last_error: str | None
     consecutive_failures: int
+    last_error_code: str | None = None
 
 
 def correct_temperature(raw_c: float, factor: float, offset_c: float) -> float:
@@ -191,10 +192,12 @@ class SenseHatMeasurementWorker:
                 if isinstance(exc, OctaPiHubError)
                 else "Unerwarteter Fehler beim Lesen des Sensors. Details stehen im Log."
             )
+            code = exc.error_code if isinstance(exc, OctaPiHubError) else OctaPiHubError.code
             self._statuses[group] = self._replace(
                 previous,
                 state=SensorGroupState.ERROR,
                 last_error=message,
+                last_error_code=code,
                 consecutive_failures=failures,
             )
             if failures == 1:
@@ -235,6 +238,7 @@ class SenseHatMeasurementWorker:
         state: SensorGroupState | None = None,
         last_sample: SenseHatSample | None = None,
         last_error: str | None = None,
+        last_error_code: str | None = None,
         consecutive_failures: int | None = None,
     ) -> SensorGroupStatus:
         """Copy a status; ``last_sample`` is kept on failure so stale data stays visible."""
@@ -246,4 +250,5 @@ class SenseHatMeasurementWorker:
             consecutive_failures
             if consecutive_failures is not None
             else status.consecutive_failures,
+            last_error_code if state is SensorGroupState.ERROR else None,
         )

@@ -7,7 +7,7 @@ import logging
 from collections.abc import Callable
 from datetime import datetime
 
-from octapihub.application.sense_hat import SenseHatPort
+from octapihub.application.sense_hat import SenseHatCapabilities, SenseHatPort
 from octapihub.application.sense_hat_history import (
     SenseHatHistoryRecorder,
     SenseHatHistoryStore,
@@ -22,8 +22,8 @@ from octapihub.core.errors import OctaPiHubError
 
 logger = logging.getLogger(__name__)
 
-type PortFactory = Callable[[], SenseHatPort]
-type StoreFactory = Callable[[], SenseHatHistoryStore]
+type PortFactory = Callable[[SenseHatConfig], SenseHatPort]
+type StoreFactory = Callable[[SenseHatConfig], SenseHatHistoryStore]
 
 
 class SenseHatService:
@@ -48,12 +48,20 @@ class SenseHatService:
         self._recorder: SenseHatHistoryRecorder | None = None
         self._store: SenseHatHistoryStore | None = None
         self.hardware_error: str | None = None
+        self.hardware_error_code: str | None = None
         self.history_error: str | None = None
+        self.history_error_code: str | None = None
+        self.capabilities: SenseHatCapabilities | None = None
 
     @property
     def statuses(self) -> tuple[SensorGroupStatus, ...]:
         """Per-group status; empty when disabled or the hardware is unavailable."""
         return self._worker.statuses if self._worker is not None else ()
+
+    @property
+    def config(self) -> SenseHatConfig:
+        """The configuration the service is (or will be) running with."""
+        return self._config
 
     @property
     def running(self) -> bool:
@@ -65,22 +73,28 @@ class SenseHatService:
         if self._worker is not None:
             raise RuntimeError("Sense HAT service has already been started")
         self.hardware_error = None
+        self.hardware_error_code = None
         self.history_error = None
+        self.history_error_code = None
+        self.capabilities = None
         if not self._config.enabled:
             return
         try:
-            port = await asyncio.to_thread(self._port_factory)
+            port = await asyncio.to_thread(self._port_factory, self._config)
         except OctaPiHubError as exc:
             self.hardware_error = exc.user_message
+            self.hardware_error_code = exc.error_code
             logger.error("Sense HAT unavailable: %s", exc)
             return
+        self.capabilities = port.capabilities
         await asyncio.to_thread(self._apply_color_settings, port)
         sink = None
         if self._config.history.enabled:
             try:
-                self._store = await asyncio.to_thread(self._store_factory)
+                self._store = await asyncio.to_thread(self._store_factory, self._config)
             except OctaPiHubError as exc:
                 self.history_error = exc.user_message
+                self.history_error_code = exc.error_code
                 logger.error("Sense HAT history unavailable: %s", exc)
             else:
                 self._recorder = SenseHatHistoryRecorder(self._config, self._store)
@@ -100,6 +114,13 @@ class SenseHatService:
             await asyncio.to_thread(recorder.flush)
             if recorder.pending:
                 logger.error("Dropping %d unsaved Sense HAT samples", recorder.pending)
+
+    async def restart(self, config: SenseHatConfig) -> None:
+        """Stop, switch to ``config``, and start again; never raises for hardware faults."""
+        await self.stop()
+        self._config = config
+        self._store = None
+        await self.start()
 
     def query_series(
         self,

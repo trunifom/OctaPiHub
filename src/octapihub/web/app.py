@@ -1,0 +1,421 @@
+"""FastAPI application: server-rendered pages, JSON series, and an SSE live stream."""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import hashlib
+import hmac
+import json
+import logging
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta, tzinfo
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qsl
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from octapihub.application.sense_hat_service import SenseHatService
+from octapihub.application.settings import SettingsManager
+from octapihub.core.errors import ConfigurationError, OctaPiHubError, ValidationError
+from octapihub.web import forms
+from octapihub.web.presenter import (
+    CHARTABLE_GROUPS,
+    GROUP_INFO,
+    SECTIONS,
+    build_group_views,
+    build_notices,
+    chart_groups,
+    correction_active,
+    describe_hardware,
+    display_unit,
+    local_time_text,
+    overall_level,
+)
+
+logger = logging.getLogger(__name__)
+
+_PACKAGE_DIR = Path(__file__).parent
+MAX_FORM_BYTES = 64 * 1024
+DISPLAY_TIMEZONE = "Europe/Zurich"
+
+# range name -> (label, window, bucket seconds); ~120-180 points per chart.
+SERIES_RANGES: Mapping[str, tuple[str, timedelta, int]] = {
+    "1h": ("1 Stunde", timedelta(hours=1), 30),
+    "24h": ("24 Stunden", timedelta(hours=24), 600),
+    "7d": ("7 Tage", timedelta(days=7), 3600),
+    "30d": ("30 Tage", timedelta(days=30), 14400),
+}
+# Per-group chart hints: smallest visible span, or a fixed axis.
+_CHART_HINTS: Mapping[str, dict[str, Any]] = {
+    "temperature": {"min_span": 2.0, "fixed": None},
+    "humidity": {"min_span": 10.0, "fixed": None},
+    "pressure": {"min_span": 4.0, "fixed": None},
+    "compass": {"min_span": 360.0, "fixed": [0, 360]},
+}
+
+
+def display_timezone() -> tzinfo:
+    """Europe/Zurich for display, falling back to UTC when tz data is missing."""
+    try:
+        return ZoneInfo(DISPLAY_TIMEZONE)
+    except ZoneInfoNotFoundError:
+        logger.warning("Time zone data for %s not found; showing UTC", DISPLAY_TIMEZONE)
+        return UTC
+
+
+@dataclass(slots=True)
+class WebBackend:
+    """Everything the web layer may touch; injected so tests need no hardware."""
+
+    settings: SettingsManager
+    sense_hat: SenseHatService
+    token: str | None = None
+    tz: tzinfo = field(default_factory=display_timezone)
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+
+
+def _token_matches(expected: str | None, supplied: str) -> bool:
+    if not expected:
+        return False
+    return hmac.compare_digest(
+        hashlib.sha256(expected.encode()).digest(), hashlib.sha256(supplied.encode()).digest()
+    )
+
+
+class LiveView:
+    """Renders the fragments that SSE pushes and pages embed on first load."""
+
+    def __init__(self, backend: WebBackend, templates: Jinja2Templates) -> None:
+        self._backend = backend
+        self._templates = templates
+
+    def context(self) -> dict[str, Any]:
+        """Template context shared by pages and live fragments."""
+        backend = self._backend
+        config = backend.settings.config.sense_hat
+        service = backend.sense_hat
+        statuses = service.statuses
+        notices = build_notices(
+            config,
+            statuses,
+            hardware_error=service.hardware_error,
+            hardware_error_code=service.hardware_error_code,
+            history_error=service.history_error,
+            history_error_code=service.history_error_code,
+            running=service.running,
+        )
+        views = build_group_views(config, statuses, backend.tz)
+        return {
+            "sense_config": config,
+            "views": views,
+            "notices": notices,
+            "level": overall_level(notices),
+            "sections": SECTIONS,
+            "group_info": GROUP_INFO,
+        }
+
+    def fragments(self) -> dict[str, str]:
+        """Rendered HTML keyed by the id of the element that shows it."""
+        context = self.context()
+        render = self._templates.get_template
+        return {
+            "live-cards": render("_cards.html").render(context),
+            "live-notices": render("_notices.html").render(context),
+            "live-notices-quiet": render("_notices.html").render({**context, "quiet_ok": True}),
+            "live-mini": render("_mini.html").render(context),
+            "live-badge": render("_badge.html").render(context),
+        }
+
+    async def stream(
+        self,
+        is_disconnected: Callable[[], Awaitable[bool]],
+        *,
+        interval: float = 1.0,
+        heartbeat: float = 15.0,
+        max_events: int | None = None,
+    ) -> AsyncIterator[str]:
+        """Yield SSE messages when fragments change; a comment keeps proxies awake."""
+        last = ""
+        sent = 0
+        idle = 0.0
+        yield "retry: 3000\n\n"
+        while not await is_disconnected():
+            try:
+                payload = json.dumps(self.fragments(), separators=(",", ":"))
+            except Exception:
+                logger.exception("Could not render live fragments")
+                payload = last
+            if payload and payload != last:
+                last = payload
+                idle = 0.0
+                sent += 1
+                yield f"event: fragments\ndata: {payload}\n\n"
+                if max_events is not None and sent >= max_events:
+                    return
+            elif idle >= heartbeat:
+                idle = 0.0
+                yield ": keep-alive\n\n"
+            await asyncio.sleep(interval)
+            idle += interval
+
+
+def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
+    """Build the web application around an injected backend.
+
+    With ``manage_service`` the Sense HAT service is started and stopped with the app
+    (stopping flushes buffered history); tests usually manage it themselves.
+    """
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        if manage_service:
+            await backend.sense_hat.start()
+        try:
+            yield
+        finally:
+            if manage_service:
+                await backend.sense_hat.stop()
+
+    app = FastAPI(
+        title="OctaPiHub", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
+    )
+    templates = Jinja2Templates(directory=str(_PACKAGE_DIR / "templates"))
+    templates.env.globals["display_unit"] = display_unit
+    live = LiveView(backend, templates)
+    app.mount("/static", StaticFiles(directory=str(_PACKAGE_DIR / "static")), name="static")
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next: Callable[..., Awaitable[Response]]):  # type: ignore[no-untyped-def]
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; img-src 'self' data:; style-src 'self'; "
+            "script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Frame-Options"] = "DENY"
+        if not request.url.path.startswith("/static"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+    def page(request: Request, name: str, active: str, status: int = 200, **extra: Any) -> Response:
+        context = {
+            "active": active,
+            "now_text": local_time_text(backend.clock(), backend.tz),
+            "live": True,
+            **live.context(),
+            **extra,
+        }
+        return templates.TemplateResponse(request, name, context, status_code=status)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, exc: StarletteHTTPException) -> Response:
+        if request.url.path.startswith("/api/"):
+            return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
+        known = {
+            404: ("CH-WEB-001", "Diese Seite gibt es nicht."),
+            405: ("CH-WEB-002", "Diese Aktion ist hier nicht erlaubt."),
+        }
+        code, message = known.get(exc.status_code, ("CH-WEB-000", "Die Anfrage war nicht gültig."))
+        return page(
+            request,
+            "error.html",
+            "",
+            exc.status_code,
+            error_code=code,
+            error_message=message,
+            live=False,
+        )
+
+    @app.get("/", response_class=HTMLResponse)
+    def overview(request: Request) -> Response:
+        return page(request, "overview.html", "overview")
+
+    @app.get("/sense-hat", response_class=HTMLResponse)
+    def sense_hat_page(request: Request) -> Response:
+        config = backend.settings.config.sense_hat
+        charts = chart_groups(config)
+        return page(
+            request,
+            "sense_hat.html",
+            "sense-hat",
+            chart_options=[{"group": g, "label": GROUP_INFO[g].label, "unit": ""} for g in charts],
+            ranges=[{"key": k, "label": v[0]} for k, v in SERIES_RANGES.items()],
+            history_on=config.history.enabled,
+            correction=correction_active(config),
+        )
+
+    def settings_context(
+        values: dict[str, str],
+        errors: dict[str, str],
+        banner: dict[str, str] | None,
+    ) -> dict[str, Any]:
+        config = backend.settings.config.sense_hat
+        return {
+            "form": values,
+            "errors": errors,
+            "banner": banner,
+            "writable": bool(backend.token),
+            "hardware_text": describe_hardware(backend.sense_hat.capabilities, config),
+            "capabilities": backend.sense_hat.capabilities,
+            "interval_labels": forms.INTERVAL_LABELS,
+            "retention_labels": forms.RETENTION_LABELS,
+            "precision_labels": forms.PRECISION_LABELS,
+            "presentation_labels": forms.PRESENTATION_LABELS,
+            "version_labels": forms.VERSION_LABELS,
+            "gain_labels": forms.GAIN_LABELS,
+            "rotation_labels": forms.ROTATION_LABELS,
+            "history_path": config.history.database_path,
+            "live": False,
+        }
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_page(request: Request) -> Response:
+        values = forms.config_to_form(backend.settings.config.sense_hat)
+        return page(request, "settings.html", "settings", **settings_context(values, {}, None))
+
+    @app.post("/settings/sense-hat", response_class=HTMLResponse)
+    async def save_sense_hat(request: Request) -> Response:
+        raw = await request.body()
+        if len(raw) > MAX_FORM_BYTES:
+            raise HTTPException(status_code=413, detail="Request too large")
+        submitted = dict(parse_qsl(raw.decode("utf-8", errors="replace"), keep_blank_values=True))
+        supplied = submitted.pop("token", "") or request.headers.get("x-octapihub-token", "")
+        submitted.pop("_", None)
+
+        def respond(
+            status: int, level: str, title: str, detail: str = "", code: str = ""
+        ) -> Response:
+            banner = {"level": level, "title": title, "detail": detail, "code": code}
+            return page(
+                request,
+                "settings.html",
+                "settings",
+                status,
+                **settings_context(submitted, errors_holder, banner),
+            )
+
+        errors_holder: dict[str, str] = {}
+        if not backend.token:
+            return respond(
+                403,
+                "error",
+                "Speichern ist ausgeschaltet",
+                "Es ist kein Zugriffs-Token eingerichtet. Setzen Sie OCTAPIHUB_WEB_TOKEN "
+                "und starten Sie den Dienst neu.",
+                "CH-WEB-003",
+            )
+        if not _token_matches(backend.token, supplied):
+            return respond(
+                403,
+                "error",
+                "Das Zugriffs-Token stimmt nicht",
+                "Es wurde nichts gespeichert. Prüfen Sie das Token und versuchen Sie es erneut.",
+                "CH-WEB-004",
+            )
+        result = forms.parse_form(submitted, backend.settings.config.sense_hat)
+        if result.table is None:
+            errors_holder.update(result.errors)
+            return respond(
+                422,
+                "error",
+                "Bitte korrigieren Sie die markierten Felder",
+                "Es wurde nichts gespeichert.",
+            )
+        try:
+            await backend.settings.apply_sense_hat(result.table)
+        except ValidationError as exc:
+            return respond(
+                422, "error", "Die Einstellungen sind ungültig", exc.user_message, exc.error_code
+            )
+        except (ConfigurationError, OctaPiHubError) as exc:
+            logger.exception("Could not save settings")
+            return respond(
+                500, "error", "Speichern fehlgeschlagen", exc.user_message, exc.error_code
+            )
+        submitted = forms.config_to_form(backend.settings.config.sense_hat)
+        return respond(
+            200,
+            "ok",
+            "Gespeichert und angewendet",
+            "Die Messung läuft mit den neuen Einstellungen.",
+        )
+
+    @app.get("/api/sense-hat/series/{group}")
+    def series(group: str, range: str = "24h", basis: str = "corrected") -> JSONResponse:
+        config = backend.settings.config.sense_hat
+        if group not in CHARTABLE_GROUPS or group not in config.sensors:
+            raise HTTPException(status_code=404, detail="Unknown chartable group")
+        if range not in SERIES_RANGES:
+            raise HTTPException(status_code=422, detail="Unknown range")
+        label, window, bucket = SERIES_RANGES[range]
+        until = backend.clock()
+        use_corrected = group == "temperature" and basis != "raw"
+        sensor = config.sensors[group]
+        available = config.history.enabled and sensor.history_enabled
+        reason = ""
+        points: list[dict[str, float]] = []
+        if not available:
+            reason = "history_disabled"
+        elif backend.sense_hat.history_error is not None or not backend.sense_hat.running:
+            available = False
+            reason = "history_unavailable"
+        else:
+            try:
+                rows = backend.sense_hat.query_series(
+                    group, until - window, until, bucket_seconds=bucket, corrected=use_corrected
+                )
+            except OctaPiHubError as exc:
+                logger.error("Series query failed: %s", exc)
+                return JSONResponse(
+                    {"error": exc.user_message, "code": exc.error_code}, status_code=503
+                )
+            points = [{"t": int(p.timestamp.timestamp() * 1000), "v": p.value} for p in rows]
+        info = _CHART_HINTS[group]
+        unit = {"temperature": "°C", "humidity": "%", "pressure": "hPa", "compass": "°"}[group]
+        return JSONResponse(
+            {
+                "group": group,
+                "label": GROUP_INFO[group].label,
+                "unit": unit,
+                "precision": sensor.precision,
+                "range": range,
+                "range_label": label,
+                "bucket_seconds": bucket,
+                "since": int((until - window).timestamp() * 1000),
+                "until": int(until.timestamp() * 1000),
+                "basis": "corrected" if use_corrected else "raw",
+                "correction_active": group == "temperature" and correction_active(config),
+                "available": available,
+                "reason": reason,
+                "min_span": info["min_span"],
+                "fixed": info["fixed"],
+                "points": points,
+            }
+        )
+
+    @app.get("/events")
+    async def events(request: Request) -> StreamingResponse:
+        return StreamingResponse(
+            live.stream(request.is_disconnected),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
+
+    @app.get("/healthz")
+    def healthz() -> dict[str, object]:
+        return {
+            "status": "ok",
+            "sense_hat_running": backend.sense_hat.running,
+            "sense_hat_error": backend.sense_hat.hardware_error_code,
+        }
+
+    return app

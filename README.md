@@ -44,7 +44,7 @@ Musikplayer erprobt; das belegt weder OctaPiHub-BLE noch die Hue-Lichtsteuerung.
 | Sense-HAT-Messworker (Intervalle je Sensorgruppe, Fehlerisolation, Temperaturkorrektur neben Rohwert) | implementiert, mit Fake getestet; nicht auf echter Hardware verifiziert |
 | Sense-HAT-Sensorverlauf (SQLite/WAL, gebündeltes Schreiben, Aufbewahrung, Zeitreihen-Abfrage) | implementiert, mit Fake/Temp-DB getestet; noch nicht im Dienst verdrahtet |
 | Sense-HAT-Dienst (Composition Root: Port, Worker, Recorder, Speicher; Start/Stopp mit Flush, degradierter Betrieb) | implementiert, mit Fakes getestet; noch kein startbarer Hub-Prozess |
-| Sense-HAT-Weboberfläche | noch nicht implementiert |
+| Weboberfläche (Übersicht, Sense HAT mit Live-Werten und Verlaufsdiagramm, Sense-HAT-Einstellungen) | implementiert, per Test und Browser-Screenshots am PC geprüft; nicht auf Raspberry Pi/Handy verifiziert. Seiten Würfel, Licht, Musik, System fehlen |
 | Hue-/Musikadapter | Hue CLIP v2 vorhanden; Pairing/Key-Verwaltung und Musik fehlen |
 
 Lokale Tests:
@@ -69,3 +69,15 @@ die verwendete Version die Quellsyntax unterstützt.
 Dieses Repository ist lokal. Geheimnisse und persönliche Betriebsdaten gehören
 nicht hinein. Eine Lizenz ist noch nicht gewählt; vor einer Veröffentlichung
 müssen Lizenz und Rechte an übernommenem Code geklärt werden.
+
+## Weboberfläche ausprobieren
+
+```
+pip install -e ".[dev]"
+python -m octapihub.web --demo --port 8080      # simuliertes Sense HAT, Token: demo
+python -m octapihub.web --config octapihub.toml # echter Betrieb, Token aus OCTAPIHUB_WEB_TOKEN
+```
+
+Der Demo-Modus zeigt simulierte Werte und Beispieldaten und ist keine Messung. Ohne
+`OCTAPIHUB_WEB_TOKEN` ist die Oberfläche nur lesend. Standardmäßig lauscht sie nur auf
+`127.0.0.1`; für den Zugriff im LAN `--host` bewusst setzen und keine Router-Ports öffnen.

@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% macro sensor_row(group) %}
+{% set p = 'sensor.' ~ group ~ '.' %}
+<div class="srow" data-group="{{ group }}">
+  <div class="srow-main">
+    <span class="chip-ico">{{ m.icon(group) }}</span>
+    {{ m.toggle(p ~ 'enabled', form, group_info[group].label, group_info[group].description) }}
+  </div>
+  <div class="srow-fields">
+    <div class="field">
+      <label for="f-{{ p }}interval_seconds">Messen</label>
+      {{ m.select(p ~ 'interval_seconds', interval_labels, form, errors) }}
+      {{ m.field_error(errors, p ~ 'interval_seconds') }}
+    </div>
+    <div class="field">
+      <label for="f-{{ p }}presentation">Anzeige</label>
+      {{ m.select(p ~ 'presentation', presentation_labels, form, errors) }}
+      {{ m.field_error(errors, p ~ 'presentation') }}
+    </div>
+    <div class="field">
+      <label for="f-{{ p }}precision">Genauigkeit der Anzeige</label>
+      {{ m.select(p ~ 'precision', precision_labels, form, errors) }}
+      {{ m.field_error(errors, p ~ 'precision') }}
+    </div>
+    <div class="field field-check">
+      <label class="check"><input type="checkbox" name="{{ p }}history_enabled" id="f-{{ p }}history_enabled"{% if form.get(p ~ 'history_enabled') %} checked{% endif %}> <span>Im Verlauf speichern</span></label>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Einstellungen</h1>
+    <p class="lead">Hier legen Sie fest, was das Sense HAT misst, wie oft und wie die Werte angezeigt werden.</p>
+  </div>
+</div>
+
+{% if banner %}
+<div class="notice notice-{{ banner.level }}" role="{{ 'alert' if banner.level == 'error' else 'status' }}">
+  <span class="notice-ico">{{ m.icon(banner.level) }}</span>
+  <div class="notice-body">
+    <p class="notice-title">{{ banner.title }}</p>
+    {% if banner.detail %}<p>{{ banner.detail }}</p>{% endif %}
+    {% if banner.code %}<p class="notice-code">Fehlercode <code>{{ banner.code }}</code></p>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if not writable %}
+<div class="notice notice-info" role="status">
+  <span class="notice-ico">{{ m.icon('info') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Nur ansehen: Speichern ist noch nicht freigeschaltet</p>
+    <p>Damit nicht jeder in Ihrem Netzwerk Einstellungen ändern kann, braucht das Speichern ein Zugriffs-Token.
+    Legen Sie es mit der Umgebungsvariable <code>OCTAPIHUB_WEB_TOKEN</code> fest und starten Sie den Dienst neu.</p>
+  </div>
+</div>
+{% endif %}
+
+<form method="post" action="/settings/sense-hat" id="settings-form" novalidate>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Sense HAT</h2>
+      <p class="muted">Der Aufsteckbaustein mit den Sensoren und der LED-Anzeige.</p>
+    </div>
+    {{ m.toggle('enabled', form, 'Sense HAT verwenden', 'Wenn aus, werden keine Messwerte erfasst.') }}
+    <div class="field field-wide">
+      <label for="f-hardware_version">Version des Sense HAT</label>
+      {{ m.select('hardware_version', version_labels, form, errors) }}
+      {{ m.field_error(errors, 'hardware_version') }}
+      <small class="help">{{ hardware_text }} Wählen Sie „Automatisch“, außer die Erkennung liegt falsch.</small>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Messwerte</h2>
+      <p class="muted">Schalten Sie jeden Sensor einzeln ein oder aus. Die Genauigkeit rundet nur die Anzeige – gespeichert wird immer der genaue Messwert.</p>
+    </div>
+    {% for key, title, groups in sections %}
+    <h3 class="subhead">{{ title }}</h3>
+    <div class="srows">
+      {% for group in groups %}{{ sensor_row(group) }}{% endfor %}
+    </div>
+    {% endfor %}
+    <details class="more">
+      <summary>Farbsensor feinabstimmen (nur Sense HAT v2)</summary>
+      <div class="fields-2">
+        <div class="field">
+          <label for="f-color_gain">Empfindlichkeit</label>
+          {{ m.select('color_gain', gain_labels, form, errors) }}
+          {{ m.field_error(errors, 'color_gain') }}
+          <small class="help">Bei wenig Licht eine höhere Empfindlichkeit wählen.</small>
+        </div>
+        <div class="field">
+          <label for="f-color_integration_cycles">Belichtungszyklen (1–256)</label>
+          <input type="number" inputmode="numeric" min="1" max="256" name="color_integration_cycles" id="f-color_integration_cycles" value="{{ form.get('color_integration_cycles', '') }}"{% if errors.get('color_integration_cycles') %} aria-invalid="true" aria-describedby="err-color_integration_cycles"{% endif %}>
+          {{ m.field_error(errors, 'color_integration_cycles') }}
+          <small class="help">Mehr Zyklen messen genauer, brauchen aber länger.</small>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Temperatur-Korrektur</h2>
+      <p class="muted">Der Raspberry Pi erwärmt das Sense HAT, deshalb zeigt es meist zu viel. Angezeigt wird <em>Messwert × Faktor + Ausgleich</em>; der echte Messwert bleibt gespeichert.</p>
+    </div>
+    <div class="fields-2">
+      <div class="field">
+        <label for="f-temperature_correction_factor">Faktor</label>
+        <input type="text" inputmode="decimal" name="temperature_correction_factor" id="f-temperature_correction_factor" value="{{ form.get('temperature_correction_factor', '') }}"{% if errors.get('temperature_correction_factor') %} aria-invalid="true" aria-describedby="err-temperature_correction_factor"{% endif %}>
+        {{ m.field_error(errors, 'temperature_correction_factor') }}
+        <small class="help">1 = unverändert.</small>
+      </div>
+      <div class="field">
+        <label for="f-temperature_offset_c">Ausgleich in °C</label>
+        <input type="text" inputmode="decimal" name="temperature_offset_c" id="f-temperature_offset_c" value="{{ form.get('temperature_offset_c', '') }}"{% if errors.get('temperature_offset_c') %} aria-invalid="true" aria-describedby="err-temperature_offset_c"{% endif %}>
+        {{ m.field_error(errors, 'temperature_offset_c') }}
+        <small class="help">Zum Beispiel -3 zieht drei Grad ab. Am besten mit einem Vergleichsthermometer einstellen.</small>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Verlauf</h2>
+      <p class="muted">Gespeicherte Messwerte für die Diagramme. Es wird gebündelt geschrieben, um die SD-Karte zu schonen.</p>
+    </div>
+    {{ m.toggle('history.enabled', form, 'Verlauf speichern', 'Wenn aus, gibt es keine Diagramme und es wird nichts gespeichert.') }}
+    <div class="field field-wide">
+      <label for="f-history.retention_days">Aufbewahrung</label>
+      {{ m.select('history.retention_days', retention_labels, form, errors) }}
+      {{ m.field_error(errors, 'history.retention_days') }}
+      <small class="help">Ältere Werte werden automatisch gelöscht. Speicherort: <code>{{ history_path }}</code></small>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>LED-Anzeige und Joystick</h2>
+      <p class="muted"><span class="pill pill-waiting">Noch ohne Funktion</span> Diese Einstellungen werden bereits gespeichert, aber erst in einer späteren Version angewendet.</p>
+    </div>
+    {{ m.toggle('matrix.enabled', form, 'LED-Anzeige verwenden', 'Die 8×8-Leuchtpunkte zeigen später den Status an.') }}
+    <div class="fields-2">
+      <div class="field">
+        <label for="f-matrix.rotation">Drehung der Anzeige</label>
+        {{ m.select('matrix.rotation', rotation_labels, form, errors) }}
+        {{ m.field_error(errors, 'matrix.rotation') }}
+      </div>
+    </div>
+    {{ m.toggle('matrix.low_light', form, 'Gedimmte Anzeige', 'Sinnvoll in dunklen Räumen.') }}
+    {{ m.toggle('matrix.ambient_brightness', form, 'Helligkeit automatisch anpassen', 'Nur mit Farbsensor (Sense HAT v2).') }}
+    {{ m.toggle('joystick.enabled', form, 'Joystick verwenden', 'Der kleine Steuerknüppel löst später Aktionen aus.') }}
+  </section>
+
+  <div class="savebar">
+    <div class="savebar-in">
+      <div class="field field-token">
+        <label for="f-token">Zugriffs-Token</label>
+        <input type="password" name="token" id="f-token" autocomplete="current-password" placeholder="{{ 'Token eingeben' if writable else 'Nicht eingerichtet' }}"{% if not writable %} disabled{% endif %}>
+      </div>
+      <button type="submit" class="btn btn-primary"{% if not writable %} disabled{% endif %}>Speichern und anwenden</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

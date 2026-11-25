@@ -1,0 +1,14 @@
+{% import "_macros.html" as m %}
+{% for n in notices %}
+{% if n.level != 'ok' or (loop.length == 1 and not quiet_ok) %}
+<div class="notice notice-{{ n.level }}" role="{{ 'alert' if n.level == 'error' else 'status' }}">
+  <span class="notice-ico">{{ m.icon(n.level) }}</span>
+  <div class="notice-body">
+    <p class="notice-title">{{ n.title }}</p>
+    {% if n.detail %}<p>{{ n.detail }}</p>{% endif %}
+    {% if n.hint %}<p class="notice-hint">{{ n.hint }}</p>{% endif %}
+    {% if n.code %}<p class="notice-code">Fehlercode <code>{{ n.code }}</code></p>{% endif %}
+  </div>
+</div>
+{% endif %}
+{% endfor %}

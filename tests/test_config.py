@@ -52,7 +52,9 @@ def test_parse_config_applies_defaults_and_normalizes_addresses() -> None:
         DEFAULT_SENSOR_INTERVAL_SECONDS
     )
     assert config.sense_hat.history.retention_days == DEFAULT_HISTORY_RETENTION_DAYS
-    assert config.sense_hat.sensors["temperature"].presentation is SensorPresentation.VALUE
+    assert (
+        config.sense_hat.sensors["temperature"].presentation is SensorPresentation.VALUE_AND_CHART
+    )
 
 
 def test_schema_v1_is_loaded_as_current_config_version() -> None:

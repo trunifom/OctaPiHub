@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<div class="page-head">
+  <h1>Übersicht</h1>
+  <p class="lead">So geht es Ihrem OctaPiHub. Hier sehen Sie auf einen Blick, was läuft.</p>
+</div>
+
+<div class="cards cards-overview">
+  <article class="card status-card">
+    <header class="card-head">
+      <span class="chip-ico">{{ m.icon('sense-hat') }}</span>
+      <h2>Sense HAT</h2>
+      <span id="live-badge">{% include "_badge.html" %}</span>
+    </header>
+    <div id="live-mini">{% include "_mini.html" %}</div>
+    <p class="muted">{{ notices[0].title }}{% if notices[0].detail and notices[0].level != 'ok' %} – {{ notices[0].detail }}{% endif %}</p>
+    <footer class="card-foot"><a class="btn btn-quiet" href="/sense-hat">Messwerte ansehen</a></footer>
+  </article>
+
+  {% for icon, title, text in [
+    ('cube', 'Würfel', 'Hier erscheinen später beide Würfel mit Verbindungsstatus, Batteriestand und der zuletzt erkannten Seite.'),
+    ('bulb', 'Licht', 'Hier erscheinen später die Hue-Verbindung und die Lichtszenen, die Ihre Würfel auslösen.'),
+    ('music', 'Musik', 'Hier erscheinen später das Abspielziel und die Musiksteuerung.'),
+    ('system', 'System', 'Hier erscheinen später Uhrzeit, Prozessortemperatur, Speicher und Laufzeit des Geräts.'),
+  ] %}
+  <article class="card status-card is-pending">
+    <header class="card-head">
+      <span class="chip-ico">{{ m.icon(icon) }}</span>
+      <h2>{{ title }}</h2>
+      <span class="badge badge-off"><span class="dot" aria-hidden="true"></span>Noch nicht angebunden</span>
+    </header>
+    <p class="muted">{{ text }}</p>
+  </article>
+  {% endfor %}
+</div>
+
+{% set quiet_ok = true %}
+<div id="live-notices-quiet">{% include "_notices.html" %}</div>
+{% endblock %}

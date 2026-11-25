@@ -1,0 +1,2 @@
+{% set labels = {'ok': 'In Ordnung', 'warn': 'Hinweis', 'error': 'Störung', 'info': 'Startet', 'off': 'Ausgeschaltet'} %}
+<span class="badge badge-{{ level }}"><span class="dot" aria-hidden="true"></span>{{ labels.get(level, level) }}</span>

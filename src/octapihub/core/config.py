@@ -10,7 +10,7 @@ import re
 import tempfile
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
@@ -103,21 +103,21 @@ def _default_sensors() -> Mapping[str, SensorConfig]:
                 True,
                 DEFAULT_SENSOR_INTERVAL_SECONDS,
                 True,
-                SensorPresentation.VALUE,
+                SensorPresentation.VALUE_AND_CHART,
                 1,
             ),
             "humidity": SensorConfig(
                 True,
                 DEFAULT_SENSOR_INTERVAL_SECONDS,
                 True,
-                SensorPresentation.VALUE,
+                SensorPresentation.VALUE_AND_CHART,
                 1,
             ),
             "pressure": SensorConfig(
                 True,
                 DEFAULT_SENSOR_INTERVAL_SECONDS,
                 True,
-                SensorPresentation.VALUE,
+                SensorPresentation.VALUE_AND_CHART,
                 1,
             ),
             "orientation": SensorConfig(
@@ -286,14 +286,15 @@ def save_config(path: str | Path, config: AppConfig) -> None:
         ) from exc
 
 
-def _serialize_config(config: AppConfig) -> str:
-    sense_hat_data: dict[str, object] = {
-        "enabled": config.sense_hat.enabled,
-        "hardware_version": config.sense_hat.hardware_version.value,
-        "temperature_correction_factor": config.sense_hat.temperature_correction_factor,
-        "temperature_offset_c": config.sense_hat.temperature_offset_c,
-        "color_gain": config.sense_hat.color_gain,
-        "color_integration_cycles": config.sense_hat.color_integration_cycles,
+def sense_hat_table(sense_hat: SenseHatConfig) -> dict[str, object]:
+    """Return the Sense HAT settings as a plain TOML-shaped table for editing."""
+    data: dict[str, object] = {
+        "enabled": sense_hat.enabled,
+        "hardware_version": sense_hat.hardware_version.value,
+        "temperature_correction_factor": sense_hat.temperature_correction_factor,
+        "temperature_offset_c": sense_hat.temperature_offset_c,
+        "color_gain": sense_hat.color_gain,
+        "color_integration_cycles": sense_hat.color_integration_cycles,
         "sensors": {
             sensor_id: {
                 "enabled": sensor.enabled,
@@ -302,21 +303,35 @@ def _serialize_config(config: AppConfig) -> str:
                 "presentation": sensor.presentation.value,
                 "precision": sensor.precision,
             }
-            for sensor_id, sensor in config.sense_hat.sensors.items()
+            for sensor_id, sensor in sense_hat.sensors.items()
         },
         "history": {
-            "enabled": config.sense_hat.history.enabled,
-            "retention_days": config.sense_hat.history.retention_days,
-            "database_path": config.sense_hat.history.database_path,
+            "enabled": sense_hat.history.enabled,
+            "retention_days": sense_hat.history.retention_days,
+            "database_path": sense_hat.history.database_path,
         },
         "matrix": {
-            "enabled": config.sense_hat.matrix.enabled,
-            "rotation": config.sense_hat.matrix.rotation,
-            "low_light": config.sense_hat.matrix.low_light,
-            "ambient_brightness": config.sense_hat.matrix.ambient_brightness,
+            "enabled": sense_hat.matrix.enabled,
+            "rotation": sense_hat.matrix.rotation,
+            "low_light": sense_hat.matrix.low_light,
+            "ambient_brightness": sense_hat.matrix.ambient_brightness,
         },
-        "joystick": {"enabled": config.sense_hat.joystick_enabled},
+        "joystick": {"enabled": sense_hat.joystick_enabled},
     }
+    return data
+
+
+def with_sense_hat_table(config: AppConfig, table: Mapping[str, object]) -> AppConfig:
+    """Return ``config`` with a replaced, fully validated Sense HAT table.
+
+    Raises:
+        ValidationError: If any Sense HAT value violates the schema.
+    """
+    return replace(config, sense_hat=_parse_sense_hat(table))
+
+
+def _serialize_config(config: AppConfig) -> str:
+    sense_hat_data = sense_hat_table(config.sense_hat)
     data: dict[str, object] = {
         "schema_version": config.schema_version,
         "bluetooth": {"adapter": config.bluetooth.adapter},

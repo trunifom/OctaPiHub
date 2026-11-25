@@ -128,7 +128,7 @@ temperature_offset_c = 0.0
 enabled = true
 interval_seconds = 30
 history_enabled = true
-presentation = "value"
+presentation = "value_and_chart"
 precision = 1
 
 [sense_hat.sensors.orientation]
@@ -294,3 +294,31 @@ nicht gespeichert (`history_error`). `octapihub/composition.py` verdrahtet die
 echten Adapter (`build_sense_hat_service`). Ein startbarer Hub-Prozess, der BLE-Runtime,
 Regeln und diesen Dienst gemeinsam startet, fehlt noch. `set_imu_config` wird noch nicht
 aus der Konfiguration angewandt.
+
+## Weboberfläche
+
+`octapihub/web` ist die Oberflächenschicht (FastAPI, Jinja2, kein Build-Schritt, keine
+externen Fonts oder Skripte; die Seiten funktionieren offline im LAN).
+
+- **Seiten:** Übersicht, Sense HAT (Live-Karten, Verlaufsdiagramm), Einstellungen
+  (alle Sense-HAT-Optionen). Würfel, Licht, Musik und System fehlen und erscheinen auf der
+  Übersicht ehrlich als „Noch nicht angebunden“.
+- **Live-Daten:** Server-Sent Events (`/events`). Der Server rendert HTML-Fragmente und
+  sendet sie nur bei Änderungen; das Browserskript pollt nicht. Das Diagramm lädt höchstens
+  einmal pro Minute nach, wenn Daten eintreffen.
+- **Präsentation:** `web/presenter.py` formatiert rein funktional (Rundung nur für die
+  Anzeige, Rohwert und korrigierter Wert getrennt, Fehler als „Wert nicht verfügbar“,
+  Hinweise mit Fehlercode und Abhilfe). `web/forms.py` übersetzt Formularfelder in die
+  validierte Konfiguration und liefert deutsche Feldfehler.
+- **Speichern:** Nur mit Zugriffs-Token (`OCTAPIHUB_WEB_TOKEN`, konstantzeitiger Vergleich,
+  ohne Token nur lesend). `SettingsManager` validiert, schreibt atomar und startet den
+  Sense-HAT-Dienst mit der neuen Konfiguration neu; ungültige Eingaben ändern nichts.
+- **Sicherheit:** Content-Security-Policy ohne Inline-Skripte/-Styles, `no-store`,
+  kein Token in Antworten. Der Server bindet standardmäßig an `127.0.0.1`.
+- **Darstellung:** Hell/Dunkel/Automatisch und zwei Schriftgrößen (im Browser gespeichert),
+  Tab-Leiste auf dem Handy, Zeitanzeige in Europe/Zurich.
+- **Demo:** `python -m octapihub.web --demo` nutzt ein simuliertes Sense HAT.
+
+Bekannte Grenzen: keine Rollen/Anmeldung außer Token, LAN-Beschränkung nicht erzwungen
+(nur Bindeadresse), keine Barrierefreiheitsprüfung mit Hilfsmitteln, LED-Matrix- und
+Joystick-Einstellungen werden gespeichert, aber noch nicht angewendet.

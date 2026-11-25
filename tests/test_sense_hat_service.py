@@ -40,8 +40,8 @@ def test_stop_persists_buffered_samples(tmp_path: Path) -> None:
     config = _config(tmp_path)
     service = SenseHatService(
         config,
-        lambda: SenseHatAdapter(FakeSenseHat()),
-        lambda: SQLiteSenseHatHistory(config.history.database_path),
+        lambda _c: SenseHatAdapter(FakeSenseHat()),
+        lambda _c: SQLiteSenseHatHistory(config.history.database_path),
     )
     until = datetime.now(UTC) + timedelta(days=1)
 
@@ -62,11 +62,11 @@ def test_stop_persists_buffered_samples(tmp_path: Path) -> None:
 
 
 def test_missing_hardware_degrades_without_raising(tmp_path: Path) -> None:
-    def no_board() -> SenseHatPort:
+    def no_board(_c: SenseHatConfig) -> SenseHatPort:
         raise SenseHatError("no board")
 
     service = SenseHatService(
-        _config(tmp_path), no_board, lambda: SQLiteSenseHatHistory(tmp_path / "x.sqlite3")
+        _config(tmp_path), no_board, lambda _c: SQLiteSenseHatHistory(tmp_path / "x.sqlite3")
     )
 
     async def scenario() -> None:
@@ -80,11 +80,11 @@ def test_missing_hardware_degrades_without_raising(tmp_path: Path) -> None:
 
 
 def test_history_failure_keeps_measuring(tmp_path: Path) -> None:
-    def broken_store() -> SQLiteSenseHatHistory:
+    def broken_store(_c: SenseHatConfig) -> SQLiteSenseHatHistory:
         raise HistoryError("cannot open")
 
     service = SenseHatService(
-        _config(tmp_path), lambda: SenseHatAdapter(FakeSenseHat()), broken_store
+        _config(tmp_path), lambda _c: SenseHatAdapter(FakeSenseHat()), broken_store
     )
 
     async def scenario() -> None:
@@ -105,8 +105,8 @@ def test_color_settings_are_applied_when_group_enabled(tmp_path: Path) -> None:
     device = FakeSenseHat()
     service = SenseHatService(
         replace(base, sensors=sensors),
-        lambda: SenseHatAdapter(device),
-        lambda: SQLiteSenseHatHistory(base.history.database_path),
+        lambda _c: SenseHatAdapter(device),
+        lambda _c: SQLiteSenseHatHistory(base.history.database_path),
     )
 
     async def scenario() -> None:
@@ -124,8 +124,8 @@ def test_color_settings_are_not_applied_when_group_disabled(tmp_path: Path) -> N
     config = _config(tmp_path, color_gain=4)
     service = SenseHatService(
         config,
-        lambda: SenseHatAdapter(device),
-        lambda: SQLiteSenseHatHistory(config.history.database_path),
+        lambda _c: SenseHatAdapter(device),
+        lambda _c: SQLiteSenseHatHistory(config.history.database_path),
     )
 
     async def scenario() -> None:
@@ -140,13 +140,13 @@ def test_color_settings_are_not_applied_when_group_disabled(tmp_path: Path) -> N
 def test_disabled_service_starts_nothing_and_double_start_is_rejected(tmp_path: Path) -> None:
     disabled = SenseHatService(
         _config(tmp_path, enabled=False),
-        lambda: SenseHatAdapter(FakeSenseHat()),
-        lambda: SQLiteSenseHatHistory(tmp_path / "x.sqlite3"),
+        lambda _c: SenseHatAdapter(FakeSenseHat()),
+        lambda _c: SQLiteSenseHatHistory(tmp_path / "x.sqlite3"),
     )
     active = SenseHatService(
         _config(tmp_path),
-        lambda: SenseHatAdapter(FakeSenseHat()),
-        lambda: SQLiteSenseHatHistory(tmp_path / "y.sqlite3"),
+        lambda _c: SenseHatAdapter(FakeSenseHat()),
+        lambda _c: SQLiteSenseHatHistory(tmp_path / "y.sqlite3"),
     )
 
     async def scenario() -> None:

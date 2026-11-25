@@ -10,9 +10,8 @@ from octapihub.infrastructure.sqlite_sense_hat_history import SQLiteSenseHatHist
 
 def build_sense_hat_service(config: AppConfig) -> SenseHatService:
     """Create the Sense HAT service with the real adapter and SQLite history."""
-    sense_hat = config.sense_hat
     return SenseHatService(
-        sense_hat,
-        lambda: create_sense_hat_port(sense_hat.hardware_version),
-        lambda: SQLiteSenseHatHistory(sense_hat.history.database_path),
+        config.sense_hat,
+        lambda settings: create_sense_hat_port(settings.hardware_version),
+        lambda settings: SQLiteSenseHatHistory(settings.history.database_path),
     )

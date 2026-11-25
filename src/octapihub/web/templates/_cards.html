@@ -1,0 +1,55 @@
+{% import "_macros.html" as m %}
+{% if not views %}
+<div class="empty">
+  <span class="empty-ico">{{ m.icon('sense-hat') }}</span>
+  <h3>Hier gibt es noch nichts anzuzeigen</h3>
+  {% if not sense_config.enabled %}
+  <p>Das Sense HAT ist ausgeschaltet. Schalten Sie es unter <a href="/settings">Einstellungen</a> ein.</p>
+  {% else %}
+  <p>Es ist kein Messwert zur Anzeige ausgewählt oder das Sense HAT liefert noch keine Daten.
+  Unter <a href="/settings">Einstellungen</a> legen Sie pro Sensor fest, ob der aktuelle Wert gezeigt wird.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% for key, title, groups in sections %}
+{% set items = views | selectattr('group', 'in', groups) | list %}
+{% if items %}
+<section class="group-section" aria-labelledby="sec-{{ key }}">
+  <h2 id="sec-{{ key }}" class="section-title">{{ title }}</h2>
+  <div class="cards">
+    {% for v in items %}
+    <article class="card sensor state-{{ v.state }}" data-group="{{ v.group }}">
+      <header class="card-head">
+        <span class="chip-ico">{{ m.icon(v.group) }}</span>
+        <h3>{{ v.label }}</h3>
+        <span class="pill pill-{{ v.state }}">{{ v.state_text }}</span>
+      </header>
+      {% if v.swatch %}
+      <svg class="swatch" viewBox="0 0 120 48" role="img" aria-label="Gemessene Farbe {{ v.swatch }}"><rect width="120" height="48" rx="10" fill="{{ v.swatch }}"/></svg>
+      {% endif %}
+      {% if v.primary %}
+      <p class="value"><span class="num">{{ v.primary }}</span>{% if v.unit %}<span class="unit">{{ v.unit }}</span>{% endif %}</p>
+      {% endif %}
+      {% if v.secondary %}<p class="sub">{{ v.secondary }}</p>{% endif %}
+      {% if v.components %}
+      <dl class="comp">
+        {% for label, text in v.components %}<div><dt>{{ label }}</dt><dd>{{ text }}</dd></div>{% endfor %}
+      </dl>
+      {% endif %}
+      {% if v.state == 'error' or v.state == 'stale' %}
+      <p class="problem">{% if v.state == 'stale' %}Letzter bekannter Wert – aktuell keine Messung möglich.{% else %}Wert nicht verfügbar.{% endif %}
+        {% if v.error_text %} {{ v.error_text }}{% endif %}
+        {% if v.error_code %} <span class="code">{{ v.error_code }}</span>{% endif %}</p>
+      {% elif v.state == 'unavailable' %}
+      <p class="problem">Dieser Sensor ist auf Ihrem Sense HAT nicht vorhanden.</p>
+      {% endif %}
+      <footer class="card-foot">
+        <span>{{ v.measured_text or v.description }}</span>
+        {% if v.chartable %}<a href="/sense-hat#verlauf" class="link-quiet" data-chart-link="{{ v.group }}">Verlauf</a>{% endif %}
+      </footer>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endfor %}

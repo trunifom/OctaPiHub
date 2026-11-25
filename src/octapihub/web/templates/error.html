@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<div class="empty empty-page">
+  <span class="empty-ico">{{ m.icon('info') }}</span>
+  <h1>{{ error_message }}</h1>
+  <p>Fehlercode <code>{{ error_code }}</code></p>
+  <p><a class="btn" href="/">Zur Übersicht</a></p>
+</div>
+{% endblock %}
