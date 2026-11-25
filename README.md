@@ -41,7 +41,8 @@ Musikplayer erprobt; das belegt weder OctaPiHub-BLE noch die Hue-Lichtsteuerung.
 | BLE-Laufzeit und Bleak/BlueZ-Adapter | implementiert, mit Fakes getestet |
 | BLE-Verbindung zu echten Würfeln / Raspberry Pi | nicht hardwareverifiziert |
 | Sense-HAT-Port, Hardwareadapter und Fake | implementiert, hardwarefrei getestet; nicht auf echter Hardware verifiziert |
-| Sense-HAT-Messworker, Sensorverlauf und Weboberfläche | noch nicht implementiert |
+| Sense-HAT-Messworker (Intervalle je Sensorgruppe, Fehlerisolation, Temperaturkorrektur neben Rohwert) | implementiert, mit Fake getestet; nicht auf echter Hardware verifiziert |
+| Sense-HAT-Sensorverlauf und Weboberfläche | noch nicht implementiert |
 | Hue-/Musikadapter | Hue CLIP v2 vorhanden; Pairing/Key-Verwaltung und Musik fehlen |
 
 Lokale Tests:

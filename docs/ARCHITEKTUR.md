@@ -28,7 +28,7 @@ Aktuell implementiert sind:
 Der BLE-Transport und die Laufzeit sind implementiert und lokal mit Fakes getestet.
 Regelzuordnung, generische Outbox und Hue-Adapter sind lokal getestet. Der Hue-Adapter
 wurde nicht gegen eine echte Bridge geprüft; Hue-Kopplung/Key-Verwaltung, Audio-Aktionen,
-ein startbarer Systemdienst/Composition Root, Sense-HAT-Messworker, Sensorhistorie und
+ein startbarer Systemdienst/Composition Root, Sensorhistorie und
 Weboberfläche sind noch nicht implementiert. Der Sense-HAT-Port und Hardwareadapter
 sind mit einem Fake getestet, aber nicht auf echter Hardware verifiziert. Die
 Fähigkeitserkennung meldet ohne erkannten Farbsensor absichtlich keine automatische
@@ -256,3 +256,15 @@ ausschließlich öffentliche Testmaterialien und dürfen nicht für reale Bridge
 werden. Ein erfolgreicher Fake-Server-Test ist kein Nachweis für das tatsächlich von der
 Bridge präsentierte Signify-Zertifikat, deren Hostnamen oder die Szenen-Recall-Anfrage
 an einer realen Bridge.
+
+## Sense-HAT-Messworker
+
+`application/sense_hat_worker.py` startet je aktivierter und von der Hardware unterstützter
+Sensorgruppe einen asyncio-Task mit dem konfigurierten Intervall; der blockierende Port
+läuft in einem Thread. Fehler einer Gruppe werden pro Gruppe als Status (`error`, sichere
+Nutzermeldung, Fehlerzähler) erfasst und beim nächsten Intervall erneut versucht; andere
+Gruppen und der Sample-Sink bleiben unberührt. Nicht vorhandene Hardware (z. B. fehlender
+Farbsensor) wird als `unavailable` markiert und nicht abgefragt. Samples enthalten den
+unveränderten Rohwert; die Temperaturkorrektur (`roh * Faktor + Offset`) liegt separat als
+`corrected_temperature_c` daneben, Anzeigepräzision wird hier nicht angewandt. Verlauf
+und Weboberfläche hängen sich später über den Sample-Sink an.
