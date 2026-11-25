@@ -222,3 +222,18 @@ Jeder Code: stabil, dokumentiert (Ursache, Benutzermeldung, Abhilfe), in der Web
 
 ## 14. Glossar
 **BLE** Bluetooth Low Energy · **CLIP v2** lokale Hue-API · **Outbox** Warteschlange offener Aktionen · **SSE** Server-Sent Events (Live-Daten zum Browser) · **HTMX** kleine JS-Bibliothek für serverseitig gerenderte Seiten · **Watchdog** Überwachung, die bei Hängern neu startet · **Sense HAT** Aufsteckplatine mit LED-Matrix/Sensoren/Joystick · **Cast** Google-Protokoll für Medien auf Nest-Geräten.
+
+## 15. Entwicklungs- und Commitnachweis
+
+Die folgenden Zeitangaben stammen aus dem lokalen Git-Commit (Zeitzone Europe/Zurich).
+Ein Commit dokumentiert implementierte und lokal geprüfte Software; er ist kein
+Nachweis für einen Hardwaretest. Commits werden nach erfolgreicher Prüfung erstellt.
+
+| Datum und Uhrzeit | Commit | Fertiggestellte Funktion und Nachweis |
+|---|---|---|
+| 2026-11-25 13:49:07 +01:00 | `9888f4abde23d20dc7d72787e551b8f0585461a0` | Python-Projektbasis, BLE-Orientierungsdecoder, Baseline/Entprellung und begrenztes Reconnect-Backoff; 8 lokale Unit-Tests, Ruff und mypy strict bestanden. Keine Hardwareprüfung. |
+| 2026-11-25 13:57:50 +01:00 | `580a40f7bfb6a1ab449d2642456fb10e4019eb4f` | Versioniertes TOML-Konfigurationsladen und Validierung für zwei Würfelrollen, BLE-Adapter, Adressen und Entprellzeit; insgesamt 22 lokale Unit-Tests, Ruff, mypy strict und Pylance-Diagnose bestanden. Keine Hardwareprüfung. |
+
+Die Einträge verweisen jeweils auf den Commit mit der Funktion. Änderungen an diesem
+Nachweis erfolgen in einem nachfolgenden Dokumentations-Commit, damit der tatsächliche
+Funktions-Commit-Hash festgehalten werden kann.
