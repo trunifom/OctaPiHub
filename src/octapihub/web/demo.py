@@ -16,6 +16,7 @@ from pathlib import Path
 from octapihub.application.ble import CharacteristicInfo, DeviceProfile
 from octapihub.application.ble_runtime import BleRuntime
 from octapihub.application.cube_service import CubeService
+from octapihub.application.hue_lights import HueGroup
 from octapihub.application.hue_service import HueGateway, HueService, SceneInfo
 from octapihub.application.music.service import MusicService
 from octapihub.application.outbox import OutboxDispatcher
@@ -314,6 +315,7 @@ class _DemoSecrets:
 class _DemoScene:
     id: str
     name: str
+    group_id: str = ""
 
 
 class _DemoGateway:
@@ -321,13 +323,26 @@ class _DemoGateway:
 
     async def list_scenes(self) -> tuple[SceneInfo, ...]:
         return (
-            _DemoScene("wohnzimmer-abend", "Wohnzimmer – Abend"),
-            _DemoScene("wohnzimmer-hell", "Wohnzimmer – Hell"),
+            _DemoScene("wohnzimmer-abend", "Wohnzimmer – Abend", "room-wz"),
+            _DemoScene("wohnzimmer-hell", "Wohnzimmer – Hell", "room-wz"),
             _DemoScene("aus", "Alles aus"),
         )
 
     async def recall_scene(self, scene_id: str) -> None:
         return None
+
+    async def list_groups(self) -> tuple[HueGroup, ...]:
+        return (
+            HueGroup("g-alle", "Alle Lampen", "home", "home-1"),
+            HueGroup("g-wohnzimmer", "Wohnzimmer", "room", "room-wz"),
+            HueGroup("g-kueche", "Küche", "room", "room-ku"),
+        )
+
+    async def set_group(self, group_id: str, body: dict[str, object]) -> None:
+        return None
+
+    async def group_is_on(self, group_id: str) -> bool | None:
+        return True
 
 
 def _demo_hue(config: HueConfig) -> HueService:

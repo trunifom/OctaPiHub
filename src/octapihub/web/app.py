@@ -271,6 +271,7 @@ class LiveView:
             "hue_active": hue is not None,
             "hue_view": hue_view,
             "hue_scenes": hue.scenes if hue is not None else (),
+            "hue_groups": getattr(hue, "groups", ()) if hue is not None else (),
             "cubes_active": cubes is not None,
             "cube_views": cube_views,
             "battery_warnings": battery_warnings(cube_views),
@@ -447,6 +448,10 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "tiles": build_cube_tiles(backend.settings.config, scenes, values, playlists),
             "scene_options": [{"id": sid, "name": name} for sid, name in scenes.items()],
             "music_groups": forms.music_choice_options(playlists) if backend.music else [],
+            "light_groups": forms.hue_choice_options() if backend.hue else [],
+            "lamp_groups": {g.id: g.name for g in getattr(backend.hue, "groups", ())}
+            if backend.hue
+            else {},
             "music_enabled": backend.settings.config.music.enabled,
             "music_targets": {t.id: t.name for t in backend.settings.config.music.targets},
             "option_shuffle": {"": "Wie die Playlist", "yes": "Zufällig", "no": "In Reihenfolge"},
@@ -741,7 +746,12 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
         playlist_ids = {p.id for p in music_config.playlists}
         target_ids = {t.id for t in music_config.targets}
         result = forms.parse_mapping_form(
-            submitted, backend.settings.config, known, playlist_ids, target_ids
+            submitted,
+            backend.settings.config,
+            known,
+            playlist_ids,
+            target_ids,
+            {g.id for g in getattr(backend.hue, "groups", ())} if backend.hue else (),
         )
         if result.mappings is None:
             errors.update(result.errors)
@@ -961,6 +971,23 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
                     )
                 await hue.unpair()
                 return respond(200, "ok", "Verbindung getrennt")
+            if action.startswith("light:"):
+                _, _, rest = action.partition(":")
+                name, _, group_id = rest.partition(":")
+                known = {g.id for g in getattr(hue, "groups", ())}
+                light = forms.hue_choice_action(f"{forms.HUE_PREFIX}{name}", group_id)
+                if light is None or group_id not in known:
+                    return respond(
+                        422,
+                        "error",
+                        "Diese Auswahl ist ungültig",
+                        "Laden Sie die Szenen und Räume neu und versuchen Sie es erneut.",
+                        "CH-WEB-011",
+                    )
+                params = light["parameters"]
+                assert isinstance(params, dict)
+                await hue.execute(str(light["action"]), params)
+                return respond(200, "ok", "Erledigt")
             if action.startswith("test:"):
                 scene_id = action.removeprefix("test:")
                 if scene_id not in {scene.id for scene in hue.scenes}:

@@ -73,6 +73,11 @@
             {% set music_values = [] %}
             {% for group_label, items in music_groups %}{% for value, _label in items %}{% if music_values.append(value) %}{% endif %}{% endfor %}{% endfor %}
             {% if tile.scene_id and tile.scene_id.startswith('music:') and tile.scene_id not in music_values %}<option value="{{ tile.scene_id }}" selected>{{ tile.scene_label }}</option>{% endif %}
+            {% for group_label, items in light_groups %}
+            <optgroup label="{{ group_label }}">
+            {% for value, label in items %}<option value="{{ value }}"{% if value == map_form.get(tile.field) %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </optgroup>
+            {% endfor %}
             {% for group_label, items in music_groups %}
             <optgroup label="{{ group_label }}">
             {% for value, label in items %}<option value="{{ value }}"{% if value == map_form.get(tile.field) %} selected{% endif %}>{{ label }}</option>{% endfor %}
@@ -80,9 +85,18 @@
             {% endfor %}
           </select>
           {{ m.field_error(map_errors, tile.field) }}
-          {% if music_groups %}
-          <details class="more tile-options"{% if tile.target or tile.shuffle or tile.repeat or map_errors.get(tile.field ~ '.target') %} open{% endif %}>
-            <summary>Musik-Optionen</summary>
+          {% if music_groups or light_groups %}
+          <details class="more tile-options"{% if tile.target or tile.shuffle or tile.repeat or tile.group or map_errors.get(tile.field ~ '.target') or map_errors.get(tile.field ~ '.group') %} open{% endif %}>
+            <summary>Optionen (Gerät, Lampen, Wiedergabe)</summary>
+            {% if light_groups %}
+            <label for="f-{{ tile.field }}.group">Lampen / Raum (für Licht-Aktionen)</label>
+            <select name="{{ tile.field }}.group" id="f-{{ tile.field }}.group">
+              <option value="">Alle Lampen</option>
+              {% for gid, gname in lamp_groups.items() %}<option value="{{ gid }}"{% if gid == tile.group %} selected{% endif %}>{{ gname }}</option>{% endfor %}
+            </select>
+            {{ m.field_error(map_errors, tile.field ~ '.group') }}
+            {% endif %}
+            {% if music_groups %}
             <label for="f-{{ tile.field }}.target">Gerät</label>
             <select name="{{ tile.field }}.target" id="f-{{ tile.field }}.target"{% if map_errors.get(tile.field ~ '.target') %} aria-invalid="true"{% endif %}>
               <option value="">Wie Würfel / Playlist</option>
@@ -97,7 +111,8 @@
             <select name="{{ tile.field }}.repeat" id="f-{{ tile.field }}.repeat">
               {% for key, label in option_repeat.items() %}<option value="{{ key }}"{% if key == tile.repeat %} selected{% endif %}>{{ label }}</option>{% endfor %}
             </select>
-            <small class="help">Gilt nur für Musik-Aktionen „Playlist abspielen“ und „starten oder pausieren“.</small>
+            <small class="help">Zufall und Wiederholen gelten nur für „Playlist abspielen“ und „starten oder pausieren“.</small>
+            {% endif %}
           </details>
           {% endif %}
           {% endif %}

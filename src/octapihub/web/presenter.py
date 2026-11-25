@@ -430,6 +430,15 @@ _ACTION_TEXT = {
     "volume.set": "Lautstärke setzen",
     "volume.up": "Lauter",
     "volume.down": "Leiser",
+    "light.toggle": "Ein/Aus umschalten",
+    "light.on": "Einschalten",
+    "light.off": "Ausschalten",
+    "light.brighter": "Heller",
+    "light.darker": "Dunkler",
+    "light.color": "Farbe setzen",
+    "light.color.next": "Nächste Farbe",
+    "scene.next": "Nächste Szene",
+    "scene.previous": "Vorherige Szene",
 }
 _KIND_TEXT = {"hue": "Hue-Licht", "music": "Musik"}
 
@@ -684,6 +693,7 @@ class FaceTile:
     target: str = ""
     shuffle: str = ""
     repeat: str = ""
+    group: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -743,6 +753,7 @@ def build_cube_tiles(
                     target=form.get(f"{field}.target", ""),
                     shuffle=form.get(f"{field}.shuffle", ""),
                     repeat=form.get(f"{field}.repeat", ""),
+                    group=form.get(f"{field}.group", ""),
                 )
             )
         if is_joystick:

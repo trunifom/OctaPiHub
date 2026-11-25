@@ -406,3 +406,61 @@ def test_client_translates_invalid_json_and_oversized_responses(
     state.response_body = b"[" + b"1," * 600_000 + b"1]"
     with pytest.raises(HueBridgeError, match="size limit"):
         asyncio.run(_client(port).list_scenes())
+
+
+def test_hue_client_reads_groups_and_controls_a_grouped_light(
+    local_hue_server: tuple[int, _ServerState],
+) -> None:
+    port, state = local_hue_server
+    state.response_body = json.dumps(
+        {
+            "data": [
+                {
+                    "id": "room-1",
+                    "metadata": {"name": "Kueche"},
+                    "services": [
+                        {"rid": "light-svc", "rtype": "light"},
+                        {"rid": "gl-1", "rtype": "grouped_light"},
+                    ],
+                    "on": {"on": True},
+                },
+                {"id": "no-group", "metadata": {"name": "X"}, "services": []},
+                "garbage",
+            ],
+            "errors": [],
+        }
+    ).encode()
+    client = _client(port, request_interval=0)
+
+    async def exercise() -> tuple[object, object]:
+        groups = await client.list_groups()
+        await client.set_group("gl/1", {"on": {"on": False}})
+        return groups, await client.group_is_on("gl-1")
+
+    groups, is_on = asyncio.run(exercise())
+    assert [(g.id, g.name) for g in groups if g.kind == "room"] == [("gl-1", "Kueche")]  # type: ignore[attr-defined]
+    assert [g.name for g in groups if g.kind == "home"] == ["Alle Lampen"]  # type: ignore[attr-defined]
+    assert is_on is True
+    paths = [r.path for r in state.requests]
+    assert paths[:3] == [
+        "/clip/v2/resource/bridge_home",
+        "/clip/v2/resource/room",
+        "/clip/v2/resource/zone",
+    ]
+    put = next(r for r in state.requests if r.method == "PUT")
+    assert put.path == "/clip/v2/resource/grouped_light/gl%2F1"
+    assert json.loads(put.body) == {"on": {"on": False}}
+    with pytest.raises(ValidationError):
+        asyncio.run(client.set_group(" ", {}))
+
+
+def test_hue_client_scene_carries_its_room(local_hue_server: tuple[int, _ServerState]) -> None:
+    port, state = local_hue_server
+    state.response_body = json.dumps(
+        {
+            "data": [{"id": "s1", "metadata": {"name": "Abend"}, "group": {"rid": "room-1"}}],
+            "errors": [],
+        }
+    ).encode()
+    scenes = asyncio.run(_client(port, request_interval=0).list_scenes())
+    assert scenes == (HueScene("s1", "Abend", "room-1"),)

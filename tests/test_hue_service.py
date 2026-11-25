@@ -377,7 +377,7 @@ def test_scene_refresh_caches_and_keeps_stale_list_on_failure() -> None:
 @pytest.mark.parametrize(
     ("action", "parameters", "message"),
     [
-        ("light.brightness", {"level": 0.5}, "nicht unterstützt"),
+        ("light.explode", {}, "nicht unterstützt"),
         ("scene.activate", {}, "keine Hue-Szene"),
         ("scene.activate", {"scene_id": 5}, "keine Hue-Szene"),
         ("scene.activate", {"scene_id": "  "}, "keine Hue-Szene"),

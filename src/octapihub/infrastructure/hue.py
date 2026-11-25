@@ -96,6 +96,7 @@ class HueScene:
 
     id: str
     name: str
+    group_id: str = ""  # the room or zone the scene belongs to
 
 
 class _NamedHTTPSConnection(http.client.HTTPSConnection):
@@ -229,6 +230,9 @@ class _NoRedirectHandler(HTTPRedirectHandler):
         return None
 
 
+from octapihub.application.hue_lights import HueGroup  # noqa: E402
+
+
 class HueBridgeClient:
     """Async CLIP v2 client with CA and hostname verification always enabled."""
 
@@ -255,8 +259,48 @@ class HueBridgeClient:
                 raise HueBridgeError("Hue scene response contained an invalid scene ID")
             if not isinstance(name, str) or not name:
                 raise HueBridgeError("Hue scene response contained an invalid scene name")
-            scenes.append(HueScene(scene_id, name))
+            group = item.get("group")
+            group_id = group.get("rid") if isinstance(group, dict) else None
+            scenes.append(HueScene(scene_id, name, group_id if isinstance(group_id, str) else ""))
         return tuple(scenes)
+
+    async def list_groups(self) -> tuple[HueGroup, ...]:
+        """Rooms, zones and the whole home with the grouped-light resource that controls them."""
+        found: list[HueGroup] = []
+        for kind, path in (
+            ("home", "/clip/v2/resource/bridge_home"),
+            ("room", "/clip/v2/resource/room"),
+            ("zone", "/clip/v2/resource/zone"),
+        ):
+            response = await self._request("GET", path)
+            data = response.get("data")
+            if not isinstance(data, list):
+                raise HueBridgeError("Hue group response did not contain a data array")
+            for item in data:
+                group = _parse_group(kind, item)
+                if group is not None:
+                    found.append(group)
+        return tuple(found)
+
+    async def set_group(self, group_id: str, body: dict[str, object]) -> None:
+        """Send a command to a grouped light (on/off, brightness, colour)."""
+        if not isinstance(group_id, str) or not group_id.strip():
+            raise ValidationError("Hue group ID must not be empty")
+        await self._request(
+            "PUT", f"/clip/v2/resource/grouped_light/{quote(group_id, safe='')}", body
+        )
+
+    async def group_is_on(self, group_id: str) -> bool | None:
+        """Whether any light of the group is on (``None`` if the bridge does not say)."""
+        response = await self._request(
+            "GET", f"/clip/v2/resource/grouped_light/{quote(group_id, safe='')}"
+        )
+        data = response.get("data")
+        if not isinstance(data, list) or not data or not isinstance(data[0], dict):
+            return None
+        state = data[0].get("on")
+        value = state.get("on") if isinstance(state, dict) else None
+        return value if isinstance(value, bool) else None
 
     async def recall_scene(self, scene_id: str) -> None:
         """Activate a scene by resource ID."""
@@ -322,6 +366,31 @@ class HueActionPlugin:
         if not isinstance(scene_id, str):
             raise ValidationError("Hue scene action requires a string scene_id")
         await self._client.recall_scene(scene_id)
+
+
+def _parse_group(kind: str, item: object) -> HueGroup | None:
+    if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+        return None
+    services = item.get("services")
+    light = next(
+        (
+            s["rid"]
+            for s in (services if isinstance(services, list) else [])
+            if isinstance(s, dict)
+            and s.get("rtype") == "grouped_light"
+            and isinstance(s.get("rid"), str)
+        ),
+        None,
+    )
+    if light is None:
+        return None
+    metadata = item.get("metadata")
+    name = metadata.get("name") if isinstance(metadata, dict) else None
+    if kind == "home":
+        name = "Alle Lampen"
+    if not isinstance(name, str) or not name:
+        return None
+    return HueGroup(light, name, kind, item["id"])
 
 
 def _validate_host(host: str) -> None:

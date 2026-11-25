@@ -115,6 +115,33 @@
 
   <section class="panel">
     <div class="panel-head">
+      <h2><span class="step-no">4</span> Lampen und Räume</h2>
+      <p class="muted">Damit können Würfelseiten Licht ein- und ausschalten, heller oder dunkler machen, die Farbe wechseln oder die nächste Szene wählen. Probieren Sie es hier aus.</p>
+    </div>
+    {% if hue_groups %}
+    <ul class="scene-list">
+      {% for group in hue_groups %}
+      <li class="scene scene-group">
+        <div class="scene-info"><strong>{{ group.name }}</strong><small class="muted">{{ {'home': 'Alle Lampen im Haus', 'room': 'Raum', 'zone': 'Zone'}[group.kind] }}</small></div>
+        <div class="btn-row">
+          {% for op, label in [('on', 'Ein'), ('off', 'Aus'), ('brighter', 'Heller'), ('darker', 'Dunkler'), ('color.next', 'Nächste Farbe'), ('scene.next', 'Nächste Szene')] %}
+          <button type="submit" name="action" value="light:{{ op }}:{{ group.id }}" class="btn btn-small"{% if not writable %} disabled{% endif %}>{{ label }}</button>
+          {% endfor %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">
+      <span class="empty-ico">{{ m.icon('bulb') }}</span>
+      <h3>Noch keine Räume geladen</h3>
+      <p>Klicken Sie oben auf „Szenen laden“; dabei werden auch die Räume gelesen.</p>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
       <h2>Verbindung trennen</h2>
       <p class="muted">Der gespeicherte Schlüssel wird gelöscht. Danach schalten die Würfel kein Licht mehr, bis Sie neu verbinden.</p>
     </div>

@@ -10,6 +10,14 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import NoReturn, Protocol
 
+from octapihub.application.hue_lights import (
+    COLOR_CYCLE,
+    LIGHT_ACTION_NAMES,
+    HueGroup,
+    cycle_index,
+    default_group,
+    simple_body,
+)
 from octapihub.core.config import HueConfig
 from octapihub.core.errors import (
     HueBridgeError,
@@ -34,6 +42,9 @@ class SceneInfo(Protocol):
     @property
     def name(self) -> str: ...
 
+    @property
+    def group_id(self) -> str: ...
+
 
 class HueGateway(Protocol):
     """Operations the application needs from a paired bridge."""
@@ -41,6 +52,12 @@ class HueGateway(Protocol):
     async def list_scenes(self) -> Sequence[SceneInfo]: ...
 
     async def recall_scene(self, scene_id: str) -> None: ...
+
+    async def list_groups(self) -> Sequence[HueGroup]: ...
+
+    async def set_group(self, group_id: str, body: dict[str, object]) -> None: ...
+
+    async def group_is_on(self, group_id: str) -> bool | None: ...
 
 
 class SecretStore(Protocol):
@@ -72,6 +89,7 @@ class HueScene:
 
     id: str
     name: str
+    group_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +147,8 @@ class HueService:
         self._gateway: HueGateway | None = None
         self._gateway_error: OctaPiHubError | None = None
         self._scenes: tuple[HueScene, ...] = ()
+        self._groups: tuple[HueGroup, ...] = ()
+        self._cycle: dict[str, int] = {}
         self._scenes_checked_at: datetime | None = None
         self._last_error: str | None = None
         self._last_error_code: str | None = None
@@ -163,6 +183,11 @@ class HueService:
         """Last successfully read scenes (possibly stale; see ``scenes_checked_at``)."""
         return self._scenes
 
+    @property
+    def groups(self) -> tuple[HueGroup, ...]:
+        """Rooms, zones and the whole home (possibly stale or empty before the first refresh)."""
+        return self._groups
+
     # ----- lifecycle -----
 
     async def start(self) -> None:
@@ -175,6 +200,8 @@ class HueService:
         async with self._lock:
             self._config = config
             self._scenes = ()
+            self._groups = ()
+            self._cycle = {}
             self._scenes_checked_at = None
             await self._load()
 
@@ -231,13 +258,36 @@ class HueService:
         except Exception as exc:  # noqa: BLE001 - keep the previous scene list on any failure
             self._record(exc)
             _raise_project_error(exc)
-        self._scenes = tuple(HueScene(scene.id, scene.name) for scene in found)
+        self._scenes = tuple(
+            HueScene(scene.id, scene.name, getattr(scene, "group_id", "") or "") for scene in found
+        )
         self._scenes_checked_at = self._clock()
         self._clear_error()
+        await self._refresh_groups_quietly(gateway)
         return self._scenes
+
+    async def refresh_groups(self) -> tuple[HueGroup, ...]:
+        """Read rooms, zones and the whole home; the previous list is kept on failure."""
+        gateway = self._require_gateway()
+        try:
+            self._groups = tuple(await gateway.list_groups())
+        except Exception as exc:  # noqa: BLE001 - keep the previous list on any failure
+            self._record(exc)
+            _raise_project_error(exc)
+        return self._groups
+
+    async def _refresh_groups_quietly(self, gateway: HueGateway) -> None:
+        """Groups are optional for scenes: a bridge or fake without them must not fail this."""
+        try:
+            self._groups = tuple(await gateway.list_groups())
+        except Exception:  # noqa: BLE001 - scenes were read successfully; groups can be retried
+            logger.warning("Hue groups could not be read", exc_info=False)
 
     async def execute(self, action: str, parameters: Mapping[str, object]) -> None:
         """Run one configured action (plugin contract)."""
+        if action in LIGHT_ACTION_NAMES - {"scene.activate"}:
+            await self._execute_light(action, parameters)
+            return
         if action != "scene.activate":
             raise ValidationError(
                 "Unsupported Hue action",
@@ -256,6 +306,75 @@ class HueService:
             self._record(exc)
             raise
         self._clear_error()
+
+    # ----- light control -----
+
+    async def _execute_light(self, action: str, parameters: Mapping[str, object]) -> None:
+        """Run a group action: on/off, brightness, colour, or the next/previous scene."""
+        gateway = self._require_gateway()
+        try:
+            if action in ("scene.next", "scene.previous"):
+                await self._step_scene(gateway, action, parameters)
+            else:
+                group = await self._resolve_group(gateway, parameters)
+                if action == "light.color.next":
+                    index = cycle_index(self._cycle.get(group.id, -1), len(COLOR_CYCLE), 1)
+                    self._cycle[group.id] = index
+                    body = simple_body("light.color", {"color": COLOR_CYCLE[index]}, None)
+                else:
+                    on = await gateway.group_is_on(group.id) if action == "light.toggle" else None
+                    body = simple_body(action, parameters, on)
+                await gateway.set_group(group.id, body)
+        except Exception as exc:  # noqa: BLE001 - record for the interface, then re-raise typed
+            self._record(exc)
+            _raise_project_error(exc)
+        self._clear_error()
+
+    async def _resolve_group(
+        self, gateway: HueGateway, parameters: Mapping[str, object]
+    ) -> HueGroup:
+        if not self._groups:
+            self._groups = tuple(await gateway.list_groups())
+        wanted = parameters.get("group")
+        if wanted not in (None, ""):
+            if not isinstance(wanted, str):
+                raise ValidationError(
+                    "Hue group must be a string", user_message="Die Lampengruppe ist ungültig."
+                )
+            for group in self._groups:
+                if group.id == wanted:
+                    return group
+            raise ValidationError(
+                "Unknown Hue group",
+                user_message="Diese Lampengruppe gibt es nicht (mehr). Laden Sie die Gruppen neu.",
+            )
+        chosen = default_group(self._groups)
+        if chosen is None:
+            raise ValidationError(
+                "No Hue group chosen",
+                user_message="Bitte einen Raum oder „Alle Lampen“ wählen.",
+            )
+        return chosen
+
+    async def _step_scene(
+        self, gateway: HueGateway, action: str, parameters: Mapping[str, object]
+    ) -> None:
+        group = await self._resolve_group(gateway, parameters)
+        if not self._scenes:
+            found = await gateway.list_scenes()
+            self._scenes = tuple(
+                HueScene(s.id, s.name, getattr(s, "group_id", "") or "") for s in found
+            )
+        scenes = sorted(
+            (s for s in self._scenes if s.group_id and s.group_id == group.room_id),
+            key=lambda s: s.name.casefold(),
+        )
+        key = f"scene:{group.id}"
+        index = cycle_index(
+            self._cycle.get(key, -1), len(scenes), 1 if action == "scene.next" else -1
+        )
+        self._cycle[key] = index
+        await gateway.recall_scene(scenes[index].id)
 
     # ----- internals -----
 

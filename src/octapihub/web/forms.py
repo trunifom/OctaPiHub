@@ -8,6 +8,7 @@ import re
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 
+from octapihub.application import hue_lights
 from octapihub.core.config import (
     CUBE_FACES,
     HOLDER_FACE,
@@ -451,9 +452,73 @@ def common_music_target(config: AppConfig, source: str) -> str:
     return targets.pop() if len(targets) == 1 else ""
 
 
+HUE_PREFIX = "hue:"
+# catalog name -> (action, fixed parameters, German label)
+LIGHT_CONTROLS: dict[str, tuple[str, dict[str, object], str]] = {
+    "toggle": ("light.toggle", {}, "Ein/Aus umschalten"),
+    "on": ("light.on", {}, "Einschalten"),
+    "off": ("light.off", {}, "Ausschalten"),
+    "brighter": ("light.brighter", {}, "Heller"),
+    "darker": ("light.darker", {}, "Dunkler"),
+    "color.next": ("light.color.next", {}, "Nächste Farbe"),
+    "scene.next": ("scene.next", {}, "Nächste Szene"),
+    "scene.previous": ("scene.previous", {}, "Vorherige Szene"),
+    **{
+        f"color.{name}": ("light.color", {"color": name}, label)
+        for name, (label, _value) in hue_lights.COLORS.items()
+    },
+}
+
+
+def hue_choice_of(mapping: RuleMappingConfig | None) -> str | None:
+    """Catalog value (``hue:...``) if the mapping is exactly one editable light action."""
+    if mapping is None or len(mapping.actions) != 1 or mapping.actions[0].kind != EDITABLE_KIND:
+        return None
+    action = mapping.actions[0]
+    params = {k: v for k, v in action.parameters.items() if k != "group"}
+    for name, (act, fixed, _label) in LIGHT_CONTROLS.items():
+        if action.action == act and params == fixed:
+            return f"{HUE_PREFIX}{name}"
+    return None
+
+
+def hue_group_of(mapping: RuleMappingConfig | None) -> str:
+    """The lamp group stored with a light action (empty = the whole home)."""
+    if mapping is None or len(mapping.actions) != 1:
+        return ""
+    group = mapping.actions[0].parameters.get("group")
+    return group if isinstance(group, str) else ""
+
+
+def hue_choice_action(choice: str, group: str) -> dict[str, object] | None:
+    """The raw action for a ``hue:`` choice, or ``None`` if it is not a catalog value."""
+    entry = LIGHT_CONTROLS.get(choice.removeprefix(HUE_PREFIX))
+    if entry is None:
+        return None
+    parameters: dict[str, object] = dict(entry[1])
+    if group:
+        parameters["group"] = group
+    return {"kind": EDITABLE_KIND, "action": entry[0], "parameters": parameters}
+
+
+def hue_choice_options() -> list[tuple[str, list[tuple[str, str]]]]:
+    """Option groups for the light part of a face selection."""
+    controls = [
+        (f"{HUE_PREFIX}{n}", e[2])
+        for n, e in LIGHT_CONTROLS.items()
+        if "." not in n or n in ("color.next", "scene.next", "scene.previous")
+    ]
+    colours = [
+        (f"{HUE_PREFIX}{n}", e[2])
+        for n, e in LIGHT_CONTROLS.items()
+        if n.startswith("color.") and n != "color.next"
+    ]
+    return [("Licht: Steuern", controls), ("Licht: Farbe setzen", colours)]
+
+
 def choice_of(mapping: RuleMappingConfig | None) -> str | None:
-    """The editable choice of a mapping (a Hue scene ID or a ``music:`` value), else ``None``."""
-    return scene_of(mapping) or music_choice_of(mapping)
+    """The editable choice of a mapping (a Hue scene ID, ``hue:`` or ``music:`` value)."""
+    return scene_of(mapping) or hue_choice_of(mapping) or music_choice_of(mapping)
 
 
 def music_choice_action(choice: str) -> dict[str, object] | None:
@@ -497,6 +562,9 @@ def music_choice_options(playlists: Mapping[str, str]) -> list[tuple[str, list[t
 
 def choice_label(choice: str, scenes: Mapping[str, str], playlists: Mapping[str, str]) -> str:
     """Readable name of a choice for the editor."""
+    if choice.startswith(HUE_PREFIX):
+        entry = LIGHT_CONTROLS.get(choice.removeprefix(HUE_PREFIX))
+        return f"Licht: {entry[2]}" if entry else choice
     if not choice.startswith(MUSIC_PREFIX):
         return scenes.get(choice, f"{choice} (nicht in der Liste)")
     parts = choice.removeprefix(MUSIC_PREFIX).split(":", 1)
@@ -522,6 +590,8 @@ def mapping_config_to_form(config: AppConfig) -> dict[str, str]:
                 values[mapping_field(index, face)] = ""
             elif (choice := choice_of(mapping)) is not None:
                 values[mapping_field(index, face)] = choice
+                if choice.startswith(HUE_PREFIX):
+                    values[f"{mapping_field(index, face)}.group"] = hue_group_of(mapping)
                 if choice.startswith(MUSIC_PREFIX):
                     for key, value in music_options_of(mapping).items():
                         values[f"{mapping_field(index, face)}.{key}"] = value
@@ -542,6 +612,7 @@ def parse_mapping_form(
     known_scene_ids: Collection[str],
     known_playlist_ids: Collection[str] = (),
     known_target_ids: Collection[str] = (),
+    known_group_ids: Collection[str] = (),
 ) -> MappingResult:
     """Build the new mapping list from the submitted scene choices.
 
@@ -553,6 +624,7 @@ def parse_mapping_form(
     known = set(known_scene_ids)
     playlists = set(known_playlist_ids)
     targets = set(known_target_ids)
+    groups = set(known_group_ids)
     errors: dict[str, str] = {}
     result: list[dict[str, object]] = []
     for index, (name, faces) in enumerate(mapping_sources(config)):
@@ -571,6 +643,20 @@ def parse_mapping_form(
                 continue
             if len(chosen) > MAX_SCENE_ID_LENGTH or any(ord(c) < 32 for c in chosen):
                 errors[field] = "Diese Auswahl ist ungültig."
+                continue
+            if chosen.startswith(HUE_PREFIX):
+                group = form.get(f"{field}.group", "").strip()
+                if group and group != hue_group_of(existing) and group not in groups:
+                    errors[f"{field}.group"] = (
+                        "Diese Lampengruppe ist nicht geladen. Laden Sie die Gruppen auf der "
+                        "Seite Licht."
+                    )
+                    continue
+                light = hue_choice_action(chosen, group)
+                if light is None:
+                    errors[field] = "Diese Auswahl ist ungültig."
+                    continue
+                result.append({"cube": name, "face": face, "actions": [light]})
                 continue
             if chosen.startswith(MUSIC_PREFIX):
                 action = music_choice_action(chosen)

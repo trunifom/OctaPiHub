@@ -38,6 +38,7 @@ from octapihub.infrastructure.sense_hat import create_sense_hat_port
 from octapihub.infrastructure.sqlite_outbox import SQLiteOutbox
 from octapihub.infrastructure.sqlite_sense_hat_history import SQLiteSenseHatHistory
 
+LIGHT_ACTION_TTL_SECONDS = 120.0  # a switched light must not change minutes later
 MUSIC_ACTION_TTL_SECONDS = 60.0  # a pressed play button must not start music minutes later
 
 
@@ -129,7 +130,7 @@ def build_cube_service(
             RuleEngine(settings),
             SQLiteOutbox(directory / "state.sqlite3"),
             registry,
-            ttl_by_kind={"music": MUSIC_ACTION_TTL_SECONDS},
+            ttl_by_kind={"music": MUSIC_ACTION_TTL_SECONDS, "hue": LIGHT_ACTION_TTL_SECONDS},
         )
 
     return CubeService(config, make_runtime, make_dispatcher)
