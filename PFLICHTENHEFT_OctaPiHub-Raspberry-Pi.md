@@ -68,6 +68,7 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 | F-R7 | K | Joystick des Sense HAT und Weboberfläche können dieselben Aktionen auslösen. |
 | F-R8 | M | Lichtsteuerung über Hue-Gruppen: Ein/Aus/Umschalten, Heller/Dunkler, Farbe setzen, nächste Farbe, nächste/vorherige Szene eines Raumes; Raum je Seite wählbar. Implementiert, nur gegen Fakes getestet. |
 | F-R9 | M | Jede Würfelseite, die Halterung und jede Joystick-Richtung hat einen frei wählbaren Namen und eine Farbe; die Oberfläche zeigt je Seite im Klartext, was genau ausgelöst wird, und markiert die gerade aktive Seite. |
+| F-R11 | M | Smart-Home-Aktionen für andere Systeme: Webhook, MQTT-Nachricht und Home-Assistant-Dienst (damit Matter, Zigbee, Google Home); Passwörter und Token nur in `secrets.env`; nur sicher nicht Zugestelltes wird wiederholt. Mit Fakes getestet, nicht mit echten Geräten. |
 | F-R10 | M | Würfel lassen sich in der Weboberfläche per Bluetooth-Suche finden, hinzufügen und entfernen (1 bis 3); die Übersicht zeigt, wie viele verbunden sind. Die Belegung eines Würfels ist exportier- und auf einen anderen Würfel importierbar. Suche nur mit Fake geprüft. |
 
 ### 4.3 Licht – Philips Hue (F-H)
@@ -100,7 +101,7 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 | F-M14 | M | Je Playlist **und je Würfelseite** einstellbar: Zufall (an/aus), Wiederholen (aus / ganze Playlist / einzelner Titel) und Wiedergabegerät; zusätzlich ein Standardgerät je Würfel. Gilt für lokale Quellen und YouTube/YouTube Music über mpv; auf Cast-Geräten nicht für YouTube-Playlists (Gerät spielt sie selbst). Spotify nicht möglich. |
 | F-M15 | S | Halterung (Würfel senkrecht, Seite 0): empfohlene Belegung „Wiedergabe stoppen“ für Musik, keine Aktion für Licht. |
 
-**Geplant (nicht implementiert):** weitere Smart-Home-Plugins (z. B. allgemeine Webhooks für Home Assistant, Shelly, Tasmota, WLED), Bilder oder Dashboards auf Nest-Hub-Displays, Gerätegruppen.
+**Geplant (nicht implementiert):** Bilder oder Dashboards auf Nest-Hub-Displays, Gerätegruppen, direkte Matter- und CoAP-Anbindung (heute über Home Assistant, Webhook oder MQTT).
 
 **Stand F-M:** F-M1, F-M2, F-M3 (inkl. Bluetooth-Box), F-M4, F-M5, F-M7, F-M8 (Fehlerisolation, klare Meldung, kein Absturz; kein „Wecken“ eines schlafenden Geräts), F-M10 bis F-M13 sind **implementiert und mit Fakes getestet**; **keine** Prüfung mit echtem mpv, Google-Lautsprecher, Nest Hub oder Bluetooth-Box. F-M6 (Spotify) ist **nicht** umgesetzt: Spotify-Links werden erkannt und mit `CH-MUS-003` abgelehnt. F-M9 ist durch mehrere wählbare Ziele teilweise erfüllt (keine Gruppen, nicht mehrere gleichzeitig). Verzögerte Schritte (F-R3) gibt es nicht.
 
@@ -155,8 +156,10 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 | F-K7 | M | Weboberfläche: Export und Import von Einstellungen (Musik, Playlists, Zuordnung, Sense HAT, Hue-Einstellungen ohne Schlüssel) als JSON; Import zuerst prüfen, dann alles oder nichts übernehmen, mit Sicherungskopie der bisherigen Datei. |
 | F-K8 | S | Sensordaten (Verlauf) als CSV herunterladen (Messgröße, Zeitraum, Mittelwerte oder Rohwerte). |
 | F-K9 | M | Protokollierung: Konsole/journald, letzte Meldungen in der Oberfläche, rotierende Logdatei mit Größenbegrenzung, einstellbare Ausführlichkeit, Zugangsdaten unkenntlich, Download ohne Geheimnisse. |
+| F-K10 | M | Fehlerbehandlung: stabile Fehlercodes mit Katalog (Bedeutung, Abhilfe), globale Fehlerseite mit Kennung, abgesicherter Start je Dienst, Fallback auf die neueste gültige Sicherung der Konfiguration, `--check`, Gesundheitsstatus `/healthz`, Protokollierung unbehandelter Ausnahmen. |
+| F-U9 | M | Eingebaute Hilfe in der Oberfläche (Schnellstart, Handbuch, Installation, Smart Home, Fehlersuche, Sicherheit, Glossar, FAQ, Fehlercodes) mit Suche und **Hilfe-Button an jedem Eingabefeld**. |
 
-**Stand F-K:** F-K1 bis F-K4, F-K6 bis F-K9 sind implementiert und getestet (Fakes/Temp-Dateien). F-K5 (Backup-Skript) ist nur als Anleitung (`tar`, `deploy/INSTALL.md` Abschnitt 10) und als Import-Sicherungskopie vorhanden, nicht als Skript. Importiert wird nur, was zu dieser Installation passt; die Würfelliste und Schlüssel werden bewusst nie übertragen.
+**Stand F-K:** F-K1 bis F-K4, F-K6 bis F-K10 sind implementiert und getestet (Fakes/Temp-Dateien). F-K5 (Backup-Skript) ist nur als Anleitung (`tar`, `deploy/INSTALL.md` Abschnitt 10) und als Import-Sicherungskopie vorhanden, nicht als Skript. Importiert wird nur, was zu dieser Installation passt; die Würfelliste und Schlüssel werden bewusst nie übertragen.
 
 Schema v3 bereitet die Sense-HAT-Einstellungen vor: Temperatur, Feuchte und Druck
 sind standardmäßig aktiviert; IMU- und Farbsensorgruppen bleiben deaktiviert, sind
