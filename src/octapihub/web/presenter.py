@@ -11,6 +11,7 @@ from datetime import UTC, datetime, tzinfo
 
 from octapihub.application.ble_runtime import CubeConnectionState, CubeRuntimeStatus
 from octapihub.application.hue_service import HueState, HueStatus
+from octapihub.application.matrix.canvas import BLACK, Frame
 from octapihub.application.sense_hat import (
     ColorSensorReading,
     Orientation,
@@ -887,3 +888,45 @@ def build_log_rows(lines: Sequence[LogLine], tz: tzinfo) -> tuple[LogRow, ...]:
         )
         for line in lines
     )
+
+
+# ---------- LED matrix ----------
+
+
+def frame_to_hex(frame: Frame) -> str:
+    """Compact form of a frame for the browser: 64 pixels as ``rrggbb`` (384 characters)."""
+    return "".join(f"{r:02x}{g:02x}{b:02x}" for r, g, b in frame)
+
+
+def frame_to_fills(frame: Frame) -> list[str]:
+    """CSS colours per pixel for server-rendered LED grids; an empty string means 'off'."""
+    return [
+        "" if pixel == BLACK else f"#{pixel[0]:02x}{pixel[1]:02x}{pixel[2]:02x}" for pixel in frame
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class ViewCard:
+    """One view in the gallery."""
+
+    id: str
+    label: str
+    description: str
+    controls: str
+    enabled: bool
+    active: bool
+    thumbnail: list[str]
+
+
+_DISPLAY_STATE_TEXT = {
+    "running": ("ok", "Läuft"),
+    "stopped": ("off", "Angehalten"),
+    "disabled": ("off", "Ausgeschaltet"),
+    "unavailable": ("warn", "Sense HAT nicht erreichbar"),
+    "error": ("error", "Störung"),
+}
+
+
+def describe_display_state(state: str) -> tuple[str, str]:
+    """(level, text) for the matrix state."""
+    return _DISPLAY_STATE_TEXT.get(state, ("off", state))

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import copy
 import math
+import re
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 
 from octapihub.core.config import (
+    MATRIX_VIEW_IDS,
     AppConfig,
     HueConfig,
     RuleMappingConfig,
@@ -69,6 +71,33 @@ VERSION_LABELS: Mapping[str, str] = {
     "v1": "Sense HAT v1 (ohne Farbsensor)",
     "v2": "Sense HAT v2 (mit Farbsensor)",
 }
+BRIGHTNESS_LABELS: Mapping[int, str] = {
+    5: "5 % (sehr dunkel)",
+    10: "10 %",
+    20: "20 %",
+    30: "30 %",
+    40: "40 %",
+    50: "50 %",
+    60: "60 %",
+    70: "70 %",
+    80: "80 %",
+    90: "90 %",
+    100: "100 % (volle Helligkeit)",
+}
+CYCLE_LABELS: Mapping[int, str] = {
+    0: "Aus (nur per Joystick wechseln)",
+    10: "alle 10 Sekunden",
+    20: "alle 20 Sekunden",
+    30: "alle 30 Sekunden",
+    60: "jede Minute",
+    120: "alle 2 Minuten",
+    300: "alle 5 Minuten",
+}
+NIGHT_MODE_LABELS: Mapping[str, str] = {
+    "off": "Anzeige ausschalten",
+    "dim": "Anzeige stark dimmen",
+}
+_TIME_FIELD = re.compile(r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
 GAIN_LABELS: Mapping[int, str] = {1: "1× (hell)", 4: "4×", 16: "16×", 60: "60× (dunkel)"}
 ROTATION_LABELS: Mapping[int, str] = {0: "0°", 90: "90°", 180: "180°", 270: "270°"}
 
@@ -101,6 +130,17 @@ def config_to_form(config: SenseHatConfig) -> dict[str, str]:
     form["matrix.rotation"] = str(matrix["rotation"])
     form["matrix.low_light"] = _flag(matrix["low_light"])
     form["matrix.ambient_brightness"] = _flag(matrix["ambient_brightness"])
+    form["matrix.brightness"] = str(matrix["brightness"])
+    form["matrix.default_view"] = str(matrix["default_view"])
+    enabled_views = matrix["views"]
+    assert isinstance(enabled_views, list)
+    for view_id in MATRIX_VIEW_IDS:
+        form[f"matrix.views.{view_id}"] = _flag(view_id in enabled_views)
+    form["matrix.auto_cycle_seconds"] = str(matrix["auto_cycle_seconds"])
+    form["matrix.night_enabled"] = _flag(matrix["night_enabled"])
+    form["matrix.night_start"] = str(matrix["night_start"])
+    form["matrix.night_end"] = str(matrix["night_end"])
+    form["matrix.night_mode"] = str(matrix["night_mode"])
     form["joystick.enabled"] = _flag(_table(table["joystick"])["enabled"])
     for sensor_id, raw in _table(table["sensors"]).items():
         sensor = _table(raw)
@@ -132,6 +172,31 @@ def parse_form(form: Mapping[str, str], current: SenseHatConfig) -> FormResult:
     matrix["rotation"] = _integer_choice(form, "matrix.rotation", set(ROTATION_LABELS), errors)
     matrix["low_light"] = _checked(form, "matrix.low_light")
     matrix["ambient_brightness"] = _checked(form, "matrix.ambient_brightness")
+    matrix["brightness"] = _integer_choice(
+        form, "matrix.brightness", set(BRIGHTNESS_LABELS), errors
+    )
+    chosen_views = [v for v in MATRIX_VIEW_IDS if _checked(form, f"matrix.views.{v}")]
+    if not chosen_views:
+        errors["matrix.views"] = "Mindestens eine Ansicht muss aktiviert sein."
+    matrix["views"] = chosen_views
+    default_view = form.get("matrix.default_view", "")
+    if chosen_views and default_view not in chosen_views:
+        errors["matrix.default_view"] = "Die Startansicht muss eine aktivierte Ansicht sein."
+    matrix["default_view"] = (
+        default_view
+        if default_view in chosen_views
+        else (chosen_views[0] if chosen_views else "overview")
+    )
+    matrix["auto_cycle_seconds"] = _integer_choice(
+        form, "matrix.auto_cycle_seconds", set(CYCLE_LABELS), errors
+    )
+    matrix["night_enabled"] = _checked(form, "matrix.night_enabled")
+    for key in ("night_start", "night_end"):
+        text = form.get(f"matrix.{key}", "").strip()
+        if not _TIME_FIELD.fullmatch(text):
+            errors[f"matrix.{key}"] = "Bitte eine Uhrzeit wie 22:00 eingeben."
+        matrix[key] = text if _TIME_FIELD.fullmatch(text) else "22:00"
+    matrix["night_mode"] = _choice(form, "matrix.night_mode", set(NIGHT_MODE_LABELS), errors)
     _table(table["joystick"])["enabled"] = _checked(form, "joystick.enabled")
     for sensor_id in SENSOR_IDS:
         sensor = _table(_table(table["sensors"])[sensor_id])

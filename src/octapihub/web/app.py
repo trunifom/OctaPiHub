@@ -25,6 +25,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from octapihub.application.cube_service import CubeService
 from octapihub.application.hue_service import HueService
 from octapihub.application.matrix.service import MatrixDisplayService
+from octapihub.application.matrix.views import VIEWS
+from octapihub.application.sense_hat import JoystickAction, JoystickDirection
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.settings import SettingsManager
 from octapihub.core.errors import (
@@ -42,6 +44,7 @@ from octapihub.web.presenter import (
     CHARTABLE_GROUPS,
     GROUP_INFO,
     SECTIONS,
+    ViewCard,
     battery_warnings,
     build_cube_tiles,
     build_cube_views,
@@ -54,8 +57,11 @@ from octapihub.web.presenter import (
     chart_groups,
     correction_active,
     cube_summary,
+    describe_display_state,
     describe_hardware,
     display_unit,
+    frame_to_fills,
+    frame_to_hex,
     local_time_text,
     overall_level,
 )
@@ -145,6 +151,47 @@ async def _read_form(request: Request) -> tuple[dict[str, str], str]:
     supplied = fields.pop("token", "") or request.headers.get("x-octapihub-token", "")
     fields.pop("_", None)
     return fields, supplied
+
+
+async def display_stream(
+    backend: WebBackend,
+    is_disconnected: Callable[[], Awaitable[bool]],
+    *,
+    interval: float = 0.25,
+    max_events: int | None = None,
+) -> AsyncIterator[str]:
+    """SSE messages with the current LED frame whenever it (or the view) changes."""
+    yield "retry: 3000\n\n"
+    last = ""
+    idle = 0.0
+    sent = 0
+    while not await is_disconnected():
+        matrix = backend.matrix
+        if matrix is not None:
+            status = matrix.status
+            payload = json.dumps(
+                {
+                    "view": status.view_id,
+                    "label": VIEWS[status.view_id].label,
+                    "state": status.state,
+                    "on": status.display_on,
+                    "night": status.night,
+                    "brightness": status.brightness,
+                    "frame": frame_to_hex(status.frame),
+                },
+                separators=(",", ":"),
+            )
+            if payload != last:
+                last, idle = payload, 0.0
+                sent += 1
+                yield f"event: display\ndata: {payload}\n\n"
+                if max_events is not None and sent >= max_events:
+                    return
+        if idle >= 15.0:
+            idle = 0.0
+            yield ": keep-alive\n\n"
+        await asyncio.sleep(interval)
+        idle += interval
 
 
 class LiveView:
@@ -401,6 +448,127 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             headers={"Content-Disposition": f'attachment; filename="{name}"'},
         )
 
+    def display_context() -> dict[str, Any]:
+        matrix = backend.matrix
+        if matrix is None:
+            return {"matrix_active": False, "live": False}
+        status = matrix.status
+        enabled = set(matrix.controller.views)
+        cards = [
+            ViewCard(
+                view.id,
+                view.label,
+                view.description,
+                view.controls,
+                view.id in enabled,
+                view.id == status.view_id,
+                frame_to_fills(matrix.thumbnail(view.id)),
+            )
+            for view in VIEWS.values()
+        ]
+        level, text = describe_display_state(status.state)
+        sense = backend.sense_hat
+        return {
+            "live": False,
+            "matrix_active": True,
+            "matrix_status": status,
+            "matrix_level": level,
+            "matrix_text": text,
+            "matrix_fills": frame_to_fills(status.frame),
+            "view_cards": cards,
+            "brightness_labels": forms.BRIGHTNESS_LABELS,
+            "current_view_label": VIEWS[status.view_id].label,
+            "hardware_error": sense.hardware_error,
+            "hardware_error_code": sense.hardware_error_code,
+            "writable": bool(backend.token),
+            "joystick_on": backend.settings.config.sense_hat.joystick_enabled,
+        }
+
+    @app.get("/display", response_class=HTMLResponse)
+    async def display_page(request: Request) -> Response:
+        return page(request, "display.html", "display", **display_context())
+
+    @app.post("/display/control")
+    async def display_control(request: Request) -> JSONResponse:
+        fields, supplied = await _read_form(request)
+        problem = _access_problem(backend.token, supplied)
+        if problem is not None:
+            status_code, title, detail, code = problem
+            return JSONResponse(
+                {"ok": False, "title": title, "detail": detail, "code": code},
+                status_code=status_code,
+            )
+        matrix = backend.matrix
+        if matrix is None or matrix.status.state in {"disabled", "stopped"}:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "title": "Die LED-Anzeige ist nicht aktiv",
+                    "detail": "Schalten Sie sie unter Einstellungen ein.",
+                    "code": "CH-WEB-009",
+                },
+                status_code=409,
+            )
+
+        def bad(detail: str) -> JSONResponse:
+            return JSONResponse(
+                {"ok": False, "title": "Ungültige Eingabe", "detail": detail, "code": "CH-WEB-010"},
+                status_code=422,
+            )
+
+        action = fields.get("action", "")
+        value = fields.get("value", "")
+        if action == "view":
+            if not matrix.show_view(value):
+                return bad("Diese Ansicht ist nicht aktiviert.")
+        elif action == "brightness":
+            if not value.isdigit() or int(value) not in forms.BRIGHTNESS_LABELS:
+                return bad("Die Helligkeit muss eine der angebotenen Stufen sein.")
+            matrix.set_brightness(int(value))
+        elif action == "power":
+            if value not in {"on", "off"}:
+                return bad("Bitte Ein oder Aus wählen.")
+            matrix.set_display(value == "on")
+        elif action == "joystick":
+            direction, _, kind = value.partition(":")
+            try:
+                joystick = JoystickDirection(direction)
+            except ValueError:
+                return bad("Unbekannte Joystick-Richtung.")
+            if joystick in {JoystickDirection.ANY} or kind not in {"press", "long"}:
+                return bad("Unbekannte Joystick-Eingabe.")
+            state = matrix.current_state()
+            if kind == "long" and joystick is JoystickDirection.MIDDLE:
+                matrix.inject(joystick, JoystickAction.PRESSED, state)
+                matrix.inject(joystick, JoystickAction.HELD, state)
+                matrix.inject(joystick, JoystickAction.RELEASED, state)
+            elif joystick is JoystickDirection.MIDDLE:
+                matrix.inject(joystick, JoystickAction.PRESSED, state)
+                matrix.inject(joystick, JoystickAction.RELEASED, state)
+            else:
+                matrix.inject(joystick, JoystickAction.PRESSED, state)
+                matrix.inject(joystick, JoystickAction.RELEASED, state)
+        else:
+            return bad("Unbekannte Aktion.")
+        status = matrix.status
+        return JSONResponse(
+            {
+                "ok": True,
+                "view": status.view_id,
+                "label": VIEWS[status.view_id].label,
+                "display_on": status.display_on,
+                "brightness": status.brightness,
+            }
+        )
+
+    @app.get("/events/display")
+    async def display_events(request: Request) -> StreamingResponse:
+        return StreamingResponse(
+            display_stream(backend, request.is_disconnected),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
+
     @app.get("/system", response_class=HTMLResponse)
     def system_page(request: Request, level: str = "INFO") -> Response:
         return page(request, "system.html", "system", **system_context(level))
@@ -490,6 +658,13 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "version_labels": forms.VERSION_LABELS,
             "gain_labels": forms.GAIN_LABELS,
             "rotation_labels": forms.ROTATION_LABELS,
+            "brightness_labels": forms.BRIGHTNESS_LABELS,
+            "cycle_labels": forms.CYCLE_LABELS,
+            "night_mode_labels": forms.NIGHT_MODE_LABELS,
+            "view_catalog": [
+                {"id": view.id, "label": view.label, "description": view.description}
+                for view in VIEWS.values()
+            ],
             "history_path": config.history.database_path,
             "live": False,
         }

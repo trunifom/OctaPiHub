@@ -24,6 +24,7 @@ from octapihub.application.sense_hat import SenseHatMetric, SenseHatReading
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.sense_hat_worker import SenseHatSample, correct_temperature
 from octapihub.application.settings import SettingsManager
+from octapihub.composition import build_matrix_service
 from octapihub.core.config import (
     AppConfig,
     HueConfig,
@@ -34,8 +35,11 @@ from octapihub.core.config import (
 from octapihub.core.errors import HueLinkButtonError
 from octapihub.infrastructure.ble.fake import FakeTransportFactory
 from octapihub.infrastructure.ble.protocol import (
+    BATTERY_LEVEL_CHARACTERISTIC_UUID,
     ORIENTATION_CHARACTERISTIC_UUID,
+    decode_battery_level,
     decode_orientation,
+    supports_battery_read,
     supports_orientation_notifications,
 )
 from octapihub.infrastructure.fake_sense_hat import FakeSenseHat
@@ -145,7 +149,7 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
     directory = Path(tempfile.mkdtemp(prefix="octapihub-demo-"))
     base: AppConfig = parse_config(
         {
-            "schema_version": 4,
+            "schema_version": 5,
             "hue": {"enabled": True, "host": "192.168.1.20"},
             "bluetooth": {"adapter": "hci0"},
             "debounce_ms": 300,
@@ -177,6 +181,7 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
             "cubes": [
                 {"name": "Licht", "address": "AA:BB:CC:DD:EE:01", "role": "light"},
                 {"name": "Musik", "address": "AA:BB:CC:DD:EE:02", "role": "music"},
+                {"name": "Extra", "address": "AA:BB:CC:DD:EE:03", "role": "general"},
             ],
             "sense_hat": {
                 "temperature_offset_c": -RAW_HEAT_C,
@@ -204,8 +209,9 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
     )
     hue = _demo_hue(base.hue)
     cubes = _demo_cubes(base, directory, hue)
-    settings = SettingsManager(config_path, base, service, hue, cubes)
-    return WebBackend(settings, service, token, cubes, hue)
+    matrix = build_matrix_service(base, service, cubes, hue, lambda: "ok")
+    settings = SettingsManager(config_path, base, service, hue, cubes, matrix)
+    return WebBackend(settings, service, token, cubes, hue, matrix=matrix)
 
 
 class _DemoHue:
@@ -273,16 +279,26 @@ def _demo_hue(config: HueConfig) -> HueService:
 def _demo_cubes(config: AppConfig, directory: Path, hue: HueService | None = None) -> CubeService:
     """Two simulated cubes that connect instantly; no Bluetooth is used."""
     profile = DeviceProfile(
-        (CharacteristicInfo(ORIENTATION_CHARACTERISTIC_UUID, frozenset({"notify"})),)
+        (
+            CharacteristicInfo(ORIENTATION_CHARACTERISTIC_UUID, frozenset({"notify"})),
+            CharacteristicInfo(BATTERY_LEVEL_CHARACTERISTIC_UUID, frozenset({"read"})),
+        )
     )
+    factory = FakeTransportFactory(profile)
+    # Simulated battery levels so the warnings and the battery view can be tried out.
+    for address, level in zip((cube.address for cube in config.cubes), (87, 18, 6), strict=False):
+        factory.values[address] = {BATTERY_LEVEL_CHARACTERISTIC_UUID: bytes([level])}
 
     def make_runtime(settings: AppConfig) -> BleRuntime:
         return BleRuntime(
             settings,
-            FakeTransportFactory(profile),
+            factory,
             orientation_characteristic_uuid=ORIENTATION_CHARACTERISTIC_UUID,
             decode_orientation=decode_orientation,
             supports_orientation=supports_orientation_notifications,
+            battery_characteristic_uuid=BATTERY_LEVEL_CHARACTERISTIC_UUID,
+            decode_battery=decode_battery_level,
+            supports_battery=supports_battery_read,
         )
 
     def make_dispatcher(settings: AppConfig) -> OutboxDispatcher:

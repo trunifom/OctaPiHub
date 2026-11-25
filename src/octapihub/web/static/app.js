@@ -245,6 +245,86 @@
   }
   initChart();
 
+  /* ---------- LED matrix: live preview and controls ---------- */
+  function initDisplay() {
+    var root = $("#display-page");
+    if (!root) { return; }
+    var grid = $("#led-live");
+    var viewLabel = $("#display-view");
+    var stateBadge = $("#display-state");
+    var message = $("#display-msg");
+    var tokenField = $("#f-token");
+    var brightness = $("#display-brightness");
+    var circles = grid ? $$("circle.led", grid) : [];
+
+    function paint(hex) {
+      if (!grid || hex.length !== 384) { return; }
+      circles.forEach(function (circle, index) {
+        var color = hex.substr(index * 6, 6);
+        if (color === "000000") {
+          circle.setAttribute("class", "led off");
+          circle.removeAttribute("fill");
+        } else {
+          circle.setAttribute("class", "led");
+          circle.setAttribute("fill", "#" + color);
+        }
+      });
+    }
+    function say(text, isError) {
+      if (!message) { return; }
+      message.textContent = text || "";
+      message.classList.toggle("is-error", !!isError);
+    }
+    function markActive(view) {
+      $$("[data-view-card]").forEach(function (card) {
+        var active = card.getAttribute("data-view-card") === view;
+        card.classList.toggle("is-active", active);
+        if (active) { card.setAttribute("aria-current", "true"); } else { card.removeAttribute("aria-current"); }
+      });
+    }
+    function send(action, value) {
+      var body = new URLSearchParams();
+      body.set("action", action);
+      body.set("value", value);
+      var headers = { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" };
+      if (tokenField && tokenField.value) { headers["X-OctaPiHub-Token"] = tokenField.value; }
+      say("");
+      fetch("/display/control", { method: "POST", headers: headers, body: body.toString() })
+        .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
+        .then(function (result) {
+          if (!result.ok) {
+            say((result.data.title || "Fehler") + (result.data.detail ? ": " + result.data.detail : "") +
+              (result.data.code ? " (" + result.data.code + ")" : ""), true);
+            return;
+          }
+          if (result.data.label && viewLabel) { viewLabel.textContent = result.data.label; }
+          markActive(result.data.view);
+          if (brightness && result.data.brightness) { brightness.value = String(result.data.brightness); }
+        })
+        .catch(function () { say("Die Verbindung zum Gerät ist gerade nicht möglich.", true); });
+    }
+
+    root.addEventListener("click", function (event) {
+      var target = event.target.closest ? event.target.closest("[data-joy], [data-view]") : null;
+      if (!target) { return; }
+      if (target.hasAttribute("data-joy")) { send("joystick", target.getAttribute("data-joy")); }
+      else { send("view", target.getAttribute("data-view")); }
+    });
+    if (brightness) {
+      brightness.addEventListener("change", function () { send("brightness", brightness.value); });
+    }
+    if (!("EventSource" in window)) { return; }
+    var source = new EventSource("/events/display");
+    source.addEventListener("display", function (event) {
+      var data;
+      try { data = JSON.parse(event.data); } catch (e) { return; }
+      paint(data.frame);
+      if (viewLabel) { viewLabel.textContent = data.label; }
+      markActive(data.view);
+    });
+  }
+  initDisplay();
+
   /* ---------- settings: remember the token for this browser tab only ---------- */
   var token = $("#f-token");
   var store = safeStorage("sessionStorage");

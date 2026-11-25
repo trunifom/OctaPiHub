@@ -144,20 +144,75 @@
 
   <section class="panel">
     <div class="panel-head">
-      <h2>LED-Anzeige und Joystick</h2>
-      <p class="muted"><span class="pill pill-waiting">Noch ohne Funktion</span> Diese Einstellungen werden bereits gespeichert, aber erst in einer späteren Version angewendet.</p>
+      <h2>LED-Anzeige</h2>
+      <p class="muted">Die 8×8-Leuchtpunkte des Sense HAT zeigen Status, Messwerte und mehr. Mit dem Joystick wechseln Sie die Ansicht. Live ansehen und ausprobieren können Sie sie auf der Seite <a href="/display">Anzeige</a>.</p>
     </div>
-    {{ m.toggle('matrix.enabled', form, 'LED-Anzeige verwenden', 'Die 8×8-Leuchtpunkte zeigen später den Status an.') }}
+    {{ m.toggle('matrix.enabled', form, 'LED-Anzeige verwenden', 'Wenn aus, bleiben die Leuchtpunkte dunkel.') }}
+    {{ m.toggle('joystick.enabled', form, 'Joystick verwenden', 'Mit dem kleinen Steuerknüppel wechseln Sie die Ansicht und stellen die Helligkeit ein.') }}
     <div class="fields-2">
+      <div class="field">
+        <label for="f-matrix.brightness">Helligkeit</label>
+        {{ m.select('matrix.brightness', brightness_labels, form, errors) }}
+        {{ m.field_error(errors, 'matrix.brightness') }}
+        <small class="help">Startwert; mit dem Joystick (hoch/runter) jederzeit änderbar.</small>
+      </div>
       <div class="field">
         <label for="f-matrix.rotation">Drehung der Anzeige</label>
         {{ m.select('matrix.rotation', rotation_labels, form, errors) }}
         {{ m.field_error(errors, 'matrix.rotation') }}
+        <small class="help">Wählen Sie, wie das Sense HAT bei Ihnen liegt.</small>
       </div>
     </div>
-    {{ m.toggle('matrix.low_light', form, 'Gedimmte Anzeige', 'Sinnvoll in dunklen Räumen.') }}
-    {{ m.toggle('matrix.ambient_brightness', form, 'Helligkeit automatisch anpassen', 'Nur mit Farbsensor (Sense HAT v2).') }}
-    {{ m.toggle('joystick.enabled', form, 'Joystick verwenden', 'Der kleine Steuerknüppel löst später Aktionen aus.') }}
+    {{ m.toggle('matrix.low_light', form, 'Gedimmte Anzeige (Low-Light-Modus)', 'Die Hardware reduziert die Leuchtkraft zusätzlich. Sinnvoll in dunklen Räumen.') }}
+    {{ m.toggle('matrix.ambient_brightness', form, 'Helligkeit automatisch anpassen', 'Dunkler Raum, dunklere Anzeige. Nur mit Farbsensor (Sense HAT v2).') }}
+
+    <h3 class="subhead">Ansichten</h3>
+    <p class="muted">Diese Ansichten lassen sich mit dem Joystick (links/rechts) durchschalten, in der Reihenfolge dieser Liste.</p>
+    {{ m.field_error(errors, 'matrix.views') }}
+    <div class="view-list">
+      {% for view in view_catalog %}
+      <label class="view-option">
+        <input type="checkbox" name="matrix.views.{{ view.id }}" id="f-matrix.views.{{ view.id }}"{% if form.get('matrix.views.' ~ view.id) %} checked{% endif %}>
+        <span class="tl"><strong>{{ view.label }}</strong><small>{{ view.description }}</small></span>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="fields-2">
+      <div class="field">
+        <label for="f-matrix.default_view">Startansicht</label>
+        <select name="matrix.default_view" id="f-matrix.default_view"{% if errors.get('matrix.default_view') %} aria-invalid="true" aria-describedby="err-matrix.default_view"{% endif %}>
+          {% for view in view_catalog %}<option value="{{ view.id }}"{% if view.id == form.get('matrix.default_view') %} selected{% endif %}>{{ view.label }}</option>{% endfor %}
+        </select>
+        {{ m.field_error(errors, 'matrix.default_view') }}
+        <small class="help">Muss eine der oben aktivierten Ansichten sein.</small>
+      </div>
+      <div class="field">
+        <label for="f-matrix.auto_cycle_seconds">Automatisch weiterschalten</label>
+        {{ m.select('matrix.auto_cycle_seconds', cycle_labels, form, errors) }}
+        {{ m.field_error(errors, 'matrix.auto_cycle_seconds') }}
+        <small class="help">Pausiert eine Minute nach jeder Joystick-Eingabe.</small>
+      </div>
+    </div>
+
+    <h3 class="subhead">Nachtmodus</h3>
+    {{ m.toggle('matrix.night_enabled', form, 'Nachtmodus verwenden', 'In dieser Zeit wird die Anzeige ausgeschaltet oder stark gedimmt. Ein Joystick-Druck weckt sie für 30 Sekunden.') }}
+    <div class="fields-2">
+      <div class="field">
+        <label for="f-matrix.night_start">Von</label>
+        <input type="time" name="matrix.night_start" id="f-matrix.night_start" value="{{ form.get('matrix.night_start', '22:00') }}"{% if errors.get('matrix.night_start') %} aria-invalid="true" aria-describedby="err-matrix.night_start"{% endif %}>
+        {{ m.field_error(errors, 'matrix.night_start') }}
+      </div>
+      <div class="field">
+        <label for="f-matrix.night_end">Bis</label>
+        <input type="time" name="matrix.night_end" id="f-matrix.night_end" value="{{ form.get('matrix.night_end', '07:00') }}"{% if errors.get('matrix.night_end') %} aria-invalid="true" aria-describedby="err-matrix.night_end"{% endif %}>
+        {{ m.field_error(errors, 'matrix.night_end') }}
+      </div>
+      <div class="field">
+        <label for="f-matrix.night_mode">In dieser Zeit</label>
+        {{ m.select('matrix.night_mode', night_mode_labels, form, errors) }}
+        {{ m.field_error(errors, 'matrix.night_mode') }}
+      </div>
+    </div>
   </section>
 
   <div class="savebar">

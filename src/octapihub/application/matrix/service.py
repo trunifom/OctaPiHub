@@ -18,7 +18,7 @@ from octapihub.application.matrix.overlays import (
     alert_overlay,
 )
 from octapihub.application.matrix.state import DisplayState
-from octapihub.application.matrix.views import VIEWS, ViewContext
+from octapihub.application.matrix.views import VIEWS, ViewContext, ViewUi
 from octapihub.application.sense_hat import (
     JoystickAction,
     JoystickDirection,
@@ -149,6 +149,21 @@ class MatrixDisplayService:
             consecutive_failures=self._failures,
             frame=self._preview,
         )
+
+    def current_state(self) -> DisplayState:
+        """The snapshot the views are currently rendered from."""
+        return self._state_provider()
+
+    def thumbnail(self, view_id: str, t: float = 0.8) -> Frame:
+        """Render any view once (for the gallery); never raises."""
+        view = VIEWS.get(view_id)
+        if view is None:
+            return (BLACK,) * 64
+        try:
+            return view.render(ViewContext(self._state_provider(), ViewUi(), t))
+        except Exception:
+            logger.exception("Could not render the %s preview", view_id)
+            return (BLACK,) * 64
 
     # ----- lifecycle -----
 

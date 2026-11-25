@@ -44,7 +44,7 @@ Musikplayer erprobt; das belegt weder OctaPiHub-BLE noch die Hue-Lichtsteuerung.
 | Sense-HAT-Messworker (Intervalle je Sensorgruppe, Fehlerisolation, Temperaturkorrektur neben Rohwert) | implementiert, mit Fake getestet; nicht auf echter Hardware verifiziert |
 | Sense-HAT-Sensorverlauf (SQLite/WAL, gebündeltes Schreiben, Aufbewahrung, Zeitreihen-Abfrage) | implementiert, mit Fake/Temp-DB getestet; noch nicht im Dienst verdrahtet |
 | Sense-HAT-Dienst (Composition Root: Port, Worker, Recorder, Speicher; Start/Stopp mit Flush, degradierter Betrieb) | implementiert, mit Fakes getestet; noch kein startbarer Hub-Prozess |
-| Weboberfläche (Übersicht, Sense HAT mit Live-Werten und Verlaufsdiagramm, Sense-HAT-Einstellungen) | implementiert, per Test und Browser-Screenshots am PC geprüft; nicht auf Raspberry Pi/Handy verifiziert. Seiten Würfel (Status, Zuordnung per Auswahlfeld bearbeitbar, gilt sofort) und Licht (Hue koppeln, Szenen laden/testen) vorhanden; Seite System (CPU-Temperatur, Speicher, Stromversorgung, Laufzeit, redigierte Meldungen, Diagnose-ZIP) vorhanden; Seite Musik fehlt |
+| Weboberfläche (Übersicht, Sense HAT mit Live-Werten und Verlaufsdiagramm, Sense-HAT-Einstellungen) | implementiert, per Test und Browser-Screenshots am PC geprüft; nicht auf Raspberry Pi/Handy verifiziert. Seiten Würfel (Status, Zuordnung per Auswahlfeld bearbeitbar, gilt sofort) und Licht (Hue koppeln, Szenen laden/testen) vorhanden; Seiten Anzeige (LED-Matrix: Live-Vorschau, 19 Ansichten, virtueller Joystick) und System (CPU-Temperatur, Speicher, Stromversorgung, Laufzeit, redigierte Meldungen, Diagnose-ZIP) vorhanden; Seite Musik fehlt |
 | Hue-Anbindung | Pairing, Key in secrets.env, Szenenliste, Szenen-Test und Plugin `hue` implementiert; nur gegen lokale TLS-Fakes getestet, nicht mit echter Bridge verifiziert |
 | Musikadapter | nicht implementiert |
 
@@ -86,3 +86,7 @@ Der Demo-Modus zeigt simulierte Werte und Beispieldaten und ist keine Messung. O
 ## Als Dienst auf dem Raspberry Pi
 
 Dateien und Anleitung liegen in `deploy/` (systemd-Unit mit Härtung, Beispielkonfiguration, Umgebungsdatei, `INSTALL.md`); der Befehl `octapihub` startet die Oberfläche. Ein zu kurzes Token oder das Platzhalter-Token aus der Beispieldatei verhindert den Start (`CH-WEB-008`). **Noch nicht auf einem echten Raspberry Pi ausprobiert**; die Tests prüfen nur die Übereinstimmung der Dateien mit der Software.
+
+## LED-Matrix und Joystick
+
+Die 8×8-LEDs des Sense HAT zeigen **19 Ansichten**: Übersicht (Ampel je Komponente), Würfel, Akku, Temperatur, Luftfeuchtigkeit, Luftdruck, Verlauf, Uhr, Binäruhr, Laufschrift, Kompass, Wasserwaage, Umgebungsfarbe, Lampe, Regenbogen, Atmen, Farbpalette, Helligkeit und Aus. Joystick: links/rechts wechselt die Ansicht, hoch/runter wählt innerhalb der Ansicht (oder ändert die Helligkeit), Drücken erklärt per Laufschrift, langes Halten schaltet die Anzeige aus/ein. Würfelaktionen erscheinen kurz (Seite, dann Häkchen oder Kreuz); Verbindungsverlust, schwacher Akku und Fehler blinken als Symbol. Alles ist auf der Seite *Anzeige* live ansehbar und über einen virtuellen Joystick bedienbar. **Bis zu drei Würfel** mit frei wählbarer Rolle werden unterstützt; der Akkustand jedes Würfels wird gelesen und mit Ladehinweis angezeigt. Alles nur mit Fakes getestet, **nicht an echter Sense-HAT- oder Würfel-Hardware**.

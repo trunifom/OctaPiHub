@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Anzeige</h1>
+    <p class="lead">Die 8×8-LED-Matrix des Sense HAT: Vorschau, Ansichten und Joystick zum Ausprobieren.</p>
+  </div>
+</div>
+
+{% if not matrix_active %}
+<div class="notice notice-info" role="status">
+  <span class="notice-ico">{{ m.icon('info') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Die LED-Anzeige ist in diesem Modus nicht aktiv</p>
+    <p>Starten Sie die Oberfläche mit <code>python -m octapihub.web</code>, um die Anzeige zu sehen und zu steuern.</p>
+  </div>
+</div>
+{% else %}
+
+{% if matrix_status.state == 'unavailable' %}
+<div class="notice notice-warn" role="status">
+  <span class="notice-ico">{{ m.icon('warn') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Das Sense HAT ist nicht erreichbar</p>
+    <p>Die Vorschau zeigt trotzdem, was die Anzeige darstellen würde, sobald das Gerät verfügbar ist.{% if hardware_error %} {{ hardware_error }}{% endif %}</p>
+    {% if hardware_error_code %}<p class="notice-code">Fehlercode <code>{{ hardware_error_code }}</code></p>{% endif %}
+  </div>
+</div>
+{% elif matrix_status.state == 'error' %}
+<div class="notice notice-error" role="alert">
+  <span class="notice-ico">{{ m.icon('error') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Die LED-Anzeige hat eine Störung</p>
+    <p>{{ matrix_status.last_error }} Es wird automatisch erneut versucht.</p>
+    {% if matrix_status.last_error_code %}<p class="notice-code">Fehlercode <code>{{ matrix_status.last_error_code }}</code></p>{% endif %}
+  </div>
+</div>
+{% elif matrix_status.state == 'disabled' %}
+<div class="notice notice-off" role="status">
+  <span class="notice-ico">{{ m.icon('off') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Die LED-Anzeige ist ausgeschaltet</p>
+    <p>Schalten Sie sie unter <a href="/settings">Einstellungen</a> ein.</p>
+  </div>
+</div>
+{% endif %}
+
+<noscript><div class="notice notice-info"><div class="notice-body"><p>Für die Live-Vorschau und die Bedienung auf dieser Seite wird JavaScript benötigt.</p></div></div></noscript>
+
+<div id="display-page" data-live-display="1">
+  <section class="panel display-main" aria-labelledby="preview-title">
+    <div class="panel-head">
+      <h2 id="preview-title">Live-Vorschau</h2>
+      <p class="muted">So sieht die LED-Matrix gerade aus (ohne Helligkeitsdämpfung).</p>
+    </div>
+    <div class="display-grid">
+      <div class="led-stage">
+        {{ m.led_grid(matrix_fills, 'led-grid led-live', 'led-live', 'Aktuelle Anzeige der LED-Matrix') }}
+        <p class="led-caption"><span id="display-view">{{ current_view_label }}</span><span class="badge badge-{{ matrix_level }}" id="display-state"><span class="dot" aria-hidden="true"></span>{{ matrix_text }}</span></p>
+      </div>
+
+      <div class="display-controls">
+        <div class="pad" role="group" aria-label="Virtueller Joystick">
+          <button type="button" class="pad-btn pad-up" data-joy="up:press" aria-label="Hoch">▲</button>
+          <button type="button" class="pad-btn pad-left" data-joy="left:press" aria-label="Links: vorherige Ansicht">◀</button>
+          <button type="button" class="pad-btn pad-mid" data-joy="middle:press" aria-label="Mitte drücken: Erklärung">●</button>
+          <button type="button" class="pad-btn pad-right" data-joy="right:press" aria-label="Rechts: nächste Ansicht">▶</button>
+          <button type="button" class="pad-btn pad-down" data-joy="down:press" aria-label="Runter">▼</button>
+        </div>
+        <div class="display-actions">
+          <button type="button" class="btn" data-joy="middle:long">Ein/Aus (lang drücken)</button>
+          <div class="field">
+            <label for="display-brightness">Helligkeit</label>
+            <select id="display-brightness">
+              {% for key, label in brightness_labels.items() %}<option value="{{ key }}"{% if key == matrix_status.brightness %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="field field-token">
+            <label for="f-token">Zugriffs-Token</label>
+            <input type="password" id="f-token" autocomplete="current-password" placeholder="{{ 'Token eingeben' if writable else 'Nicht eingerichtet' }}"{% if not writable %} disabled{% endif %}>
+          </div>
+          <p id="display-msg" class="display-msg" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+    </div>
+    {% if not joystick_on %}
+    <p class="hint">Der echte Joystick ist unter Einstellungen ausgeschaltet; der virtuelle hier funktioniert trotzdem.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="views-title">
+    <div class="panel-head">
+      <h2 id="views-title">Ansichten</h2>
+      <p class="muted">Tippen Sie auf eine Ansicht, um sie sofort anzuzeigen. Welche per Joystick erreichbar sind, stellen Sie unter <a href="/settings">Einstellungen</a> ein.</p>
+    </div>
+    <div class="view-gallery">
+      {% for card in view_cards %}
+      <article class="view-card{% if card.active %} is-active{% endif %}{% if not card.enabled %} is-disabled{% endif %}" data-view-card="{{ card.id }}"{% if card.active %} aria-current="true"{% endif %}>
+        {{ m.led_grid(card.thumbnail, 'led-grid led-thumb', '', 'Vorschau ' ~ card.label) }}
+        <div class="view-card-body">
+          <h3>{{ card.label }}</h3>
+          <p class="sub">{{ card.description }}</p>
+          <p class="help">{{ card.controls }}</p>
+          {% if card.enabled %}
+          <button type="button" class="btn btn-small" data-view="{{ card.id }}">Anzeigen</button>
+          {% else %}
+          <p class="help">Nicht aktiviert (siehe Einstellungen)</p>
+          {% endif %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="joy-title">
+    <div class="panel-head">
+      <h2 id="joy-title">So bedienen Sie den Joystick</h2>
+      <p class="muted">Der kleine Steuerknüppel auf dem Sense HAT.</p>
+    </div>
+    <dl class="legend">
+      <div><dt>◀ ▶ Links / Rechts</dt><dd>Vorherige oder nächste Ansicht.</dd></div>
+      <div><dt>▲ ▼ Hoch / Runter</dt><dd>Auswahl innerhalb der Ansicht (zum Beispiel der Würfel oder der Messwert). Wo es nichts auszuwählen gibt: heller oder dunkler.</dd></div>
+      <div><dt>● Drücken</dt><dd>Eine Laufschrift erklärt, was Sie gerade sehen. In der Ansicht „Lampe“ schaltet es zwischen Ansehen und Einstellen um.</dd></div>
+      <div><dt>● Gedrückt halten</dt><dd>Anzeige aus- oder einschalten.</dd></div>
+      <div><dt>Automatisch</dt><dd>Bei Würfel-Aktionen zeigt die Anzeige kurz die Seite, dann ein grünes Häkchen oder ein rotes Kreuz. Verbindungsverlust, schwacher Akku und Fehler blinken als Symbol auf.</dd></div>
+    </dl>
+    <p class="hint">Dreht sich das Bild (Einstellung „Drehung“), drehen sich die Richtungen mit. Ob die Richtungen mit der echten Hardware so zusammenpassen, ist noch nicht an einem Gerät geprüft.</p>
+  </section>
+</div>
+{% endif %}
+{% endblock %}
