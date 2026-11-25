@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from octapihub.application.ble_runtime import BleRuntime
-from octapihub.application.cube_service import CubeService
+from octapihub.application.cube_service import CubeActivity, CubeService
 from octapihub.application.hue_service import HueService
+from octapihub.application.matrix.builder import DisplayStateBuilder
+from octapihub.application.matrix.service import MatrixDisplayService
 from octapihub.application.outbox import OutboxDispatcher
 from octapihub.application.plugins import (
     ActionPlugin,
@@ -103,3 +105,35 @@ def build_cube_service(
         )
 
     return CubeService(config, make_runtime, make_dispatcher)
+
+
+def build_matrix_service(
+    config: AppConfig,
+    sense: SenseHatService,
+    cubes: CubeService | None = None,
+    hue: HueService | None = None,
+    host_level: Callable[[], str] | None = None,
+) -> MatrixDisplayService:
+    """Create the LED matrix display and connect cube feedback to it.
+
+    The display shares the Sense HAT port of ``sense`` (one owner for the I2C device) and
+    reads its data through a :class:`DisplayStateBuilder`. Cube activity (a face was
+    reached, an action succeeded or failed) shows as a short overlay.
+    """
+    builder = DisplayStateBuilder(lambda: config.cubes, sense, cubes, hue, host_level)
+    service = MatrixDisplayService(
+        config.sense_hat.matrix,
+        lambda: sense.port,
+        builder.build,
+        joystick_enabled=config.sense_hat.joystick_enabled,
+    )
+    if cubes is not None:
+
+        def on_activity(activity: CubeActivity) -> None:
+            if activity.kind == "face":
+                service.notify_face(activity.cube_name, activity.face)
+            else:
+                service.notify_action(activity.cube_name, activity.kind == "action_ok")
+
+        cubes.add_listener(on_activity)
+    return service

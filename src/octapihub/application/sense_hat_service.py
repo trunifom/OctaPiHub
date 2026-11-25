@@ -52,6 +52,7 @@ class SenseHatService:
         self.history_error: str | None = None
         self.history_error_code: str | None = None
         self.capabilities: SenseHatCapabilities | None = None
+        self.port: SenseHatPort | None = None
 
     @property
     def statuses(self) -> tuple[SensorGroupStatus, ...]:
@@ -77,6 +78,7 @@ class SenseHatService:
         self.history_error = None
         self.history_error_code = None
         self.capabilities = None
+        self.port = None
         if not self._config.enabled:
             return
         try:
@@ -87,6 +89,7 @@ class SenseHatService:
             logger.error("Sense HAT unavailable: %s", exc)
             return
         self.capabilities = port.capabilities
+        self.port = port
         await asyncio.to_thread(self._apply_color_settings, port)
         sink = None
         if self._config.history.enabled:
@@ -106,6 +109,7 @@ class SenseHatService:
     async def stop(self) -> None:
         """Stop polling, then persist buffered samples."""
         worker, recorder = self._worker, self._recorder
+        self.port = None
         self._worker = None
         self._recorder = None
         if worker is not None:

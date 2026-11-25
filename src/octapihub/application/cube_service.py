@@ -6,15 +6,31 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from octapihub.application.ble_runtime import BleRuntime, CubeRuntimeStatus
-from octapihub.application.outbox import OutboxDispatcher
+from octapihub.application.outbox import OutboxDispatcher, OutboxEntry
 from octapihub.application.rules import RuleEngine
 from octapihub.core.config import AppConfig
 from octapihub.core.errors import OctaPiHubError
+from octapihub.domain.cube import OrientationKind
 
 logger = logging.getLogger(__name__)
 
+
+@dataclass(frozen=True, slots=True)
+class CubeActivity:
+    """Something that happened with a cube, for status displays and feedback.
+
+    ``kind`` is ``face`` (a cube settled on a face), ``action_ok`` or ``action_failed``.
+    """
+
+    kind: str
+    cube_name: str
+    face: int | None = None
+
+
+type ActivityListener = Callable[[CubeActivity], None]
 type RuntimeFactory = Callable[[AppConfig], BleRuntime]
 type DispatcherFactory = Callable[[AppConfig], OutboxDispatcher]
 
@@ -47,6 +63,7 @@ class CubeService:
         self._runtime: BleRuntime | None = None
         self._dispatcher: OutboxDispatcher | None = None
         self._tasks: list[asyncio.Task[None]] = []
+        self._listeners: list[ActivityListener] = []
         self._stop = asyncio.Event()
         self.error: str | None = None
         self.error_code: str | None = None
@@ -89,6 +106,7 @@ class CubeService:
         await runtime.start()
         self._runtime = runtime
         self._dispatcher = dispatcher
+        dispatcher.set_observer(self._on_outcome)
         self._tasks = [
             asyncio.create_task(self._route(runtime, dispatcher), name="octapihub-router")
         ]
@@ -98,6 +116,20 @@ class CubeService:
             )
             for i, cube in enumerate(self._config.cubes)
         )
+
+    def add_listener(self, listener: ActivityListener) -> None:
+        """Register a callback for cube activity; failures inside it are logged, not raised."""
+        self._listeners.append(listener)
+
+    def _emit(self, activity: CubeActivity) -> None:
+        for listener in list(self._listeners):
+            try:
+                listener(activity)
+            except Exception:
+                logger.exception("Cube activity listener failed")
+
+    def _on_outcome(self, entry: OutboxEntry, succeeded: bool) -> None:
+        self._emit(CubeActivity("action_ok" if succeeded else "action_failed", entry.cube))
 
     async def update_config(self, config: AppConfig) -> None:
         """Apply changed cube mappings without reconnecting any cube.
@@ -139,6 +171,8 @@ class CubeService:
     async def _route(self, runtime: BleRuntime, dispatcher: OutboxDispatcher) -> None:
         while True:
             event = await runtime.next_event()
+            if event.orientation.kind is OrientationKind.FACE_CHANGE:
+                self._emit(CubeActivity("face", event.cube_name, event.orientation.value))
             try:
                 dispatcher.enqueue_event(event)
             except Exception:

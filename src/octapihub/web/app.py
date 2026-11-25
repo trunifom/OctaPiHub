@@ -24,6 +24,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from octapihub.application.cube_service import CubeService
 from octapihub.application.hue_service import HueService
+from octapihub.application.matrix.service import MatrixDisplayService
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.settings import SettingsManager
 from octapihub.core.errors import (
@@ -100,6 +101,7 @@ class WebBackend:
     cubes: CubeService | None = None
     hue: HueService | None = None
     system: SystemInfoReader | None = None
+    matrix: MatrixDisplayService | None = None
     logs: LogRing | None = None
     redactor: Redactor | None = None
     tz: tzinfo = field(default_factory=display_timezone)
@@ -263,6 +265,8 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             await backend.sense_hat.start()
             if backend.hue is not None:
                 await backend.hue.start()
+            if backend.matrix is not None:
+                await backend.matrix.start()
             if backend.cubes is not None:
                 await backend.cubes.start()
         try:
@@ -271,6 +275,8 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             if manage_service:
                 if backend.cubes is not None:
                     await backend.cubes.stop()
+                if backend.matrix is not None:
+                    await backend.matrix.stop()
                 await backend.sense_hat.stop()
 
     app = FastAPI(

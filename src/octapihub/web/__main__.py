@@ -6,7 +6,8 @@ import argparse
 import logging
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC
 
 import uvicorn
 
@@ -14,6 +15,7 @@ from octapihub.application.settings import SettingsManager
 from octapihub.composition import (
     build_cube_service,
     build_hue_service,
+    build_matrix_service,
     build_sense_hat_service,
 )
 from octapihub.core.config import load_config
@@ -79,6 +81,21 @@ def token_problem(token: str | None) -> str | None:
     return None
 
 
+def host_level_from(reader: SystemInfoReader) -> Callable[[], str]:
+    """Severity of the host (temperature, memory, power) for the LED matrix."""
+    from octapihub.web.presenter import build_system_items
+
+    def level() -> str:
+        items = build_system_items(reader.read(), UTC)
+        order = {"error": 3, "warn": 2, "ok": 1, "off": 0}
+        worst = max(
+            (item.level for item in items), key=lambda lvl: order.get(lvl, 0), default="off"
+        )
+        return worst
+
+    return level
+
+
 def build_parser(environ: Mapping[str, str] | None = None) -> argparse.ArgumentParser:
     """Command-line parser; host and port may also come from OCTAPIHUB_HOST / OCTAPIHUB_PORT."""
     env = os.environ if environ is None else environ
@@ -120,12 +137,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         service = build_sense_hat_service(config)
         hue = build_hue_service(config, args.secrets)
         cubes = build_cube_service(config, args.data_dir, plugins=(hue,))
+        system = SystemInfoReader(args.data_dir)
+        matrix = build_matrix_service(config, service, cubes, hue, host_level_from(system))
         backend = WebBackend(
-            SettingsManager(args.config, config, service, hue, cubes),
+            SettingsManager(args.config, config, service, hue, cubes, matrix),
             service,
             os.environ.get(TOKEN_VARIABLE) or None,
             cubes,
             hue,
+            system,
+            matrix=matrix,
         )
     problem = token_problem(backend.token) if not args.demo else None
     if problem is not None:

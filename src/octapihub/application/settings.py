@@ -9,6 +9,7 @@ from pathlib import Path
 
 from octapihub.application.cube_service import CubeService
 from octapihub.application.hue_service import HueService
+from octapihub.application.matrix.service import MatrixDisplayService
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.core.config import (
     AppConfig,
@@ -36,12 +37,14 @@ class SettingsManager:
         service: SenseHatService,
         hue: HueService | None = None,
         cubes: CubeService | None = None,
+        matrix: MatrixDisplayService | None = None,
     ) -> None:
         self._path = Path(path)
         self._config = config
         self._service = service
         self._hue = hue
         self._cubes = cubes
+        self._matrix = matrix
         self._lock = asyncio.Lock()
 
     @property
@@ -60,7 +63,14 @@ class SettingsManager:
             candidate = with_sense_hat_table(self._config, table)
             await asyncio.to_thread(save_config, self._path, candidate)
             self._config = candidate
+            if self._matrix is not None:
+                await self._matrix.stop()  # it uses the port that is about to be replaced
             await self._service.restart(candidate.sense_hat)
+            if self._matrix is not None:
+                await self._matrix.restart(
+                    candidate.sense_hat.matrix,
+                    joystick_enabled=candidate.sense_hat.joystick_enabled,
+                )
             logger.info("Sense HAT settings saved and applied")
             return candidate
 

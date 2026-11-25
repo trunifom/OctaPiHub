@@ -103,6 +103,7 @@ class OutboxDispatcher:
         backoff_cap_seconds: float = 60.0,
         clock: Clock = time.time,
         jitter: Jitter = lambda delay: delay,
+        observer: Callable[[OutboxEntry, bool], None] | None = None,
     ) -> None:
         if (
             isinstance(ttl_seconds, bool)
@@ -130,8 +131,22 @@ class OutboxDispatcher:
         self._backoff_cap_seconds = backoff_cap_seconds
         self._clock = clock
         self._jitter = jitter
+        self._observer = observer
         for kind in rules.required_plugin_kinds:
             plugins.require(kind)
+
+    def set_observer(self, observer: Callable[[OutboxEntry, bool], None] | None) -> None:
+        """Be told after every action attempt whether it succeeded (for status displays)."""
+        self._observer = observer
+
+    def _notify(self, entry: OutboxEntry, succeeded: bool) -> None:
+        observer = self._observer
+        if observer is None:
+            return
+        try:
+            observer(entry, succeeded)
+        except Exception:
+            logger.exception("Outbox observer failed")
 
     def update_rules(self, rules: RuleEngine) -> None:
         """Switch to new rules without a restart; every needed plugin must be registered.
@@ -206,8 +221,10 @@ class OutboxDispatcher:
                 type(exc).__name__,
                 state.value,
             )
+            self._notify(entry, False)
             return True
         self._outbox.complete(entry.id, finished_at=self._clock())
+        self._notify(entry, True)
         return True
 
     async def run_cube(
