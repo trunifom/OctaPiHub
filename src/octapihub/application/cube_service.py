@@ -9,6 +9,7 @@ from collections.abc import Callable
 
 from octapihub.application.ble_runtime import BleRuntime, CubeRuntimeStatus
 from octapihub.application.outbox import OutboxDispatcher
+from octapihub.application.rules import RuleEngine
 from octapihub.core.config import AppConfig
 from octapihub.core.errors import OctaPiHubError
 
@@ -44,6 +45,7 @@ class CubeService:
         self._poll_interval = poll_interval_seconds
         self._restart_delay = restart_delay_seconds
         self._runtime: BleRuntime | None = None
+        self._dispatcher: OutboxDispatcher | None = None
         self._tasks: list[asyncio.Task[None]] = []
         self._stop = asyncio.Event()
         self.error: str | None = None
@@ -86,6 +88,7 @@ class CubeService:
         self._stop = asyncio.Event()
         await runtime.start()
         self._runtime = runtime
+        self._dispatcher = dispatcher
         self._tasks = [
             asyncio.create_task(self._route(runtime, dispatcher), name="octapihub-router")
         ]
@@ -96,12 +99,33 @@ class CubeService:
             for i, cube in enumerate(self._config.cubes)
         )
 
+    async def update_config(self, config: AppConfig) -> None:
+        """Apply changed cube mappings without reconnecting any cube.
+
+        If the pipeline is running, the rules switch atomically; a rejected update (for
+        example a missing plugin) raises and keeps the old rules. If the pipeline is not
+        running because it could not be built earlier, it is started again with the new
+        configuration.
+
+        Raises:
+            PluginError: A plugin needed by the new mappings is not registered.
+        """
+        dispatcher = self._dispatcher
+        if dispatcher is not None:
+            dispatcher.update_rules(RuleEngine(config))
+            self._config = config
+            return
+        self._config = config
+        if self._runtime is None:
+            await self.start()
+
     async def stop(self) -> None:
         """Stop dispatchers and the BLE runtime; always releases Bluetooth connections."""
         runtime = self._runtime
         if runtime is None:
             return
         self._runtime = None
+        self._dispatcher = None
         self._stop.set()
         for task in self._tasks:
             task.cancel()

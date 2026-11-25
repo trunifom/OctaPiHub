@@ -582,3 +582,59 @@ def build_hue_view(status: HueStatus, tz: tzinfo) -> HueView:
         "" if status.scenes_checked_at else "Laden Sie die Szenen, um die Verbindung zu testen.",
         **base,
     )
+
+
+# ---------- mapping editor ----------
+
+
+@dataclass(frozen=True, slots=True)
+class FaceTile:
+    """One cube face in the mapping editor."""
+
+    field: str
+    face: int
+    scene_id: str
+    scene_label: str
+    locked: bool
+    locked_actions: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CubeTiles:
+    """All eight faces of one cube."""
+
+    name: str
+    role: str
+    tiles: tuple[FaceTile, ...]
+
+
+def build_cube_tiles(
+    config: AppConfig, scenes: Mapping[str, str], form: Mapping[str, str]
+) -> tuple[CubeTiles, ...]:
+    """Tiles for the editor; ``form`` holds the currently selected scene IDs."""
+    lookup = {(m.cube.casefold(), m.face): m for m in config.mappings}
+    result: list[CubeTiles] = []
+    for index, cube in enumerate(config.cubes):
+        tiles: list[FaceTile] = []
+        for face in range(1, 9):
+            field = f"map.{index}.{face}"
+            existing = lookup.get((cube.name.casefold(), face))
+            locked = existing is not None and field not in form
+            scene_id = form.get(field, "")
+            label = scenes.get(scene_id, f"{scene_id} (nicht in der Liste)") if scene_id else ""
+            tiles.append(
+                FaceTile(
+                    field=field,
+                    face=face,
+                    scene_id=scene_id,
+                    scene_label=label,
+                    locked=locked,
+                    locked_actions=tuple(describe_action(a) for a in existing.actions)
+                    if existing is not None and locked
+                    else (),
+                )
+            )
+        result.append(
+            CubeTiles(cube.name, _ROLE_TEXT.get(cube.role.value, cube.role.value), tuple(tiles))
+        )
+    return tuple(result)

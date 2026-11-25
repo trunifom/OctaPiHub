@@ -304,3 +304,14 @@ select:hover, input:hover { border-color: var(--muted); }
 .btn-danger { color: var(--error); border-color: var(--error); }
 .btn-danger:hover { background: var(--error-soft); }
 .hue-status { max-width: 40rem; }
+
+/* ---------- mapping editor ---------- */
+.mapping-cube { display: flex; flex-direction: column; gap: 0.6rem; }
+.face-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.75rem; }
+.face-tile { background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 0.7rem 0.8rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.face-tile.is-set { border-color: var(--accent); background: var(--accent-soft); }
+.face-tile.is-locked { border-style: dashed; }
+.face-tile-head { display: flex; align-items: center; gap: 0.5rem; }
+.face-tile-title { font-weight: 650; }
+.face-tile select { min-height: 2.5rem; }
+.locked-actions { margin: 0; padding-left: 1.1rem; font-size: 0.85rem; }

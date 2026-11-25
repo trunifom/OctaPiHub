@@ -44,7 +44,7 @@ Musikplayer erprobt; das belegt weder OctaPiHub-BLE noch die Hue-Lichtsteuerung.
 | Sense-HAT-Messworker (Intervalle je Sensorgruppe, Fehlerisolation, Temperaturkorrektur neben Rohwert) | implementiert, mit Fake getestet; nicht auf echter Hardware verifiziert |
 | Sense-HAT-Sensorverlauf (SQLite/WAL, gebündeltes Schreiben, Aufbewahrung, Zeitreihen-Abfrage) | implementiert, mit Fake/Temp-DB getestet; noch nicht im Dienst verdrahtet |
 | Sense-HAT-Dienst (Composition Root: Port, Worker, Recorder, Speicher; Start/Stopp mit Flush, degradierter Betrieb) | implementiert, mit Fakes getestet; noch kein startbarer Hub-Prozess |
-| Weboberfläche (Übersicht, Sense HAT mit Live-Werten und Verlaufsdiagramm, Sense-HAT-Einstellungen) | implementiert, per Test und Browser-Screenshots am PC geprüft; nicht auf Raspberry Pi/Handy verifiziert. Seiten Würfel (Status, Zuordnung) und Licht (Hue koppeln, Szenen laden/testen) vorhanden; Seiten Musik und System fehlen |
+| Weboberfläche (Übersicht, Sense HAT mit Live-Werten und Verlaufsdiagramm, Sense-HAT-Einstellungen) | implementiert, per Test und Browser-Screenshots am PC geprüft; nicht auf Raspberry Pi/Handy verifiziert. Seiten Würfel (Status, Zuordnung per Auswahlfeld bearbeitbar, gilt sofort) und Licht (Hue koppeln, Szenen laden/testen) vorhanden; Seiten Musik und System fehlen |
 | Hue-Anbindung | Pairing, Key in secrets.env, Szenenliste, Szenen-Test und Plugin `hue` implementiert; nur gegen lokale TLS-Fakes getestet, nicht mit echter Bridge verifiziert |
 | Musikadapter | nicht implementiert |
 

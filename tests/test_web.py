@@ -459,14 +459,14 @@ def _cube_config(tmp_path: Path) -> AppConfig:
     )
 
 
-def test_cubes_page_without_cube_service_explains_and_lists_mapping(tmp_path: Path) -> None:
+def test_cubes_page_without_cube_service_explains_and_shows_mapping(tmp_path: Path) -> None:
     backend = _backend(tmp_path)
     backend.settings._config = _cube_config(tmp_path)
     with TestClient(create_app(backend)) as client:
         text = client.get("/cubes").text
         assert "nicht aktiv" in text
-        assert "Szene aktivieren" in text
-        assert "scene_id: abend" in text
+        assert "abend (nicht in der Liste)" in text  # configured scene is kept visible
+        assert "noch keine Hue-Szenen geladen" in text
         assert "AA:BB:CC" not in text  # addresses are never shown
         assert "nicht aktiv" in client.get("/").text
 

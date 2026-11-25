@@ -10,7 +10,7 @@ import os
 import re
 import tempfile
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
@@ -352,6 +352,34 @@ def hue_table(hue: HueConfig) -> dict[str, object]:
     }
 
 
+def mappings_table(config: AppConfig) -> list[dict[str, object]]:
+    """Return the cube mappings as plain TOML-shaped tables for editing."""
+    return [
+        {
+            "cube": mapping.cube,
+            "face": mapping.face,
+            "actions": [
+                {
+                    "kind": action.kind,
+                    "action": action.action,
+                    "parameters": _thaw_parameter(action.parameters),
+                }
+                for action in mapping.actions
+            ],
+        }
+        for mapping in config.mappings
+    ]
+
+
+def with_mappings_table(config: AppConfig, raw_mappings: Sequence[object]) -> AppConfig:
+    """Return ``config`` with replaced, fully validated cube mappings.
+
+    Raises:
+        ValidationError: If any mapping violates the schema.
+    """
+    return replace(config, mappings=_parse_mappings(raw_mappings, config.cubes))
+
+
 def with_hue_table(config: AppConfig, table: Mapping[str, object]) -> AppConfig:
     """Return ``config`` with a replaced, fully validated Hue table.
 
@@ -623,18 +651,7 @@ def parse_config(data: object) -> AppConfig:
         raw_mappings = root.get("mappings", [])
         if not isinstance(raw_mappings, list):
             raise ValidationError("mappings must be an array", details={"field": "mappings"})
-        cube_names = {cube.name.casefold(): cube.name for cube in cubes}
-        parsed_mappings = tuple(
-            _parse_mapping(item, index, cube_names) for index, item in enumerate(raw_mappings)
-        )
-        if len({(item.cube.casefold(), item.face) for item in parsed_mappings}) != len(
-            parsed_mappings
-        ):
-            raise ValidationError(
-                "Cube and face mappings must be unique",
-                details={"field": "mappings"},
-            )
-        mappings = parsed_mappings
+        mappings = _parse_mappings(raw_mappings, cubes)
 
     sense_hat = (
         _parse_sense_hat(root.get("sense_hat", {})) if schema_version >= 3 else SenseHatConfig()
@@ -901,6 +918,21 @@ def _parse_sensor(value: object, field: str, defaults: SensorConfig) -> SensorCo
         presentation=presentation,
         precision=precision,
     )
+
+
+def _parse_mappings(
+    raw_mappings: Sequence[object], cubes: Sequence[CubeConfig]
+) -> tuple[RuleMappingConfig, ...]:
+    cube_names = {cube.name.casefold(): cube.name for cube in cubes}
+    parsed = tuple(
+        _parse_mapping(item, index, cube_names) for index, item in enumerate(raw_mappings)
+    )
+    if len({(item.cube.casefold(), item.face) for item in parsed}) != len(parsed):
+        raise ValidationError(
+            "Cube and face mappings must be unique",
+            details={"field": "mappings"},
+        )
+    return parsed
 
 
 def _parse_mapping(

@@ -38,6 +38,7 @@ from octapihub.web.presenter import (
     CHARTABLE_GROUPS,
     GROUP_INFO,
     SECTIONS,
+    build_cube_tiles,
     build_cube_views,
     build_group_views,
     build_hue_view,
@@ -315,9 +316,70 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
     def overview(request: Request) -> Response:
         return page(request, "overview.html", "overview")
 
+    def mapping_context(
+        values: dict[str, str], errors: dict[str, str], banner: dict[str, str] | None
+    ) -> dict[str, Any]:
+        scenes = {scene.id: scene.name for scene in backend.hue.scenes} if backend.hue else {}
+        return {
+            "map_form": values,
+            "map_errors": errors,
+            "banner": banner,
+            "writable": bool(backend.token),
+            "tiles": build_cube_tiles(backend.settings.config, scenes, values),
+            "scene_options": [{"id": sid, "name": name} for sid, name in scenes.items()],
+            "scenes_known": bool(scenes),
+        }
+
     @app.get("/cubes", response_class=HTMLResponse)
     def cubes_page(request: Request) -> Response:
-        return page(request, "cubes.html", "cubes")
+        values = forms.mapping_config_to_form(backend.settings.config)
+        return page(request, "cubes.html", "cubes", **mapping_context(values, {}, None))
+
+    @app.post("/cubes/mapping", response_class=HTMLResponse)
+    async def save_mapping(request: Request) -> Response:
+        submitted, supplied = await _read_form(request)
+        errors: dict[str, str] = {}
+
+        def respond(
+            status: int, level: str, title: str, detail: str = "", code: str = ""
+        ) -> Response:
+            banner = {"level": level, "title": title, "detail": detail, "code": code}
+            return page(
+                request, "cubes.html", "cubes", status, **mapping_context(submitted, errors, banner)
+            )
+
+        problem = _access_problem(backend.token, supplied)
+        if problem is not None:
+            status, title, detail, code = problem
+            return respond(status, "error", title, detail, code)
+        known = {scene.id for scene in backend.hue.scenes} if backend.hue else set()
+        result = forms.parse_mapping_form(submitted, backend.settings.config, known)
+        if result.mappings is None:
+            errors.update(result.errors)
+            return respond(
+                422,
+                "error",
+                "Bitte korrigieren Sie die markierten Würfelseiten",
+                "Es wurde nichts gespeichert.",
+            )
+        try:
+            await backend.settings.apply_mappings(result.mappings)
+        except ValidationError as exc:
+            return respond(
+                422, "error", "Die Zuordnung ist ungültig", exc.user_message, exc.error_code
+            )
+        except OctaPiHubError as exc:
+            logger.error("Could not apply mappings: %s", exc)
+            return respond(
+                500, "error", "Speichern fehlgeschlagen", exc.user_message, exc.error_code
+            )
+        submitted.update(forms.mapping_config_to_form(backend.settings.config))
+        return respond(
+            200,
+            "ok",
+            "Zuordnung gespeichert",
+            "Sie gilt sofort, die Würfel müssen nicht neu verbunden werden.",
+        )
 
     @app.get("/sense-hat", response_class=HTMLResponse)
     def sense_hat_page(request: Request) -> Response:

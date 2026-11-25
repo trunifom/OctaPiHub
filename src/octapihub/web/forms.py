@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import copy
 import math
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 
 from octapihub.core.config import (
     AppConfig,
     HueConfig,
+    RuleMappingConfig,
     SenseHatConfig,
     SensorPresentation,
     sense_hat_table,
@@ -267,3 +268,125 @@ def parse_hue_form(form: Mapping[str, str], current: AppConfig) -> FormResult:
                 HUE_FIELD_MESSAGES.get(field, exc.user_message)
             )
     return FormResult(None if errors else table, errors)
+
+
+# ---------- cube mapping form ----------
+
+MAX_FACE = 8
+EDITABLE_KIND = "hue"
+EDITABLE_ACTION = "scene.activate"
+MAX_SCENE_ID_LENGTH = 200
+
+
+def mapping_field(cube_index: int, face: int) -> str:
+    """Form field name for one cube face."""
+    return f"map.{cube_index}.{face}"
+
+
+def scene_of(mapping: RuleMappingConfig | None) -> str | None:
+    """Scene ID if the mapping is exactly one Hue scene activation, else ``None``."""
+    if mapping is None or len(mapping.actions) != 1:
+        return None
+    action = mapping.actions[0]
+    scene = action.parameters.get("scene_id")
+    if (
+        action.kind == EDITABLE_KIND
+        and action.action == EDITABLE_ACTION
+        and set(action.parameters) == {"scene_id"}
+        and isinstance(scene, str)
+    ):
+        return scene
+    return None
+
+
+def _mapping_lookup(config: AppConfig) -> dict[tuple[str, int], RuleMappingConfig]:
+    return {(m.cube.casefold(), m.face): m for m in config.mappings}
+
+
+def mapping_config_to_form(config: AppConfig) -> dict[str, str]:
+    """Selected scene ID per editable face; faces with other actions have no field."""
+    lookup = _mapping_lookup(config)
+    values: dict[str, str] = {}
+    for index, cube in enumerate(config.cubes):
+        for face in range(1, MAX_FACE + 1):
+            mapping = lookup.get((cube.name.casefold(), face))
+            if mapping is None:
+                values[mapping_field(index, face)] = ""
+            elif (scene := scene_of(mapping)) is not None:
+                values[mapping_field(index, face)] = scene
+    return values
+
+
+@dataclass(frozen=True, slots=True)
+class MappingResult:
+    """Parsed mapping submission: raw mapping tables, or per-field errors."""
+
+    mappings: list[dict[str, object]] | None
+    errors: dict[str, str]
+
+
+def parse_mapping_form(
+    form: Mapping[str, str], config: AppConfig, known_scene_ids: Collection[str]
+) -> MappingResult:
+    """Build the new mapping list from the submitted scene choices.
+
+    Faces whose actions the form cannot represent (several actions or other plugins) are
+    kept exactly as they are. A scene may only be newly chosen from the loaded Hue scene
+    list; an already configured scene stays valid even if the bridge is offline.
+    """
+    lookup = _mapping_lookup(config)
+    known = set(known_scene_ids)
+    errors: dict[str, str] = {}
+    result: list[dict[str, object]] = []
+    for index, cube in enumerate(config.cubes):
+        for face in range(1, MAX_FACE + 1):
+            existing = lookup.get((cube.name.casefold(), face))
+            if existing is not None and scene_of(existing) is None:
+                result.append(_raw_mapping(existing))
+                continue
+            field = mapping_field(index, face)
+            chosen = form.get(field, "").strip()
+            if not chosen:
+                continue
+            if len(chosen) > MAX_SCENE_ID_LENGTH or any(ord(c) < 32 for c in chosen):
+                errors[field] = "Diese Auswahl ist ungültig."
+                continue
+            if chosen != scene_of(existing):
+                if not known:
+                    errors[field] = (
+                        "Es sind noch keine Hue-Szenen geladen. Verbinden Sie zuerst Hue "
+                        "auf der Seite Licht."
+                    )
+                    continue
+                if chosen not in known:
+                    errors[field] = "Diese Szene gibt es in der geladenen Liste nicht."
+                    continue
+            result.append(
+                {
+                    "cube": cube.name,
+                    "face": face,
+                    "actions": [
+                        {
+                            "kind": EDITABLE_KIND,
+                            "action": EDITABLE_ACTION,
+                            "parameters": {"scene_id": chosen},
+                        }
+                    ],
+                }
+            )
+    return MappingResult(None if errors else result, errors)
+
+
+def _raw_mapping(mapping: RuleMappingConfig) -> dict[str, object]:
+    return {
+        "cube": mapping.cube,
+        "face": mapping.face,
+        "actions": [
+            {
+                "kind": action.kind,
+                "action": action.action,
+                "parameters": dict(action.parameters),
+            }
+            for action in mapping.actions
+        ],
+    }

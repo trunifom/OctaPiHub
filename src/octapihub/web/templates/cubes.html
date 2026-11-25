@@ -8,35 +8,71 @@
   </div>
 </div>
 
+{% if banner %}
+<div class="notice notice-{{ banner.level }}" role="{{ 'alert' if banner.level == 'error' else 'status' }}">
+  <span class="notice-ico">{{ m.icon(banner.level) }}</span>
+  <div class="notice-body">
+    <p class="notice-title">{{ banner.title }}</p>
+    {% if banner.detail %}<p>{{ banner.detail }}</p>{% endif %}
+    {% if banner.code %}<p class="notice-code">Fehlercode <code>{{ banner.code }}</code></p>{% endif %}
+  </div>
+</div>
+{% endif %}
+
 <div id="live-cubes">{% include "_cubes.html" %}</div>
 
-<section class="panel" aria-labelledby="zuordnung-title">
-  <div class="panel-head">
-    <h2 id="zuordnung-title">Zuordnung</h2>
-    <p class="muted">Welche Aktion ein Würfel auslöst, wenn er auf eine Seite gelegt wird.</p>
-  </div>
-  {% if mapping_views %}
-  <div class="table-wrap">
-    <table class="table">
-      <thead><tr><th scope="col">Würfel</th><th scope="col">Seite</th><th scope="col">Aktionen (der Reihe nach)</th></tr></thead>
-      <tbody>
-        {% for row in mapping_views %}
-        <tr>
-          <th scope="row">{{ row.cube }}</th>
-          <td><span class="face-chip">{{ row.face }}</span></td>
-          <td><ol class="actions">{% for action in row.actions %}<li>{{ action }}</li>{% endfor %}</ol></td>
-        </tr>
+<form method="post" action="/cubes/mapping" id="mapping-form" novalidate>
+  <section class="panel" aria-labelledby="zuordnung-title">
+    <div class="panel-head">
+      <h2 id="zuordnung-title">Zuordnung</h2>
+      <p class="muted">Wählen Sie für jede Würfelseite die Lichtszene, die beim Hinlegen eingeschaltet werden soll. Änderungen gelten sofort.</p>
+    </div>
+
+    {% if not scenes_known %}
+    <div class="notice notice-info" role="status">
+      <span class="notice-ico">{{ m.icon('info') }}</span>
+      <div class="notice-body">
+        <p class="notice-title">Es sind noch keine Hue-Szenen geladen</p>
+        <p>Verbinden Sie zuerst Ihre Hue Bridge und laden Sie die Szenen auf der Seite <a href="/light">Licht</a>. Danach können Sie sie hier auswählen.</p>
+      </div>
+    </div>
+    {% endif %}
+
+    {% for cube in tiles %}
+    <div class="mapping-cube">
+      <h3 class="subhead">{{ cube.name }} <span class="pill pill-role">{{ cube.role }}</span></h3>
+      <div class="face-grid">
+        {% for tile in cube.tiles %}
+        <div class="face-tile{% if tile.scene_id or tile.locked %} is-set{% endif %}{% if tile.locked %} is-locked{% endif %}">
+          <div class="face-tile-head"><span class="face-chip">{{ tile.face }}</span><span class="face-tile-title">Seite {{ tile.face }}</span></div>
+          {% if tile.locked %}
+          <ul class="locked-actions">{% for text in tile.locked_actions %}<li>{{ text }}</li>{% endfor %}</ul>
+          <p class="help">Mehrere oder andere Aktionen: nur in der Konfigurationsdatei änderbar.</p>
+          {% else %}
+          <label class="visually-hidden" for="f-{{ tile.field }}">Lichtszene für {{ cube.name }}, Seite {{ tile.face }}</label>
+          <select name="{{ tile.field }}" id="f-{{ tile.field }}"{% if map_errors.get(tile.field) %} aria-invalid="true" aria-describedby="err-{{ tile.field }}"{% endif %}>
+            <option value="">Keine Aktion</option>
+            {% set ids = scene_options | map(attribute='id') | list %}
+            {% if tile.scene_id and tile.scene_id not in ids %}<option value="{{ tile.scene_id }}" selected>{{ tile.scene_label }}</option>{% endif %}
+            {% for scene in scene_options %}<option value="{{ scene.id }}"{% if scene.id == map_form.get(tile.field) %} selected{% endif %}>{{ scene.name }}</option>{% endfor %}
+          </select>
+          {{ m.field_error(map_errors, tile.field) }}
+          {% endif %}
+        </div>
         {% endfor %}
-      </tbody>
-    </table>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+
+  <div class="savebar">
+    <div class="savebar-in">
+      <div class="field field-token">
+        <label for="f-token">Zugriffs-Token</label>
+        <input type="password" name="token" id="f-token" autocomplete="current-password" placeholder="{{ 'Token eingeben' if writable else 'Nicht eingerichtet' }}"{% if not writable %} disabled{% endif %}>
+      </div>
+      <button type="submit" class="btn btn-primary"{% if not writable %} disabled{% endif %}>Zuordnung speichern</button>
+    </div>
   </div>
-  <p class="hint">Die Zuordnung steht in der Konfigurationsdatei (Abschnitt <code>mappings</code>). Das Bearbeiten in der Oberfläche folgt in einer späteren Version.</p>
-  {% else %}
-  <div class="empty">
-    <span class="empty-ico">{{ m.icon('cube') }}</span>
-    <h3>Noch keine Zuordnung</h3>
-    <p>Legen Sie in der Konfigurationsdatei im Abschnitt <code>mappings</code> fest, welche Aktion welche Würfelseite auslöst.</p>
-  </div>
-  {% endif %}
-</section>
+</form>
 {% endblock %}

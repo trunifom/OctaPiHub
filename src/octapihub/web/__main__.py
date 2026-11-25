@@ -53,11 +53,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
         service = build_sense_hat_service(config)
         hue = build_hue_service(config, args.secrets)
+        cubes = build_cube_service(config, args.data_dir, plugins=(hue,))
         backend = WebBackend(
-            SettingsManager(args.config, config, service, hue),
+            SettingsManager(args.config, config, service, hue, cubes),
             service,
             os.environ.get(TOKEN_VARIABLE) or None,
-            build_cube_service(config, args.data_dir, plugins=(hue,)),
+            cubes,
             hue,
         )
     uvicorn.run(

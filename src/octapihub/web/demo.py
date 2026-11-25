@@ -185,7 +185,7 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
     )
     hue = _demo_hue(base.hue)
     cubes = _demo_cubes(base, directory, hue)
-    settings = SettingsManager(config_path, base, service, hue)
+    settings = SettingsManager(config_path, base, service, hue, cubes)
     return WebBackend(settings, service, token, cubes, hue)
 
 

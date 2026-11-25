@@ -133,6 +133,17 @@ class OutboxDispatcher:
         for kind in rules.required_plugin_kinds:
             plugins.require(kind)
 
+    def update_rules(self, rules: RuleEngine) -> None:
+        """Switch to new rules without a restart; every needed plugin must be registered.
+
+        Raises:
+            PluginError: A plugin kind used by the new rules is not registered; the
+                current rules stay active.
+        """
+        for kind in rules.required_plugin_kinds:
+            self._plugins.require(kind)
+        self._rules = rules
+
     def enqueue_event(self, event: CubeEvent) -> str | None:
         """Persist actions for a configured face change; ignore unmatched events."""
         if event.orientation.kind is not OrientationKind.FACE_CHANGE:
