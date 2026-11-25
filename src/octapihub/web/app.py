@@ -33,9 +33,10 @@ from octapihub.core.errors import (
     OctaPiHubError,
     ValidationError,
 )
-from octapihub.core.logging_support import LogRing
+from octapihub.core.logging_support import LogRing, Redactor
 from octapihub.infrastructure.system_info import SystemInfoReader
 from octapihub.web import forms
+from octapihub.web.diagnostics import build_zip, collect_diagnostics
 from octapihub.web.presenter import (
     CHARTABLE_GROUPS,
     GROUP_INFO,
@@ -99,6 +100,7 @@ class WebBackend:
     hue: HueService | None = None
     system: SystemInfoReader | None = None
     logs: LogRing | None = None
+    redactor: Redactor | None = None
     tz: tzinfo = field(default_factory=display_timezone)
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
 
@@ -336,24 +338,62 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "scenes_known": bool(scenes),
         }
 
-    @app.get("/system", response_class=HTMLResponse)
-    def system_page(request: Request, level: str = "INFO") -> Response:
+    def system_context(level: str, banner: dict[str, str] | None = None) -> dict[str, Any]:
         levels = {"INFO": logging.INFO, "WARNING": logging.WARNING, "ERROR": logging.ERROR}
         if level not in levels:
             raise HTTPException(status_code=422, detail="Unknown log level")
         items = build_system_items(backend.system.read(), backend.tz) if backend.system else ()
         rows = build_log_rows(backend.logs.lines(levels[level]), backend.tz) if backend.logs else ()
-        return page(
-            request,
-            "system.html",
-            "system",
-            live=False,
-            system_items=items,
-            system_available=backend.system is not None,
-            log_rows=rows,
-            logs_available=backend.logs is not None,
-            log_level=level,
+        return {
+            "live": False,
+            "banner": banner,
+            "writable": bool(backend.token),
+            "system_items": items,
+            "system_available": backend.system is not None,
+            "log_rows": rows,
+            "logs_available": backend.logs is not None,
+            "log_level": level,
+        }
+
+    @app.post("/system/diagnostics")
+    async def diagnostics(request: Request) -> Response:
+        _fields, supplied = await _read_form(request)
+        problem = _access_problem(backend.token, supplied)
+        if problem is not None:
+            status, title, detail, code = problem
+            banner = {"level": "error", "title": title, "detail": detail, "code": code}
+            return page(request, "system.html", "system", status, **system_context("INFO", banner))
+        now = backend.clock()
+        try:
+            files = collect_diagnostics(backend, backend.redactor or Redactor(), now)
+            data = build_zip(files, now)
+        except OctaPiHubError as exc:
+            banner = {
+                "level": "error",
+                "title": "Das Paket konnte nicht erstellt werden",
+                "detail": exc.user_message,
+                "code": exc.error_code,
+            }
+            return page(request, "system.html", "system", 500, **system_context("INFO", banner))
+        except Exception:
+            logger.exception("Unexpected failure while building diagnostics")
+            banner = {
+                "level": "error",
+                "title": "Das Paket konnte nicht erstellt werden",
+                "detail": "Unerwarteter Fehler. Details stehen im Protokoll.",
+                "code": "CH-WEB-007",
+            }
+            return page(request, "system.html", "system", 500, **system_context("INFO", banner))
+        name = f"octapihub-diagnose-{now.strftime('%Y%m%d-%H%M%S')}.zip"
+        return Response(
+            content=data,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
         )
+
+    @app.get("/system", response_class=HTMLResponse)
+    def system_page(request: Request, level: str = "INFO") -> Response:
+        return page(request, "system.html", "system", **system_context(level))
 
     @app.get("/cubes", response_class=HTMLResponse)
     def cubes_page(request: Request) -> Response:

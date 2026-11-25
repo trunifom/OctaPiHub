@@ -342,3 +342,5 @@ select:hover, input:hover { border-color: var(--muted); }
   .nav .ico { display: none; }
   .pref span { display: none; }
 }
+
+.inline-form { flex-direction: row; align-items: flex-end; flex-wrap: wrap; gap: 1rem; }

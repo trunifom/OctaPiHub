@@ -398,6 +398,11 @@ def with_sense_hat_table(config: AppConfig, table: Mapping[str, object]) -> AppC
     return replace(config, sense_hat=_parse_sense_hat(table))
 
 
+def config_to_toml(config: AppConfig) -> str:
+    """Return the validated configuration as TOML text (no file is written)."""
+    return _serialize_config(config)
+
+
 def _serialize_config(config: AppConfig) -> str:
     sense_hat_data = sense_hat_table(config.sense_hat)
     data: dict[str, object] = {
