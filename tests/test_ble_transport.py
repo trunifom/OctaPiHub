@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+
+from octapihub.application.ble import CharacteristicInfo, DeviceProfile
 from octapihub.core.errors import BleConnectionError, ProtocolError, UnsupportedDeviceError
 from octapihub.infrastructure.ble.fake import FakeDeviceTransport, FakeTransportFactory
 from octapihub.infrastructure.ble.protocol import (
     ORIENTATION_CHARACTERISTIC_UUID,
     normalize_uuid,
     supports_orientation_notifications,
-)
-from octapihub.infrastructure.ble.transport import (
-    CharacteristicInfo,
-    DeviceProfile,
 )
 
 
@@ -35,8 +34,6 @@ def test_fake_transport_requires_connection_before_discovery_or_subscription() -
     transport = FakeDeviceTransport(profile_with_orientation())
 
     try:
-        import asyncio
-
         asyncio.run(transport.discover())
     except BleConnectionError as exc:
         assert "not connected" in exc.message
@@ -45,8 +42,6 @@ def test_fake_transport_requires_connection_before_discovery_or_subscription() -
 
 
 def test_fake_transport_delivers_only_active_subscribed_notifications() -> None:
-    import asyncio
-
     transport = FakeDeviceTransport(profile_with_orientation())
     notifications: list[bytes] = []
     asyncio.run(transport.connect())
@@ -68,8 +63,6 @@ def test_fake_transport_delivers_only_active_subscribed_notifications() -> None:
 
 
 def test_fake_transport_rejects_missing_or_non_notifiable_characteristics() -> None:
-    import asyncio
-
     for properties in (frozenset({"read"}), frozenset({"write"})):
         transport = FakeDeviceTransport(profile_with_orientation(properties))
         asyncio.run(transport.connect())
@@ -82,8 +75,6 @@ def test_fake_transport_rejects_missing_or_non_notifiable_characteristics() -> N
 
 
 def test_fake_transport_reports_remote_disconnect_once() -> None:
-    import asyncio
-
     transport = FakeDeviceTransport(profile_with_orientation())
     disconnects: list[bool] = []
     transport.set_disconnected_callback(lambda: disconnects.append(True))
@@ -97,8 +88,6 @@ def test_fake_transport_reports_remote_disconnect_once() -> None:
 
 
 def test_fake_transport_preserves_injected_adapter_failure() -> None:
-    import asyncio
-
     failure = OSError("radio unavailable")
     transport = FakeDeviceTransport(
         profile_with_orientation(), failures={"connect": lambda: failure}

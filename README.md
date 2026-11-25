@@ -11,7 +11,9 @@ hardwareunabhängige Würfelprotokoll- und Entprellungslogik sowie einen streng
 validierten Loader für die erste versionierte TOML-Konfiguration. Es gibt außerdem
 einen typisierten Plugin-Vertrag und Discovery für vertrauenswürdige Python-Plugins.
 Der BLE-Transportvertrag und ein hardwarefreier Fake sind vorhanden; der produktive
-BLE-Dienst und echte Hardwareadapter sind noch nicht implementiert.
+Bleak-Adapter und eine hardwarefrei getestete Laufzeit für beide Würfel sind ergänzt.
+Die Laufzeit ist noch nicht in einen startbaren Systemdienst eingebunden und wurde
+nicht mit echten Würfeln oder einem Raspberry Pi geprüft.
 
 | Teil | Status |
 |---|---|
@@ -21,7 +23,8 @@ BLE-Dienst und echte Hardwareadapter sind noch nicht implementiert.
 | Versioniertes TOML-Konfigurationsladen | erster Stand, nur lokal getestet |
 | Plugin-Vertrag und Entry-Point-Registry | erster Stand, nur Unit-getestet |
 | BLE-Transportvertrag und Fake | implementiert, hardwarefrei getestet |
-| BLE-Verbindung zu echten Würfeln | nicht hardwareverifiziert |
+| BLE-Laufzeit und Bleak/BlueZ-Adapter | implementiert, mit Fakes getestet |
+| BLE-Verbindung zu echten Würfeln / Raspberry Pi | nicht hardwareverifiziert |
 | Hue, Sense HAT, Musik und Weboberfläche | nicht implementiert |
 
 Lokale Tests:

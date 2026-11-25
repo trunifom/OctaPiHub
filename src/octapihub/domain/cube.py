@@ -49,6 +49,12 @@ class OrientationDebouncer:
         """Return the candidate waiting for stability."""
         return self._candidate[0] if self._candidate else None
 
+    def next_deadline_ms(self) -> int | None:
+        """Return when the pending candidate becomes stable, or ``None`` if idle."""
+        if self._candidate is None:
+            return None
+        return self._candidate[1] + self.debounce_ms
+
     def reset(self) -> None:
         """Forget state after a new connection."""
         self._committed = None

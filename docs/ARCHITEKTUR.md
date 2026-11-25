@@ -12,13 +12,16 @@ Aktuell implementiert sind:
 - `domain`: Würfel-Orientierungsereignisse, Baseline, Entprellung und Reconnect-Backoff.
 - `core`: Fehlerklassen sowie versioniertes TOML-Laden und dessen Validierung.
 - `application.plugins`: Plugin-Vertrag, Registry und Discovery über Python-Entry-Points.
-- `infrastructure.ble`: hardwareunabhängiger BLE-Transportvertrag, Fake und Decoder
-  der bekannten BLE-Nutzdaten.
+- `application.ble`: hardwareunabhängiger BLE-Transportvertrag und GATT-Profile.
+- `application.ble_runtime`: serialisierte Verbindungseinrichtung und je ein überwachter
+  Worker pro konfiguriertem Würfel.
+- `infrastructure.ble`: Bleak/BlueZ-Adapter, Fake und Decoder der bekannten BLE-Nutzdaten.
 
-Der produktive Bleak-Transport, Laufzeit/Prozesssteuerung, Regeln/Aktionen, Hue,
-Audio/Cast, Sense HAT, Weboberfläche und dauerhafte Konfigurationsspeicherung sind
-noch nicht implementiert. Sie gelten erst nach eigenen Tests und einem eigenen Commit
-als fertig.
+Der BLE-Transport und die Laufzeit sind implementiert und lokal mit Fakes getestet.
+Ein startbarer Systemdienst/Composition Root, Regeln/Aktionen, Hue, Audio/Cast,
+Sense HAT, Weboberfläche und dauerhafte Konfigurationsspeicherung sind noch nicht
+implementiert. Die BLE-Laufzeit wurde nicht auf Raspberry Pi oder echter Hardware
+verifiziert.
 
 ## Abhängigkeitsrichtung
 
@@ -32,10 +35,11 @@ domain  <-  application  <-  infrastructure adapters
 - `domain` enthält reine Regeln und Modelle. Es importiert keine Hardware-, HTTP-,
   Datenbank- oder Webframeworks.
 - `application` orchestriert Anwendungsfälle und definiert Verträge für austauschbare
-  Adapter. Es importiert keine konkreten Adapter.
+  Adapter (Ports). Es importiert keine konkreten Adapter.
 - `infrastructure` implementiert diese Verträge für BlueZ/BLE, Hue, Audio/Cast und
   Sense HAT. Hardwareadapter bleiben ersetzbar durch Fakes. Der BLE-Transportvertrag
-  (`DeviceTransport`, `TransportFactory`) enthält absichtlich keine GATT-Schreibmethode.
+  (`application.ble.DeviceTransport`, `TransportFactory`) enthält absichtlich keine
+  GATT-Schreibmethode.
 - Der BLE-Transport kapselt einen Verbindungszyklus. Sein Besitzer steuert Verbindung,
   Erkennung, Abonnement und Freigabe; nur der Besitzer orchestriert mehrere Cubes.
   Detaillierte Wiederverbindung und die globale Serialisierung folgen in der BLE-Runtime.
@@ -87,11 +91,29 @@ besitzen.
 
 ## BLE-Vertrag und Fake
 
-`DeviceProfile` enthält ausschließlich entdeckte Characteristic-UUIDs und Eigenschaften,
+`application.ble.DeviceProfile` enthält ausschließlich entdeckte Characteristic-UUIDs und Eigenschaften,
 keine Backend- oder GATT-Client-Objekte. Eine Gerätefähigkeit gilt erst dann als
 Orientierungskanal, wenn die erwartete UUID `notify` oder `indicate` anbietet.
 Unbekannte schreibbare Characteristics werden nicht verwendet.
 
-`FakeDeviceTransport` bildet die gleiche öffentliche Transportoberfläche ab und erlaubt
+`FakeDeviceTransport` bildet dieselbe Anwendungsschnittstelle ab und erlaubt
 Tests von Notifications, Trennung, Capability-Fehlern und gezielten Transportfehlern
 ohne Bluetooth. Der Fake beweist weder BlueZ-/Bleak-Kompatibilität noch Hardwareverhalten.
+
+## BLE-Laufzeit und Bleak-Adapter
+
+`application.ble_runtime.BleRuntime` besitzt einen Worker pro konfiguriertem Würfel.
+Verbindung, GATT-Capability-Erkennung und Notify-Anmeldung werden über eine gemeinsame
+Sperre serialisiert; danach können beide Verbindungen parallel aktiv bleiben. Ein
+stiller Würfel gilt nicht als getrennt: Reconnect wird durch den Disconnect-Callback
+oder den tatsächlichen Verbindungsstatus ausgelöst. Wiederholungen verwenden
+begrenztes exponentielles Backoff mit Jitter. Unterstützt ein Gerät die erwartete
+Notify-/Indicate-Characteristic nicht, wird es als nicht unterstützt markiert und
+nicht endlos erneut verbunden.
+
+Die Runtime begrenzt sowohl Benachrichtigungs- als auch Ereigniswarteschlangen,
+entprellt Orientierungen und stellt Status ohne Bluetooth-Adresse bereit.
+`infrastructure.ble.bleak_transport.BleakDeviceTransport` bindet den Vertrag an Bleak
+und den konfigurierten BlueZ-Adapter. Tests dafür verwenden einen injizierten
+Bleak-Fake; sie belegen weder Zugriff auf BlueZ noch einen erfolgreichen Betrieb mit
+einem echten Würfel oder Raspberry Pi.

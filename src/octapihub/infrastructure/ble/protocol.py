@@ -2,9 +2,9 @@
 
 from uuid import UUID
 
+from octapihub.application.ble import DeviceProfile
 from octapihub.core.errors import ProtocolError
 from octapihub.domain.cube import MAX_FACE, NEUTRAL_VALUES
-from octapihub.infrastructure.ble.transport import DeviceProfile
 
 ORIENTATION_SERVICE_UUID = "c7e70010-c847-11e6-8175-8c89a55d403c"
 ORIENTATION_CHARACTERISTIC_UUID = "c7e70012-c847-11e6-8175-8c89a55d403c"

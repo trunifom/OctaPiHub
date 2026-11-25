@@ -6,14 +6,14 @@ import asyncio
 from collections.abc import Callable
 from typing import cast
 
-from octapihub.core.errors import BleConnectionError, UnsupportedDeviceError
-from octapihub.infrastructure.ble.protocol import normalize_uuid
-from octapihub.infrastructure.ble.transport import (
+from octapihub.application.ble import (
     DeviceProfile,
     DeviceTransport,
     DisconnectCallback,
     NotificationCallback,
 )
+from octapihub.core.errors import BleConnectionError, UnsupportedDeviceError
+from octapihub.infrastructure.ble.protocol import normalize_uuid
 
 Failure = Callable[[], Exception]
 

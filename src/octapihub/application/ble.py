@@ -1,4 +1,4 @@
-"""Hardware-independent, read-only BLE transport contracts."""
+"""Application ports for read-only BLE device transports."""
 
 from __future__ import annotations
 

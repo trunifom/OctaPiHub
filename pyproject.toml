@@ -8,7 +8,9 @@ version = "0.1.0.dev0"
 description = "Local-first smart-home and music hub for Timeular / ZEI cubes"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+  "bleak>=3,<4",
+]
 
 [project.optional-dependencies]
 dev = [
