@@ -322,3 +322,7 @@ externen Fonts oder Skripte; die Seiten funktionieren offline im LAN).
 Bekannte Grenzen: keine Rollen/Anmeldung außer Token, LAN-Beschränkung nicht erzwungen
 (nur Bindeadresse), keine Barrierefreiheitsprüfung mit Hilfsmitteln, LED-Matrix- und
 Joystick-Einstellungen werden gespeichert, aber noch nicht angewendet.
+
+## Würfel-Dienst
+
+`CubeService` (application) besitzt die Würfel-Pipeline: BLE-Laufzeit → Regeln → Outbox → Plugins. Ein Router-Task legt Ereignisse in die Outbox, je Würfel läuft ein eigener Dispatcher-Task. Ein fehlerhaftes Ereignis stoppt das Routing nicht, ein ausgefallener Dispatcher wird nur für seinen Würfel neu gestartet. Lässt sich die Pipeline nicht aufbauen (z. B. fehlendes Plugin für eine konfigurierte Aktion oder nicht beschreibbarer Datenordner), startet nichts, `error`/`error_code` erklären den Grund und der übrige Hub läuft weiter. `build_cube_service` in `composition.py` verdrahtet Bleak, die SQLite-Outbox (`data/state.sqlite3`) und die installierten Plugins. Bluetooth, Würfel und Plugins sind nur mit Fakes getestet; ein Hue-Plugin ist mangels Konfiguration (Bridge, Schlüssel) noch nicht installierbar.
