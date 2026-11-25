@@ -15,12 +15,16 @@ Aktuell implementiert sind:
 - `application.ble`: hardwareunabhängiger BLE-Transportvertrag und GATT-Profile.
 - `application.ble_runtime`: serialisierte Verbindungseinrichtung und je ein überwachter
   Worker pro konfiguriertem Würfel.
+- `application.rules` und `application.outbox`: stabile Würfelseiten auf Plugin-Aktionen
+  abbilden und Aktionen isoliert aus der persistenten Warteschlange ausführen.
 - `infrastructure.ble`: Bleak/BlueZ-Adapter, Fake und Decoder der bekannten BLE-Nutzdaten.
+- `infrastructure.sqlite_outbox`: SQLite-WAL-Speicherung, FIFO je Würfel und Retry-Status.
 
 Der BLE-Transport und die Laufzeit sind implementiert und lokal mit Fakes getestet.
-Ein startbarer Systemdienst/Composition Root, Regeln/Aktionen, Hue, Audio/Cast,
-Sense HAT und Weboberfläche sind noch nicht implementiert. Die BLE-Laufzeit wurde
-nicht auf Raspberry Pi oder echter Hardware verifiziert.
+Regelzuordnung und generische Outbox sind lokal getestet; konkrete Hue-/Audio-Aktionsadapter,
+ein startbarer Systemdienst/Composition Root, Sense HAT und Weboberfläche sind noch
+nicht implementiert. Die BLE-Laufzeit wurde nicht auf Raspberry Pi oder echter
+Hardware verifiziert.
 
 ## Abhängigkeitsrichtung
 
@@ -41,7 +45,8 @@ domain  <-  application  <-  infrastructure adapters
   GATT-Schreibmethode.
 - Der BLE-Transport kapselt einen Verbindungszyklus. Sein Besitzer steuert Verbindung,
   Erkennung, Abonnement und Freigabe; nur der Besitzer orchestriert mehrere Cubes.
-  Detaillierte Wiederverbindung und die globale Serialisierung folgen in der BLE-Runtime.
+  `application.ble_runtime` serialisiert den Verbindungsaufbau und überwacht getrennte
+  Würfel-Worker mit eigener Wiederverbindung.
 - `core` stellt querschnittliche, stabile Grundtypen bereit, etwa Fehler und
   Konfigurationsvalidierung und -speicherung; es hängt nicht von den anderen Schichten ab.
 - Der Composition Root (noch nicht implementiert) lädt Konfiguration und Plugins,
@@ -86,6 +91,42 @@ Fehler vor dem Ersetzen werden als `ConfigurationError` mit erhaltener Ursache
 gemeldet, und die vorhandene Konfiguration bleibt unangetastet. Temporäre Dateien
 werden nach Schreib- oder Ersetzungsfehlern entfernt; wenn das nicht gelingt, wird
 der Bereinigungsfehler protokolliert.
+
+## Regeln und Outbox
+
+Schema v2 ergänzt `mappings`: jede Zuordnung benennt einen konfigurierten Würfel, eine
+Seite 1–8 und eine geordnete Liste aus Plugin-Art, Aktionsname und TOML-Parametern.
+Schema-v1-Dateien werden mit leerer Zuordnung weitergeladen und beim nächsten Speichern
+als Schema v2 geschrieben. Unbekannte Würfel, doppelte Würfel-/Seitenpaare und ungültige
+Aktionen werden vor dem Anwenden zurückgewiesen. Beim Erzeugen des Dispatchers wird
+zusätzlich geprüft, dass jede konfigurierte Plugin-Art registriert ist.
+
+```toml
+[[mappings]]
+cube = "Licht"
+face = 2
+
+[[mappings.actions]]
+kind = "hue"
+action = "scene.set"
+parameters = { scene_id = "living-room" }
+```
+
+`RuleEngine` löst nur stabile Seitenwechsel auf; Baseline und Neutral-Seite lösen keine
+Aktion aus. `OutboxDispatcher.enqueue_face_change` bietet denselben Einstieg für BLE,
+Web und Joystick. Die SQLite-Outbox speichert jede Aktion als Schritt einer atomaren
+Batch, arbeitet pro Würfel strikt FIFO ab, verwendet begrenztes exponentielles Backoff
+und markiert abgelaufene Einträge. Ein Fehler oder Retry eines Würfels blockiert den
+anderen Würfel nicht. Abgeschlossene und abgelaufene Einträge können gezielt bereinigt
+werden.
+
+Es darf nur einen aktiven Outbox-Eigentümerprozess geben. Die Ausführung ist
+At-least-once: Wenn der Prozess nach einer externen Wirkung, aber vor dem Erfolgs-Commit
+abbricht, kann die Aktion nach dem Neustart erneut ausgeführt werden. Plugins müssen
+daher wiederholbare Aktionen bevorzugen. Mehrstufige Zuordnungen laufen der Reihe nach;
+zeitbasierte Bedingungen, eine zusätzliche Aktions-Entprellung und konkrete
+Hue-/Musik-Aktionen sowie die konfigurierbare Zustandswiederherstellung beim Start
+folgen später.
 
 ## Regeln für neue Module
 

@@ -80,3 +80,10 @@ class PluginError(OctaPiHubError):
 
     code = "CH-PLUG-001"
     default_user_message = "Ein Erweiterungsmodul ist ungültig oder konnte nicht geladen werden."
+
+
+class OutboxError(OctaPiHubError):
+    """The durable action queue could not be accessed or updated."""
+
+    code = "CH-DB-001"
+    default_user_message = "Die Aktionswarteschlange konnte nicht gelesen oder gespeichert werden."

@@ -12,8 +12,9 @@ und atomare Speicherung der ersten versionierten TOML-Konfiguration. Es gibt au�
 einen typisierten Plugin-Vertrag und Discovery für vertrauenswürdige Python-Plugins.
 Der BLE-Transportvertrag und ein hardwarefreier Fake sind vorhanden; der produktive
 Bleak-Adapter und eine hardwarefrei getestete Laufzeit für beide Würfel sind ergänzt.
-Die Laufzeit ist noch nicht in einen startbaren Systemdienst eingebunden und wurde
-nicht mit echten Würfeln oder einem Raspberry Pi geprüft.
+Schema-v2-Regelzuordnungen und eine generische SQLite-WAL-Outbox sind implementiert.
+Es gibt noch keinen startbaren Systemdienst oder konkrete Hue-/Musik-Aktionsadapter;
+BLE wurde nicht mit echten Würfeln oder einem Raspberry Pi geprüft.
 
 | Teil | Status |
 |---|---|
@@ -22,10 +23,11 @@ nicht mit echten Würfeln oder einem Raspberry Pi geprüft.
 | Entprellung / Reconnect-Backoff | erster Stand, nur Unit-getestet |
 | Versionierte TOML-Konfiguration | Laden, Validieren und atomisches Speichern implementiert |
 | Plugin-Vertrag und Entry-Point-Registry | erster Stand, nur Unit-getestet |
+| Regelzuordnungen und SQLite-WAL-Outbox | generisch implementiert, lokal getestet |
 | BLE-Transportvertrag und Fake | implementiert, hardwarefrei getestet |
 | BLE-Laufzeit und Bleak/BlueZ-Adapter | implementiert, mit Fakes getestet |
 | BLE-Verbindung zu echten Würfeln / Raspberry Pi | nicht hardwareverifiziert |
-| Hue, Sense HAT, Musik und Weboberfläche | nicht implementiert |
+| Hue-/Musikadapter, Sense HAT und Weboberfläche | nicht implementiert |
 
 Lokale Tests:
 
