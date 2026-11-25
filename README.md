@@ -13,8 +13,11 @@ einen typisierten Plugin-Vertrag und Discovery für vertrauenswürdige Python-Pl
 Der BLE-Transportvertrag und ein hardwarefreier Fake sind vorhanden; der produktive
 Bleak-Adapter und eine hardwarefrei getestete Laufzeit für beide Würfel sind ergänzt.
 Schema-v2-Regelzuordnungen und eine generische SQLite-WAL-Outbox sind implementiert.
-Es gibt noch keinen startbaren Systemdienst oder konkrete Hue-/Musik-Aktionsadapter;
-BLE wurde nicht mit echten Würfeln oder einem Raspberry Pi geprüft.
+Ein automatisierter End-to-End-Test führt ein simuliertes Würfelereignis durch Regeln
+und Outbox bis zu einem Fake-Hue-Plugin. Es gibt noch keinen startbaren Systemdienst
+oder echten Hue-/Musik-Aktionsadapter; OctaPiHub wurde nicht mit echter Hardware geprüft.
+Nach Nutzerangabe wurde im separaten OctaLedger-Projekt ein echter Würfel mit dem
+Musikplayer erprobt; das belegt weder OctaPiHub-BLE noch die Hue-Lichtsteuerung.
 
 | Teil | Status |
 |---|---|
@@ -24,6 +27,7 @@ BLE wurde nicht mit echten Würfeln oder einem Raspberry Pi geprüft.
 | Versionierte TOML-Konfiguration | Laden, Validieren und atomisches Speichern implementiert |
 | Plugin-Vertrag und Entry-Point-Registry | erster Stand, nur Unit-getestet |
 | Regelzuordnungen und SQLite-WAL-Outbox | generisch implementiert, lokal getestet |
+| Fake-Würfel → Regeln → Outbox → Fake Hue | als lokaler End-to-End-Test abgedeckt |
 | BLE-Transportvertrag und Fake | implementiert, hardwarefrei getestet |
 | BLE-Laufzeit und Bleak/BlueZ-Adapter | implementiert, mit Fakes getestet |
 | BLE-Verbindung zu echten Würfeln / Raspberry Pi | nicht hardwareverifiziert |

@@ -168,3 +168,18 @@ entprellt Orientierungen und stellt Status ohne Bluetooth-Adresse bereit.
 und den konfigurierten BlueZ-Adapter. Tests dafür verwenden einen injizierten
 Bleak-Fake; sie belegen weder Zugriff auf BlueZ noch einen erfolgreichen Betrieb mit
 einem echten Würfel oder Raspberry Pi.
+
+## Hardwarefreier End-to-End-Pfad
+
+`tests/test_end_to_end.py` verbindet `FakeDeviceTransport`, die echte BLE-Laufzeit,
+Regelauflösung, `SQLiteOutbox`, den echten Dispatcher und ein zustandsbehaftetes
+`FakeHuePlugin`. Der Test prüft, dass Baseline-Ereignisse keine Aktion auslösen und
+ein stabiler Seitenwechsel eine geordnete Szene-/Helligkeitsaktion bis zum erfolgreichen
+Outbox-Abschluss führt. Das Fake-Plugin simuliert nur die Adaptergrenze; es spricht
+weder mit einer Hue Bridge noch prüft es Hue-API-, Zertifikats- oder Geräteverhalten.
+
+Laut Nutzerangabe wurde in dem separaten Projekt OctaLedger ein echter Würfel mit
+Musikplayer erprobt. Das ist hilfreiche externe Praxiserfahrung, aber kein Testnachweis
+für die OctaPiHub-Implementierung; insbesondere wurde keine reale Hue-Lichtsteuerung
+bestätigt. OctaPiHub selbst wurde weiterhin nicht auf echter BLE-Hardware oder einem
+Raspberry Pi verifiziert.
