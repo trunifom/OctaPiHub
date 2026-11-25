@@ -9,6 +9,7 @@ import os
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC
+from pathlib import Path
 
 import uvicorn
 
@@ -22,7 +23,13 @@ from octapihub.composition import (
 )
 from octapihub.core.config import load_config
 from octapihub.core.errors import OctaPiHubError, SecretsError
-from octapihub.core.logging_support import LogRing, RedactingFilter, Redactor
+from octapihub.core.logging_support import (
+    LOG_FORMAT,
+    LogRing,
+    RedactingFilter,
+    Redactor,
+    create_file_handler,
+)
 from octapihub.infrastructure.music.cast_player import PyChromecastBackend
 from octapihub.infrastructure.music.mpv_player import list_audio_devices
 from octapihub.infrastructure.secrets import SecretsFile
@@ -32,16 +39,22 @@ from octapihub.web.app import WebBackend, create_app
 TOKEN_VARIABLE = "OCTAPIHUB_WEB_TOKEN"  # noqa: S105 - name of the variable, not a secret
 
 
-def install_logging(redactor: Redactor) -> LogRing:
-    """Send redacted logs to the console and keep recent lines for the System page."""
+def install_logging(
+    redactor: Redactor, level: int = logging.INFO, log_dir: str | None = None
+) -> LogRing:
+    """Log (redacted) to the console and a rotating file; keep recent lines for the System page."""
     console = logging.StreamHandler()
-    console.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    console.setFormatter(logging.Formatter(LOG_FORMAT))
     console.addFilter(RedactingFilter(redactor))
     ring = LogRing(redactor)
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(level)
     root_logger.addHandler(console)
     root_logger.addHandler(ring)
+    if log_dir:
+        file_handler = create_file_handler(log_dir, redactor, level=level)
+        if file_handler is not None:
+            root_logger.addHandler(file_handler)
     return ring
 
 
@@ -64,6 +77,15 @@ def _port(text: str) -> int:
     if not 1 <= port <= 65535:
         raise argparse.ArgumentTypeError("Der Port muss zwischen 1 und 65535 liegen")
     return port
+
+
+def _log_level(text: str) -> int:
+    level = logging.getLevelNamesMapping().get(text.strip().upper())
+    if level not in (logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR):
+        raise argparse.ArgumentTypeError(
+            f"ungültige Ausführlichkeit: {text!r} (DEBUG, INFO, WARNING oder ERROR)"
+        )
+    return level
 
 
 MIN_TOKEN_LENGTH = 12
@@ -119,6 +141,17 @@ def build_parser(environ: Mapping[str, str] | None = None) -> argparse.ArgumentP
     parser.add_argument("--secrets", default="secrets.env", help="Datei mit Zugangsdaten")
     parser.add_argument("--data-dir", default="data", help="Ordner für Zustandsdatenbanken")
     parser.add_argument(
+        "--log-dir",
+        default=None,
+        help='Ordner für die Logdatei (Standard: <data-dir>/logs; "-" schaltet die Datei aus)',
+    )
+    parser.add_argument(
+        "--log-level",
+        default=env.get("OCTAPIHUB_LOG_LEVEL") or "INFO",
+        type=_log_level,
+        help="Ausführlichkeit: DEBUG, INFO, WARNING oder ERROR (Standard: INFO)",
+    )
+    parser.add_argument(
         "--demo",
         action="store_true",
         help="Simuliertes Sense HAT mit Beispieldaten (Token: demo), ohne Hardware",
@@ -130,7 +163,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Start the interface; returns a process exit code."""
     args = build_parser().parse_args(argv)
     redactor = Redactor()
-    logs = install_logging(redactor)
+    log_dir = None if args.log_dir == "-" else (args.log_dir or str(Path(args.data_dir) / "logs"))
+    logs = install_logging(redactor, args.log_level, None if args.demo else log_dir)
 
     if args.demo:
         from octapihub.web.demo import build_demo_backend, demo_system_reader
@@ -167,6 +201,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"CH-WEB-008: {problem}", file=sys.stderr)  # noqa: T201
         return 2
     backend.logs = logs
+    backend.log_dir = None if args.demo else log_dir
     if backend.system is None:
         backend.system = SystemInfoReader(args.data_dir)
     redactor.add_secret(backend.token)

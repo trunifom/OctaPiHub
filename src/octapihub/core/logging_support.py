@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import re
 import threading
 from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 _MAC = re.compile(r"\b([0-9A-Fa-f]{2}):(?:[0-9A-Fa-f]{2}:){4}([0-9A-Fa-f]{2})\b")
 _ASSIGNMENT = re.compile(
@@ -114,3 +116,50 @@ class LogRing(logging.Handler):
         """Newest-first lines at or above ``minimum_level``."""
         selected = [line for line in reversed(self._lines) if line.level_number >= minimum_level]
         return tuple(selected[:limit])
+
+
+LOG_FILE_NAME = "octapihub.log"
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+
+def create_file_handler(
+    directory: str | Path,
+    redactor: Redactor,
+    *,
+    level: int = logging.INFO,
+    max_bytes: int = 1_000_000,
+    backups: int = 5,
+) -> logging.Handler | None:
+    """A rotating, redacting log file in ``directory`` (``None`` if it cannot be written).
+
+    The file is kept small (``max_bytes`` times ``backups`` + 1) so a Raspberry Pi's SD card
+    is not filled up. A directory that is not writable only costs the file, never the start.
+    """
+    try:
+        folder = Path(directory)
+        folder.mkdir(parents=True, exist_ok=True)
+        handler = logging.handlers.RotatingFileHandler(
+            folder / LOG_FILE_NAME, maxBytes=max_bytes, backupCount=backups, encoding="utf-8"
+        )
+    except OSError as exc:
+        logging.getLogger(__name__).warning(
+            "Log file could not be created (%s); logging to the console only", type(exc).__name__
+        )
+        return None
+    handler.setLevel(level)
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    handler.addFilter(RedactingFilter(redactor))
+    return handler
+
+
+def read_log_file(directory: str | Path, limit_bytes: int = 400_000) -> str:
+    """The newest part of the log file (empty if there is none); the text is already redacted."""
+    path = Path(directory) / LOG_FILE_NAME
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as stream:
+            if size > limit_bytes:
+                stream.seek(size - limit_bytes)
+            return stream.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""

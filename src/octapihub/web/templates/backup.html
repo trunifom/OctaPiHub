@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Sichern &amp; Wiederherstellen</h1>
+    <p class="lead">Exportieren Sie Ihre Einstellungen, spielen Sie sie auf einem anderen Gerät wieder ein und laden Sie Messdaten und Logdateien herunter.</p>
+  </div>
+</div>
+
+{% if banner %}
+<div class="notice notice-{{ banner.level }}" role="{{ 'alert' if banner.level == 'error' else 'status' }}">
+  <span class="notice-ico">{{ m.icon(banner.level) }}</span>
+  <div class="notice-body">
+    <p class="notice-title">{{ banner.title }}</p>
+    {% if banner.detail %}<p>{{ banner.detail }}</p>{% endif %}
+    {% for note in notes %}<p>{{ note }}</p>{% endfor %}
+    {% if banner.code %}<p class="notice-code">Fehlercode <code>{{ banner.code }}</code></p>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if not writable %}
+<div class="notice notice-info" role="status">
+  <span class="notice-ico">{{ m.icon('info') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Export und Import brauchen das Zugriffs-Token</p>
+    <p>Legen Sie ein Token mit <code>OCTAPIHUB_WEB_TOKEN</code> fest und starten Sie den Dienst neu. Messdaten und Logdateien können Sie trotzdem herunterladen.</p>
+  </div>
+</div>
+{% endif %}
+
+<form method="post" action="/backup" id="backup-form" novalidate>
+  <section class="panel">
+    <div class="panel-head">
+      <h2><span class="step-no">1</span> Einstellungen exportieren</h2>
+      <p class="muted">Sie erhalten eine Datei, die Sie später wieder einspielen können. Sie enthält keine Passwörter oder Schlüssel, und nicht die Liste der Würfel (die gehört zu diesem Gerät).</p>
+    </div>
+    {% for key, label in sections.items() %}
+    <label class="check"><input type="checkbox" name="sec.{{ key }}"{% if form.get('sec.' ~ key) %} checked{% endif %}> <span>{{ label }}</span></label>
+    {% endfor %}
+    <div class="btn-row">
+      <button type="submit" name="action" value="export" class="btn btn-primary"{% if not writable %} disabled{% endif %}>Export-Datei herunterladen</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2><span class="step-no">2</span> Einstellungen importieren</h2>
+      <p class="muted">Zuerst wird die Datei nur geprüft. Erst danach entscheiden Sie, was übernommen wird. Die bisherigen Einstellungen werden vorher gesichert.</p>
+    </div>
+    <div class="field">
+      <label for="f-bundle-file">Export-Datei auswählen</label>
+      <input type="file" id="f-bundle-file" accept=".json,application/json" data-fill-target="f-bundle">
+      <small class="help">Der Inhalt erscheint unten. Sie können ihn auch dort einfügen.</small>
+    </div>
+    <div class="field field-wide">
+      <label for="f-bundle">Inhalt der Export-Datei</label>
+      <textarea name="bundle" id="f-bundle" rows="6" spellcheck="false" autocomplete="off">{{ form.get('bundle', '') }}</textarea>
+    </div>
+    <div class="btn-row">
+      <button type="submit" name="action" value="import-check" class="btn"{% if not writable %} disabled{% endif %}>Datei prüfen</button>
+    </div>
+    {% if previews %}
+    <div class="found">
+      <p><strong>Das steht in der Datei:</strong></p>
+      <ul class="plain">
+        {% for p in previews %}
+        <li>
+          <label class="check"><input type="checkbox" name="imp.{{ p.key }}"{% if form.get('imp.' ~ p.key) %} checked{% endif %}{% if not p.valid %} disabled{% endif %}> <span><strong>{{ p.label }}</strong><br>
+            {% if p.valid %}{{ p.detail }}{% else %}<span class="field-error">Passt nicht: {{ p.detail }}</span>{% endif %}</span></label>
+        </li>
+        {% endfor %}
+      </ul>
+      <div class="btn-row">
+        <button type="submit" name="action" value="import-apply" class="btn btn-primary"{% if not writable %} disabled{% endif %}>Ausgewählte Bereiche übernehmen</button>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+  <div class="savebar">
+    <div class="savebar-in">
+      <div class="field field-token">
+        <label for="f-token">Zugriffs-Token</label>
+        <input type="password" name="token" id="f-token" autocomplete="current-password" placeholder="{{ 'Token eingeben' if writable else 'Nicht eingerichtet' }}"{% if not writable %} disabled{% endif %}>
+      </div>
+    </div>
+  </div>
+</form>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2><span class="step-no">3</span> Messdaten herunterladen (CSV)</h2>
+    <p class="muted">Der Verlauf der Sensoren als Tabelle, die Excel und LibreOffice öffnen. Zeiten in UTC.</p>
+  </div>
+  {% if history_on and csv_groups %}
+  <form method="get" action="/export/sensor-data.csv" class="fields-2">
+    <div class="field">
+      <label for="f-csv-group">Messgröße</label>
+      <select name="group" id="f-csv-group">
+        <option value="all">Alle</option>
+        {% for g in csv_groups %}<option value="{{ g }}">{{ {'temperature': 'Temperatur', 'humidity': 'Luftfeuchtigkeit', 'pressure': 'Luftdruck', 'compass': 'Kompass'}[g] }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="f-csv-range">Zeitraum</label>
+      <select name="range" id="f-csv-range">
+        {% for key, label in ranges.items() %}<option value="{{ key }}"{% if key == '24h' %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="f-csv-res">Genauigkeit</label>
+      <select name="resolution" id="f-csv-res">
+        <option value="average">Mittelwerte (kompakt)</option>
+        <option value="raw">Einzelne Messwerte (nur bis 24 Stunden)</option>
+      </select>
+    </div>
+    <div class="btn-row"><button type="submit" class="btn">CSV herunterladen</button></div>
+  </form>
+  {% else %}
+  <div class="empty"><h3>Kein Verlauf vorhanden</h3><p>Schalten Sie den Verlauf unter Einstellungen ein, damit Messwerte gespeichert werden.</p></div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2><span class="step-no">4</span> Logdateien herunterladen</h2>
+    <p class="muted">Zugangsdaten sind in den Logs unkenntlich gemacht, Geräteadressen gekürzt. Nützlich, wenn Sie Hilfe suchen.</p>
+  </div>
+  <div class="btn-row">
+    <a class="btn" href="/export/log.txt?source=recent&amp;level=INFO">Letzte Meldungen</a>
+    <a class="btn" href="/export/log.txt?source=recent&amp;level=WARNING">Nur Warnungen und Fehler</a>
+    {% if log_file %}<a class="btn" href="/export/log.txt?source=file">Logdatei (neuester Teil)</a>{% endif %}
+  </div>
+</section>
+{% endblock %}

@@ -42,6 +42,7 @@ from octapihub.core.logging_support import LogRing, Redactor
 from octapihub.infrastructure.music.media import MediaRegistry, content_type_for
 from octapihub.infrastructure.system_info import SystemInfoReader
 from octapihub.web import forms
+from octapihub.web.backup_routes import register_backup_routes
 from octapihub.web.diagnostics import build_zip, collect_diagnostics
 from octapihub.web.music_routes import register_music_routes
 from octapihub.web.presenter import (
@@ -74,6 +75,7 @@ logger = logging.getLogger(__name__)
 
 _PACKAGE_DIR = Path(__file__).parent
 MAX_FORM_BYTES = 64 * 1024
+BACKUP_FORM_BYTES = 640 * 1024  # an export file pasted into the import form
 DISPLAY_TIMEZONE = "Europe/Zurich"
 
 # range name -> (label, window, bucket seconds); ~120-180 points per chart.
@@ -117,6 +119,7 @@ class WebBackend:
     discover_cast: Callable[[], Awaitable[list[str]]] | None = None
     list_audio_devices: Callable[[], Awaitable[list[tuple[str, str]]]] | None = None
     logs: LogRing | None = None
+    log_dir: str | None = None
     redactor: Redactor | None = None
     tz: tzinfo = field(default_factory=display_timezone)
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
@@ -150,10 +153,10 @@ def _access_problem(token: str | None, supplied: str) -> tuple[int, str, str, st
     return None
 
 
-async def _read_form(request: Request) -> tuple[dict[str, str], str]:
+async def _read_form(request: Request, limit: int = MAX_FORM_BYTES) -> tuple[dict[str, str], str]:
     """Parse a small urlencoded body; returns (fields without token, supplied token)."""
     raw = await request.body()
-    if len(raw) > MAX_FORM_BYTES:
+    if len(raw) > limit:
         raise HTTPException(status_code=413, detail="Request too large")
     fields = dict(parse_qsl(raw.decode("utf-8", errors="replace"), keep_blank_values=True))
     supplied = fields.pop("token", "") or request.headers.get("x-octapihub-token", "")
@@ -723,6 +726,13 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
         )
 
     register_music_routes(app, backend, page, _read_form, _access_problem)
+
+    async def read_backup_form(request: Request) -> tuple[dict[str, str], str]:
+        return await _read_form(request, BACKUP_FORM_BYTES)
+
+    register_backup_routes(
+        app, backend, page, read_backup_form, _access_problem, dict(SERIES_RANGES)
+    )
 
     @app.get("/sense-hat", response_class=HTMLResponse)
     def sense_hat_page(request: Request) -> Response:

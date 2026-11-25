@@ -334,4 +334,17 @@
       try { store.setItem("octapihub.token", token.value); } catch (e) { /* ignore */ }
     });
   }
+  /* ---------- import: put the chosen file's text into the text field ---------- */
+  $$("input[type=file][data-fill-target]").forEach(function (input) {
+    input.addEventListener("change", function () {
+      var target = document.getElementById(input.getAttribute("data-fill-target"));
+      var file = input.files && input.files[0];
+      if (!target || !file) { return; }
+      if (file.size > 524288) { target.value = ""; target.placeholder = "Die Datei ist zu groß (höchstens 512 KB)."; return; }
+      var reader = new FileReader();
+      reader.onload = function () { target.value = String(reader.result || ""); };
+      reader.onerror = function () { target.value = ""; target.placeholder = "Die Datei konnte nicht gelesen werden."; };
+      reader.readAsText(file);
+    });
+  });
 })();
