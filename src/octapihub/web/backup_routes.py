@@ -58,6 +58,7 @@ def register_backup_routes(
             "sections": backup.SECTION_LABELS,
             "previews": previews or [],
             "notes": notes or [],
+            "cube_names": [c.name for c in config.cubes] + ["Joystick"],
             "csv_groups": [g for g in CSV_GROUPS if g in config.sense_hat.sensors],
             "ranges": {k: v[0] for k, v in ranges.items()},
             "history_on": config.sense_hat.history.enabled,
@@ -98,7 +99,9 @@ def register_backup_routes(
         chosen = [key for key in backup.SECTION_LABELS if submitted.get(f"sec.{key}")]
         try:
             if action == "export":
-                text = backup.build_bundle(backend.settings.config, chosen, backend.clock())
+                text = backup.build_bundle(
+                    backend.settings.config, chosen, backend.clock(), submitted.get("cube_name", "")
+                )
                 stamp = backend.clock().astimezone(backend.tz).strftime("%Y%m%d-%H%M")
                 return Response(
                     text,
@@ -115,7 +118,11 @@ def register_backup_routes(
                         "Wählen Sie eine Export-Datei aus oder fügen Sie ihren Inhalt ein.",
                     )
                 bundle = backup.parse_bundle(text)
-                previews.extend(backup.preview_bundle(backend.settings.config, bundle))
+                previews.extend(
+                    backup.preview_bundle(
+                        backend.settings.config, bundle, submitted.get("target_cube", "")
+                    )
+                )
                 if action == "import-check":
                     valid = [p for p in previews if p.valid]
                     for p in valid:
@@ -139,7 +146,11 @@ def register_backup_routes(
                         "Bitte wählen Sie mindestens einen passenden Bereich",
                         "Bereiche mit Fehlern können nicht übernommen werden.",
                     )
-                notes.extend(await backend.settings.apply_bundle(bundle, picked))
+                notes.extend(
+                    await backend.settings.apply_bundle(
+                        bundle, picked, submitted.get("target_cube", "")
+                    )
+                )
                 submitted.pop("bundle", None)
                 previews.clear()
                 return respond(

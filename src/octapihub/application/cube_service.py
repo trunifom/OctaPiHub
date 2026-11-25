@@ -174,6 +174,16 @@ class CubeService:
         if self._runtime is None:
             await self.start()
 
+    async def reconfigure(self, config: AppConfig) -> None:
+        """Apply a changed cube list: stop everything, then start with the new configuration.
+
+        Cubes reconnect (a few seconds). If starting fails, the error is recorded like at
+        start-up and the service stays stopped; the configuration is still the new one.
+        """
+        await self.stop()
+        self._config = config
+        await self.start()
+
     async def stop(self) -> None:
         """Stop dispatchers and the BLE runtime; always releases Bluetooth connections."""
         runtime = self._runtime

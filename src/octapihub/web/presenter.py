@@ -30,12 +30,14 @@ from octapihub.core.config import (
     JOYSTICK_SOURCE,
     AppConfig,
     RuleActionConfig,
+    RuleMappingConfig,
     SenseHatConfig,
     SenseHatVersion,
     SensorPresentation,
 )
 from octapihub.core.logging_support import LogLine
 from octapihub.infrastructure.system_info import SystemSnapshot
+from octapihub.web.face_detail import describe_face
 from octapihub.web.forms import choice_label, mapping_sources
 
 # Scalar groups that can be drawn as a time series.
@@ -694,6 +696,10 @@ class FaceTile:
     shuffle: str = ""
     repeat: str = ""
     group: str = ""
+    name: str = ""
+    color: str = ""
+    detail: tuple[str, ...] = ()
+    summary: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -710,11 +716,21 @@ class CubeTiles:
 _JOYSTICK_CHIPS = ("▲", "▶", "▼", "◀", "●")
 
 
+def _face_summary(mapping: RuleMappingConfig | None, choice_text: str) -> str:
+    """One short line: what the face does."""
+    if mapping is None:
+        return "Keine Aktion"
+    if len(mapping.actions) > 1:
+        return f"{len(mapping.actions)} Schritte"
+    return choice_text or describe_action(mapping.actions[0])
+
+
 def build_cube_tiles(
     config: AppConfig,
     scenes: Mapping[str, str],
     form: Mapping[str, str],
     playlists: Mapping[str, str] | None = None,
+    groups: Mapping[str, str] | None = None,
 ) -> tuple[CubeTiles, ...]:
     """Tiles for the editor; ``form`` holds the currently selected choices (scene or music)."""
     playlist_names = playlists or {}
@@ -754,6 +770,10 @@ def build_cube_tiles(
                     shuffle=form.get(f"{field}.shuffle", ""),
                     repeat=form.get(f"{field}.repeat", ""),
                     group=form.get(f"{field}.group", ""),
+                    name=form.get(f"{field}.label", ""),
+                    color=form.get(f"{field}.color", ""),
+                    detail=tuple(describe_face(config, existing, scenes, groups or {})),
+                    summary=_face_summary(existing, label),
                 )
             )
         if is_joystick:

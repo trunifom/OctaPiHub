@@ -15,11 +15,14 @@ from datetime import datetime
 from typing import Any
 
 from octapihub.core.config import (
+    JOYSTICK_SOURCE,
     AppConfig,
+    face_labels_table,
     hue_table,
     mappings_table,
     music_table,
     sense_hat_table,
+    with_face_labels_table,
     with_hue_table,
     with_mappings_table,
     with_music_table,
@@ -35,6 +38,8 @@ SECTION_LABELS = {
     "music": "Musik: Wiedergabegeräte und Playlists",
     "playlists": "Nur Playlists (ergänzt vorhandene)",
     "mappings": "Zuordnung der Würfelseiten und des Joysticks",
+    "labels": "Namen und Farben der Würfelseiten",
+    "cube": "Ein einzelner Würfel (Zuordnung, Namen, Farben), z. B. für einen weiteren Würfel",
     "sense_hat": "Sense HAT: Sensoren, Verlauf und LED-Anzeige",
     "hue": "Hue: Verbindungseinstellungen (ohne Schlüssel)",
 }
@@ -64,7 +69,7 @@ class Bundle:
     ignored: tuple[str, ...] = ()
 
 
-def build_bundle(config: AppConfig, sections: list[str], created: datetime) -> str:
+def build_bundle(config: AppConfig, sections: list[str], created: datetime, cube: str = "") -> str:
     """The JSON text exporting ``sections`` of ``config``.
 
     Raises:
@@ -85,6 +90,10 @@ def build_bundle(config: AppConfig, sections: list[str], created: datetime) -> s
             data[key] = music_table(config.music)["playlists"]
         elif key == "mappings":
             data[key] = mappings_table(config)
+        elif key == "labels":
+            data[key] = face_labels_table(config)
+        elif key == "cube":
+            data[key] = cube_profile(config, cube)
         elif key == "sense_hat":
             table = sense_hat_table(config.sense_hat)
             history = dict(table["history"])  # type: ignore[call-overload]
@@ -163,13 +172,96 @@ def merge_playlists(config: AppConfig, imported: object) -> tuple[dict[str, obje
     return table, notes
 
 
-def prepare_section(config: AppConfig, key: str, value: object) -> tuple[AppConfig, list[str]]:
+def cube_profile(config: AppConfig, name: str) -> dict[str, Any]:
+    """The mappings, names and colours of one cube (or the joystick) without its identity."""
+    source = next(
+        (
+            n
+            for n in [c.name for c in config.cubes] + [JOYSTICK_SOURCE]
+            if n.casefold() == name.casefold()
+        ),
+        None,
+    )
+    if source is None:
+        raise _bad("Unknown cube", "Bitte einen vorhandenen Würfel wählen.")
+    return {
+        "name": source,
+        "mappings": [
+            {"face": m["face"], "actions": m["actions"]}
+            for m in mappings_table(config)
+            if str(m["cube"]).casefold() == source.casefold()
+        ],
+        "labels": [
+            {k: v for k, v in label.items() if k != "cube"}
+            for label in face_labels_table(config)
+            if str(label["cube"]).casefold() == source.casefold()
+        ],
+    }
+
+
+def default_target(config: AppConfig, profile_name: object) -> str:
+    """The cube a profile is applied to unless the user chooses another."""
+    names = [c.name for c in config.cubes] + [JOYSTICK_SOURCE]
+    if isinstance(profile_name, str):
+        for name in names:
+            if name.casefold() == profile_name.casefold():
+                return name
+    return config.cubes[0].name
+
+
+def _apply_profile(config: AppConfig, value: object, target: str) -> AppConfig:
+    if not isinstance(value, dict):
+        raise _bad("cube must be a table", "Die Würfel-Daten in der Datei sind ungültig.")
+    names = [c.name for c in config.cubes] + [JOYSTICK_SOURCE]
+    chosen = next((n for n in names if n.casefold() == target.casefold()), None)
+    if chosen is None:
+        raise _bad("Unknown target cube", "Bitte einen vorhandenen Würfel als Ziel wählen.")
+    mappings = value.get("mappings", [])
+    labels = value.get("labels", [])
+    if not isinstance(mappings, list) or not isinstance(labels, list):
+        raise _bad("Bad profile", "Die Würfel-Daten in der Datei sind ungültig.")
+    keep_mappings = [
+        m for m in mappings_table(config) if str(m["cube"]).casefold() != chosen.casefold()
+    ]
+    keep_labels = [
+        la for la in face_labels_table(config) if str(la["cube"]).casefold() != chosen.casefold()
+    ]
+    try:
+        new_mappings = [{**m, "cube": chosen} for m in mappings if isinstance(m, dict)]
+        new_labels = [{**la, "cube": chosen} for la in labels if isinstance(la, dict)]
+        updated = with_mappings_table(config, keep_mappings + new_mappings)
+        return with_face_labels_table(updated, keep_labels + new_labels)
+    except ValidationError as exc:
+        raise _bad(
+            str(exc),
+            "Die Seiten passen nicht zum gewählten Ziel (zum Beispiel Würfel statt Joystick).",
+        ) from exc
+
+
+def prepare_section(
+    config: AppConfig, key: str, value: object, target: str = ""
+) -> tuple[AppConfig, list[str]]:
     """``config`` with section ``key`` replaced by ``value`` (validated), plus notes.
 
     Raises:
         ValidationError: If the section does not fit this installation.
     """
     notes: list[str] = []
+    if key == "labels":
+        if not isinstance(value, list):
+            raise _bad("labels must be a list", "Die Namen in der Datei sind ungültig.")
+        try:
+            return with_face_labels_table(config, value), notes
+        except ValidationError as exc:
+            raise _bad(
+                str(exc), "Die Namen passen nicht zu den Würfeln dieser Installation."
+            ) from exc
+    if key == "cube":
+        chosen = target or default_target(
+            config, value.get("name") if isinstance(value, dict) else None
+        )
+        notes.append(f"Wird auf „{chosen}“ angewendet und ersetzt dessen Zuordnung.")
+        return _apply_profile(config, value, chosen), notes
     if key == "music":
         if not isinstance(value, dict):
             raise _bad("music must be a table", "Die Musik-Einstellungen sind ungültig.")
@@ -213,6 +305,10 @@ def describe_section(config: AppConfig, key: str) -> str:
         )
     if key == "mappings":
         return f"{len(config.mappings)} Zuordnungen"
+    if key == "labels":
+        return f"{len(config.face_labels)} benannte oder gefärbte Seiten"
+    if key == "cube":
+        return f"{len(config.mappings)} Zuordnungen insgesamt"
     if key == "sense_hat":
         enabled = sum(1 for s in config.sense_hat.sensors.values() if s.enabled)
         display = "an" if config.sense_hat.matrix.enabled else "aus"
@@ -220,14 +316,14 @@ def describe_section(config: AppConfig, key: str) -> str:
     return "Hue " + ("an" if config.hue.enabled else "aus")
 
 
-def preview_bundle(config: AppConfig, bundle: Bundle) -> list[SectionPreview]:
+def preview_bundle(config: AppConfig, bundle: Bundle, target: str = "") -> list[SectionPreview]:
     """Check every section of ``bundle`` against ``config`` without changing anything."""
     previews: list[SectionPreview] = []
     for key in SECTION_ORDER:
         if key not in bundle.sections:
             continue
         try:
-            candidate, notes = prepare_section(config, key, bundle.sections[key])
+            candidate, notes = prepare_section(config, key, bundle.sections[key], target)
         except ValidationError as exc:
             previews.append(SectionPreview(key, SECTION_LABELS[key], False, exc.user_message))
             continue

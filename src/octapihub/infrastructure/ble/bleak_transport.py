@@ -7,7 +7,7 @@ import logging
 from collections.abc import Callable, Iterable
 from typing import Protocol, cast
 
-from bleak import BleakClient
+from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakError
 
 from octapihub.application.ble import (
@@ -17,6 +17,7 @@ from octapihub.application.ble import (
     DisconnectCallback,
     NotificationCallback,
 )
+from octapihub.application.ble_scan import FoundDevice
 from octapihub.core.errors import BleConnectionError, UnsupportedDeviceError
 from octapihub.infrastructure.ble.protocol import normalize_uuid
 
@@ -259,3 +260,29 @@ class BleakTransportFactory:
             timeout_seconds=self._timeout_seconds,
             client_factory=self._client_factory,
         )
+
+
+class BleakDeviceScanner:
+    """Scan for nearby devices with Bleak."""
+
+    async def scan(self, adapter: str, seconds: float) -> list[FoundDevice]:
+        try:
+            found = await BleakScanner.discover(timeout=seconds, return_adv=True, adapter=adapter)
+        except Exception as exc:
+            raise BleConnectionError(
+                "Bluetooth scan failed",
+                user_message=(
+                    "Die Bluetooth-Suche hat nicht geklappt. Ist Bluetooth eingeschaltet und "
+                    "darf der Dienst darauf zugreifen?"
+                ),
+                details={"reason": type(exc).__name__},
+            ) from exc
+        devices = [
+            FoundDevice(
+                (advertisement.local_name or device.name or "").strip(),
+                device.address.upper(),
+                advertisement.rssi,
+            )
+            for device, advertisement in found.values()
+        ]
+        return sorted(devices, key=lambda d: -(d.rssi if d.rssi is not None else -999))

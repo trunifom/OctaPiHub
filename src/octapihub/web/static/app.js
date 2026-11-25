@@ -347,4 +347,18 @@
       reader.readAsText(file);
     });
   });
+  /* ---------- cube faces: highlight the face that is up right now ---------- */
+  function markActiveFaces() {
+    var active = {};
+    $$("[data-cube-name]").forEach(function (card) {
+      var face = card.getAttribute("data-last-face");
+      if (face !== null && /^[0-9]$/.test(face)) { active[card.getAttribute("data-cube-name")] = face; }
+    });
+    $$(".face-tile[data-cube]").forEach(function (tile) {
+      var on = active[tile.getAttribute("data-cube")] === tile.getAttribute("data-face");
+      tile.classList.toggle("is-active", on);
+    });
+  }
+  markActiveFaces();
+  document.addEventListener("octapihub:live", markActiveFaces);
 })();

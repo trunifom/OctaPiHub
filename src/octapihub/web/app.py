@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from octapihub.application.ble_scan import DeviceScanner, FoundDevice
 from octapihub.application.cube_service import CubeService
 from octapihub.application.hue_service import HueService
 from octapihub.application.matrix.service import MatrixDisplayService
@@ -30,7 +31,7 @@ from octapihub.application.music.service import MusicService
 from octapihub.application.sense_hat import JoystickAction, JoystickDirection
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.settings import SettingsManager
-from octapihub.core.config import JOYSTICK_FACE_LABELS, JOYSTICK_SOURCE
+from octapihub.core.config import JOYSTICK_FACE_LABELS, JOYSTICK_SOURCE, MAX_CUBES
 from octapihub.core.errors import (
     ConfigurationError,
     HueLinkButtonError,
@@ -117,6 +118,7 @@ class WebBackend:
     matrix: MatrixDisplayService | None = None
     music: MusicService | None = None
     media: MediaRegistry | None = None
+    scanner: DeviceScanner | None = None
     discover_cast: Callable[[], Awaitable[list[str]]] | None = None
     list_audio_devices: Callable[[], Awaitable[list[tuple[str, str]]]] | None = None
     logs: LogRing | None = None
@@ -207,6 +209,7 @@ async def display_stream(
 
 
 MUSIC_POLL_SECONDS = 5.0
+SCAN_SECONDS = 8.0
 
 
 async def _watch_music(music: MusicService) -> None:
@@ -436,16 +439,31 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
         return page(request, "overview.html", "overview")
 
     def mapping_context(
-        values: dict[str, str], errors: dict[str, str], banner: dict[str, str] | None
+        values: dict[str, str],
+        errors: dict[str, str],
+        banner: dict[str, str] | None,
+        found_cubes: list[FoundDevice] | None = None,
     ) -> dict[str, Any]:
         scenes = {scene.id: scene.name for scene in backend.hue.scenes} if backend.hue else {}
         playlists = {p.id: p.name for p in backend.settings.config.music.playlists}
         return {
+            "found_cubes": found_cubes or [],
+            "scan_available": backend.scanner is not None,
+            "known_addresses": {c.address for c in backend.settings.config.cubes},
+            "cube_limit": MAX_CUBES,
+            "cube_count": len(backend.settings.config.cubes),
             "map_form": values,
             "map_errors": errors,
             "banner": banner,
             "writable": bool(backend.token),
-            "tiles": build_cube_tiles(backend.settings.config, scenes, values, playlists),
+            "tiles": build_cube_tiles(
+                backend.settings.config,
+                scenes,
+                values,
+                playlists,
+                {g.id: g.name for g in getattr(backend.hue, "groups", ())} if backend.hue else {},
+            ),
+            "face_colors": {k: v[1] for k, v in forms.FACE_COLORS.items()},
             "scene_options": [{"id": sid, "name": name} for sid, name in scenes.items()],
             "music_groups": forms.music_choice_options(playlists) if backend.music else [],
             "light_groups": forms.hue_choice_options() if backend.hue else [],
@@ -724,6 +742,119 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             f"„{name}“, {forms_label(name, face)}: die Aktion wird gleich ausgeführt.",
         )
 
+    @app.post("/cubes/manage", response_class=HTMLResponse)
+    async def manage_cubes(request: Request) -> Response:
+        """Find, add and remove cubes."""
+        submitted, supplied = await _read_form(request)
+        action = submitted.get("action", "")
+        found: list[FoundDevice] = []
+
+        def respond(
+            status: int, level: str, title: str, detail: str = "", code: str = ""
+        ) -> Response:
+            banner = {"level": level, "title": title, "detail": detail, "code": code}
+            values = forms.mapping_config_to_form(backend.settings.config)
+            return page(
+                request, "cubes.html", "cubes", status, **mapping_context(values, {}, banner, found)
+            )
+
+        problem = _access_problem(backend.token, supplied)
+        if problem is not None:
+            status, title, detail, code = problem
+            return respond(status, "error", title, detail, code)
+        config = backend.settings.config
+        raw = [{"name": c.name, "address": c.address, "role": c.role.value} for c in config.cubes]
+        try:
+            if action == "scan":
+                if backend.scanner is None:
+                    return respond(
+                        503,
+                        "warn",
+                        "Die Suche ist in diesem Modus nicht verfügbar",
+                        "",
+                        "CH-WEB-015",
+                    )
+                found.extend(await backend.scanner.scan(config.bluetooth.adapter, SCAN_SECONDS))
+                if not found:
+                    return respond(
+                        200,
+                        "warn",
+                        "Keine Bluetooth-Geräte gefunden",
+                        "Würfel einmal kippen, damit er sich meldet, und es noch einmal versuchen.",
+                    )
+                return respond(
+                    200,
+                    "ok",
+                    f"{len(found)} Gerät(e) gefunden",
+                    "Wählen Sie unten Ihren Würfel aus.",
+                )
+            if action.startswith("add:") or action == "add-manual":
+                if action == "add-manual":
+                    address, name, role = (
+                        submitted.get("manual_address", ""),
+                        submitted.get("manual_name", ""),
+                        submitted.get("manual_role", "general"),
+                    )
+                else:
+                    address = action.removeprefix("add:")
+                    name = submitted.get(f"newname.{address}", "")
+                    role = submitted.get(f"newrole.{address}", "general")
+                name = name.strip()
+                if not name:
+                    return respond(
+                        422, "warn", "Bitte geben Sie dem Würfel einen Namen", "", "CH-WEB-016"
+                    )
+                if len(raw) >= MAX_CUBES:
+                    return respond(
+                        409,
+                        "warn",
+                        f"Es sind höchstens {MAX_CUBES} Würfel möglich",
+                        "Entfernen Sie zuerst einen Würfel.",
+                        "CH-WEB-017",
+                    )
+                raw.append({"name": name, "address": address.strip(), "role": role})
+                await backend.settings.apply_cubes(raw)
+                return respond(
+                    200,
+                    "ok",
+                    f"Würfel „{name}“ hinzugefügt",
+                    "Er verbindet sich jetzt. Legen Sie ihn einmal auf eine Seite, "
+                    "damit er sich meldet.",
+                )
+            if action.startswith("remove:"):
+                name = action.removeprefix("remove:")
+                if not submitted.get("confirm_remove"):
+                    return respond(
+                        422,
+                        "warn",
+                        "Bitte bestätigen Sie das Entfernen",
+                        "Setzen Sie das Häkchen bei „Ja, entfernen“.",
+                    )
+                kept = [c for c in raw if c["name"] != name]
+                if len(kept) == len(raw):
+                    return respond(422, "error", "Diesen Würfel gibt es nicht", "", "CH-WEB-011")
+                if not kept:
+                    return respond(
+                        409,
+                        "warn",
+                        "Mindestens ein Würfel muss eingerichtet bleiben",
+                        "",
+                        "CH-WEB-018",
+                    )
+                await backend.settings.apply_cubes(kept)
+                return respond(
+                    200,
+                    "ok",
+                    f"Würfel „{name}“ entfernt",
+                    "Seine Zuordnungen und Namen wurden ebenfalls entfernt.",
+                )
+            return respond(422, "error", "Unbekannte Aktion", "", "CH-WEB-006")
+        except ValidationError as exc:
+            return respond(422, "error", "Das geht so nicht", exc.user_message, exc.error_code)
+        except OctaPiHubError as exc:
+            logger.error("Cube management failed: %s", exc)
+            return respond(502, "error", "Das hat nicht geklappt", exc.user_message, exc.error_code)
+
     @app.post("/cubes/mapping", response_class=HTMLResponse)
     async def save_mapping(request: Request) -> Response:
         submitted, supplied = await _read_form(request)
@@ -762,7 +893,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
                 "Es wurde nichts gespeichert.",
             )
         try:
-            await backend.settings.apply_mappings(result.mappings)
+            await backend.settings.apply_mappings(result.mappings, result.labels)
         except ValidationError as exc:
             return respond(
                 422, "error", "Die Zuordnung ist ungültig", exc.user_message, exc.error_code

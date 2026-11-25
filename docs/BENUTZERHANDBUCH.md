@@ -128,6 +128,33 @@ Eine Playlist ist eine **Quelle** plus Wiedergabe-Vorlieben.
 **Speichern:** Alles auf der Seite wird mit *Einstellungen speichern* zusammen geprüft. Fehler stehen
 direkt am Feld, und es wird dann **nichts** gespeichert. Erfolgreiche Änderungen gelten sofort.
 
+## 6a. Würfel koppeln und verwalten
+Seite **Würfel → Würfel verwalten**:
+1. Würfel einmal **kippen** (er wacht auf), dann *Nach Würfeln suchen*. Die Suche dauert etwa 8 Sekunden.
+2. In der Liste Ihren Würfel suchen (vermutliche Würfel sind markiert, die Adresse wird gekürzt gezeigt), einen **Namen** und
+   die Verwendung wählen, *Hinzufügen* klicken. Der Würfel verbindet sich danach neu.
+3. Alternativ können Sie die Bluetooth-Adresse selbst eintragen.
+Bis zu **3 Würfel**. *Entfernen* braucht ein Häkchen und löscht auch Zuordnung und Namen dieses Würfels (die bisherige
+Konfigurationsdatei wird vorher gesichert). Oben auf der Seite sehen Sie, **wie viele Würfel verbunden sind**, und bei jedem
+Würfel Zustand, Akku und die zuletzt erkannte Seite. Die Seite, die gerade oben liegt, ist in der Zuordnung **hervorgehoben**.
+Die Suche wurde nur mit einem simulierten Scanner getestet, nicht mit echten Würfeln.
+
+## 6b. Namen, Farben und Details je Seite
+Jede Seite (und die Halterung und jede Joystick-Richtung) kann einen **Namen** (bis 40 Zeichen) und eine **Farbe** bekommen
+(*Name, Farbe, Optionen und Details*). Der Name erscheint dann in der Zuordnung statt „Seite 3“, die Farbe als Streifen am Rand.
+In demselben Bereich steht unter **„Was passiert, wenn diese Seite oben liegt?“** genau, was passiert: bei einer Playlist die
+Quelle, der Ordner, das Gerät, Zufall und Wiederholen und die Lautstärke; bei Licht die Aktion und der Raum; bei Szenen
+der Szenenname. Die Farben dienen nur der Orientierung in dieser Oberfläche, nicht dem Würfel.
+
+## 6c. Licht steuern
+Zusätzlich zu Szenen (Katalog „Licht: …“): **Ein/Aus umschalten, Einschalten, Ausschalten, Heller, Dunkler, Nächste Farbe,
+Nächste/Vorherige Szene** und **Farbe setzen** (Warm-, Neutral-, Kaltweiß, Rot, Orange, Gelb, Grün, Türkis, Blau, Violett, Pink).
+Unter *Optionen* wählen Sie **Lampen / Raum** (Standard: alle Lampen im Haus). „Nächste Szene“ schaltet die Szenen **dieses Raumes**
+alphabetisch durch. „Nächste Farbe“ geht je Raum die Farbliste durch. Auf der Seite *Licht* gibt es dafür Testtasten pro Raum.
+Eine Licht-Aktion, die nicht binnen 2 Minuten ausgeführt werden kann, wird verworfen. Alles nur gegen Fakes getestet, nicht mit
+echter Bridge. Der Hue-Aufruf `dimming_delta` und die Lichtgruppen (`grouped_light`) entsprechen der Hue-CLIP-v2-Beschreibung,
+das Verhalten an Ihrer Bridge ist ungeprüft.
+
 ## 6. Würfelseiten programmieren
 Seite **Würfel → Zuordnung**. Jede Karte steht für eine Seite eines Würfels (plus „Halterung“ und die
 fünf Joystick-Richtungen). Im Auswahlfeld wählen Sie **eine Aktion**:
@@ -229,6 +256,10 @@ Liste der Würfel. So übertragen Sie Ihre Einrichtung auf ein anderes Gerät od
    bleibt alles wie es war. Vorher wird die bisherige Konfigurationsdatei als `octapihub.toml.bak-<Zeit>`
    daneben gesichert (die neuesten fünf bleiben).
 
+**Einzelner Würfel:** Wählen Sie „Ein einzelner Würfel“ und den Würfel; beim Import wählen Sie den Würfel, auf den die Belegung
+(samt Namen und Farben) angewendet wird, und ersetzen damit nur dessen Zuordnung. So übertragen Sie die Belegung auf einen
+weiteren Würfel.
+
 Besonderheiten: „Nur Playlists“ ergänzt vorhandene Playlists (gleiche Kennung = ersetzt) und entfernt
 Gerätebezüge, die es hier nicht gibt (mit Hinweis). Pfade der Datenbank bleiben unverändert. Beim Import
 der Hue-Einstellungen müssen Sie ggf. neu koppeln (der Schlüssel wird nie übertragen).
@@ -262,6 +293,8 @@ Fehlermeldungen erscheinen in einem Kasten mit einer **Erklärung in normaler Sp
 | CH-WEB-008 | Token zu kurz oder Platzhalter (der Dienst startet dann nicht) |
 | CH-WEB-011 | Ungültige Auswahl |
 | CH-WEB-014 | Musik ist in diesem Modus nicht verfügbar |
+| CH-WEB-015 | Bluetooth-Suche in diesem Modus nicht verfügbar |
+| CH-WEB-016 / 017 / 018 | Würfel ohne Namen / mehr als 3 Würfel / letzter Würfel kann nicht entfernt werden |
 
 **Protokolle**
 - Seite **System:** letzte Meldungen, filterbar nach Stufe.

@@ -20,7 +20,7 @@ from octapihub.core.errors import ConfigurationError, ValidationError
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 6
+SUPPORTED_SCHEMA_VERSION = 7
 MAX_CUBES = 3
 # The Sense HAT joystick is a built-in action source next to the cubes. Its five inputs are
 # the "faces" 1..5; mappings address it by this reserved name.
@@ -30,6 +30,7 @@ JOYSTICK_FACES = len(JOYSTICK_FACE_LABELS)
 CUBE_FACES = 8
 HOLDER_FACE = 0  # "no face up": the cube rests in its holder (mappable, like the faces)
 MAX_MUSIC_TARGETS = 8
+MAX_FACE_LABEL_LENGTH = 40
 MAX_PLAYLISTS = 64
 MAX_SOURCE_LENGTH = 2000
 _SLUG_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
@@ -355,6 +356,16 @@ class BluetoothConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class FaceLabelConfig:
+    """A name and/or colour a person gave to one cube face or joystick direction."""
+
+    cube: str
+    face: int
+    name: str = ""
+    color: str = ""  # "#rrggbb" or empty
+
+
+@dataclass(frozen=True, slots=True)
 class AppConfig:
     """Validated, current-version configuration supported by OctaPiHub."""
 
@@ -366,6 +377,7 @@ class AppConfig:
     sense_hat: SenseHatConfig = field(default_factory=SenseHatConfig)
     hue: HueConfig = field(default_factory=HueConfig)
     music: MusicConfig = field(default_factory=MusicConfig)
+    face_labels: tuple[FaceLabelConfig, ...] = ()
 
 
 def load_config(path: str | Path) -> AppConfig:
@@ -511,6 +523,68 @@ def with_mappings_table(config: AppConfig, raw_mappings: Sequence[object]) -> Ap
     return replace(config, mappings=_parse_mappings(raw_mappings, config.cubes))
 
 
+def cubes_table(config: AppConfig) -> list[dict[str, object]]:
+    """Return the cube list as plain TOML-shaped tables for editing."""
+    return [
+        {"name": cube.name, "address": cube.address, "role": cube.role.value}
+        for cube in config.cubes
+    ]
+
+
+def with_cubes_table(config: AppConfig, raw_cubes: Sequence[object]) -> AppConfig:
+    """Return ``config`` with a new, validated cube list.
+
+    Mappings and face labels of cubes that are no longer in the list are dropped, so the
+    result is always consistent.
+
+    Raises:
+        ValidationError: If the list or any cube violates the schema.
+    """
+    if not isinstance(raw_cubes, list) or not 1 <= len(raw_cubes) <= MAX_CUBES:
+        raise ValidationError(
+            f"cubes must contain from 1 to {MAX_CUBES} cubes", details={"field": "cubes"}
+        )
+    cubes = tuple(_parse_cube(item, index) for index, item in enumerate(raw_cubes))
+    if len({cube.name.casefold() for cube in cubes}) != len(cubes):
+        raise ValidationError("Cube names must be unique", details={"field": "cubes"})
+    if any(cube.name.casefold() == JOYSTICK_SOURCE.casefold() for cube in cubes):
+        raise ValidationError(
+            f"The cube name {JOYSTICK_SOURCE!r} is reserved for the joystick",
+            details={"field": "cubes"},
+        )
+    if len({cube.address for cube in cubes}) != len(cubes):
+        raise ValidationError("Cube addresses must be unique", details={"field": "cubes"})
+    names = {cube.name.casefold() for cube in cubes} | {JOYSTICK_SOURCE.casefold()}
+    return replace(
+        config,
+        cubes=cubes,
+        mappings=tuple(m for m in config.mappings if m.cube.casefold() in names),
+        face_labels=tuple(label for label in config.face_labels if label.cube.casefold() in names),
+    )
+
+
+def face_labels_table(config: AppConfig) -> list[dict[str, object]]:
+    """Return the face names and colours as plain TOML-shaped tables for editing."""
+    return [
+        {
+            "cube": label.cube,
+            "face": label.face,
+            **({"name": label.name} if label.name else {}),
+            **({"color": label.color} if label.color else {}),
+        }
+        for label in config.face_labels
+    ]
+
+
+def with_face_labels_table(config: AppConfig, raw_labels: Sequence[object]) -> AppConfig:
+    """Return ``config`` with replaced, fully validated face names and colours.
+
+    Raises:
+        ValidationError: If any entry violates the schema.
+    """
+    return replace(config, face_labels=_parse_face_labels(raw_labels, config.cubes))
+
+
 def music_table(music: MusicConfig) -> dict[str, object]:
     """Return the music settings as a plain TOML-shaped table for editing."""
     return {
@@ -603,6 +677,7 @@ def _serialize_config(config: AppConfig) -> str:
         "sense_hat": sense_hat_data,
         "hue": hue_table(config.hue),
         "music": music_table(config.music),
+        "face_labels": face_labels_table(config),
     }
     validated = parse_config(data)
     lines = [
@@ -641,6 +716,14 @@ def _serialize_config(config: AppConfig) -> str:
                     f"parameters = {_toml_value(action.parameters)}",
                 ]
             )
+    for label in validated.face_labels:
+        lines.extend(
+            ["", "[[face_labels]]", f"cube = {_toml_string(label.cube)}", f"face = {label.face}"]
+        )
+        if label.name:
+            lines.append(f"name = {_toml_string(label.name)}")
+        if label.color:
+            lines.append(f"color = {_toml_string(label.color)}")
     sense_hat = validated.sense_hat
     lines.extend(
         [
@@ -816,7 +899,7 @@ def parse_config(data: object) -> AppConfig:
         raise ValidationError(
             "schema_version must be an integer", details={"field": "schema_version"}
         )
-    if schema_version not in {LEGACY_SCHEMA_VERSION, 2, 3, 4, 5, SUPPORTED_SCHEMA_VERSION}:
+    if schema_version not in {LEGACY_SCHEMA_VERSION, 2, 3, 4, 5, 6, SUPPORTED_SCHEMA_VERSION}:
         raise ConfigurationError(
             "Unsupported configuration schema version",
             details={
@@ -833,6 +916,8 @@ def parse_config(data: object) -> AppConfig:
         allowed_root_keys.add("hue")
     if schema_version >= 6:
         allowed_root_keys.add("music")
+    if schema_version >= 7:
+        allowed_root_keys.add("face_labels")
     _check_keys(root, allowed_root_keys, "root")
 
     bluetooth_table = _require_table(root.get("bluetooth"), "bluetooth")
@@ -886,6 +971,13 @@ def parse_config(data: object) -> AppConfig:
     hue = _parse_hue(root.get("hue", {})) if schema_version >= 4 else HueConfig()
     music = _parse_music(root.get("music", {})) if schema_version >= 6 else MusicConfig()
 
+    face_labels: tuple[FaceLabelConfig, ...] = ()
+    if schema_version >= 7:
+        raw_labels = root.get("face_labels", [])
+        if not isinstance(raw_labels, list):
+            raise ValidationError("face_labels must be an array", details={"field": "face_labels"})
+        face_labels = _parse_face_labels(raw_labels, cubes)
+
     return AppConfig(
         schema_version=SUPPORTED_SCHEMA_VERSION,
         bluetooth=BluetoothConfig(adapter=adapter),
@@ -895,6 +987,7 @@ def parse_config(data: object) -> AppConfig:
         sense_hat=sense_hat,
         hue=hue,
         music=music,
+        face_labels=face_labels,
     )
 
 
@@ -1359,6 +1452,49 @@ def _parse_sensor(value: object, field: str, defaults: SensorConfig) -> SensorCo
         presentation=presentation,
         precision=precision,
     )
+
+
+_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _parse_face_labels(
+    raw_labels: Sequence[object], cubes: Sequence[CubeConfig]
+) -> tuple[FaceLabelConfig, ...]:
+    cube_names = {cube.name.casefold(): cube.name for cube in cubes}
+    cube_names[JOYSTICK_SOURCE.casefold()] = JOYSTICK_SOURCE
+    if len(raw_labels) > (MAX_CUBES + 1) * (CUBE_FACES + 1):
+        raise ValidationError("Too many face labels", details={"field": "face_labels"})
+    parsed: list[FaceLabelConfig] = []
+    for index, item in enumerate(raw_labels):
+        field = f"face_labels[{index}]"
+        table = _require_table(item, field)
+        _check_keys(table, {"cube", "face", "name", "color"}, field)
+        cube = cube_names.get(_require_string(table.get("cube"), f"{field}.cube").casefold())
+        if cube is None:
+            raise ValidationError(
+                "A face label refers to an unknown cube", details={"field": f"{field}.cube"}
+            )
+        is_joystick = cube == JOYSTICK_SOURCE
+        lowest = 1 if is_joystick else HOLDER_FACE
+        highest = JOYSTICK_FACES if is_joystick else CUBE_FACES
+        face = table.get("face")
+        if isinstance(face, bool) or not isinstance(face, int) or not lowest <= face <= highest:
+            raise ValidationError(
+                f"Face label face must be an integer from {lowest} to {highest}",
+                details={"field": f"{field}.face"},
+            )
+        name = _single_line(table.get("name", ""), f"{field}.name", maximum=MAX_FACE_LABEL_LENGTH)
+        color = _single_line(table.get("color", ""), f"{field}.color", maximum=7)
+        if color and not _COLOR_PATTERN.fullmatch(color):
+            raise ValidationError(
+                "A face colour must look like #1a2b3c", details={"field": f"{field}.color"}
+            )
+        if not name.strip() and not color:
+            raise ValidationError("A face label needs a name or a colour", details={"field": field})
+        parsed.append(FaceLabelConfig(cube, face, name.strip(), color.lower()))
+    if len({(label.cube, label.face) for label in parsed}) != len(parsed):
+        raise ValidationError("Each face may have only one label", details={"field": "face_labels"})
+    return tuple(parsed)
 
 
 def _parse_mappings(

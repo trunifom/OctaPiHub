@@ -94,7 +94,7 @@ def test_defaults_are_off_and_empty() -> None:
     config = parse_config(base())
     assert config.music == MusicConfig()
     assert not config.music.enabled
-    assert config.schema_version == 6
+    assert config.schema_version == 7
 
 
 @pytest.mark.parametrize("version", [1, 2, 3, 4, 5])
@@ -102,7 +102,7 @@ def test_older_schemas_migrate_with_default_music(version: int) -> None:
     data = base(schema_version=version)
     config = parse_config(data)
     assert config.music == MusicConfig()
-    assert config.schema_version == 6
+    assert config.schema_version == 7
 
 
 def test_music_section_is_not_allowed_before_schema_v6() -> None:

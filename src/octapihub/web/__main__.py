@@ -30,6 +30,7 @@ from octapihub.core.logging_support import (
     Redactor,
     create_file_handler,
 )
+from octapihub.infrastructure.ble.bleak_transport import BleakDeviceScanner
 from octapihub.infrastructure.music.cast_player import PyChromecastBackend
 from octapihub.infrastructure.music.mpv_player import list_audio_devices
 from octapihub.infrastructure.secrets import SecretsFile
@@ -193,6 +194,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             matrix=matrix,
             music=music,
             media=media,
+            scanner=BleakDeviceScanner(),
             discover_cast=discover_cast,
             list_audio_devices=list_audio_devices,
         )

@@ -21,6 +21,67 @@
 
 <div id="live-cubes">{% include "_cubes.html" %}</div>
 
+<form method="post" action="/cubes/manage" id="manage-form" novalidate>
+  <section class="panel" aria-labelledby="manage-title">
+    <div class="panel-head">
+      <h2 id="manage-title">Würfel verwalten</h2>
+      <p class="muted">{{ cube_count }} von {{ cube_limit }} möglichen Würfeln eingerichtet. Neue Würfel suchen Sie per Bluetooth und fügen sie mit einem Klick hinzu.</p>
+    </div>
+    <details class="more"{% if found_cubes %} open{% endif %}>
+      <summary>Neuen Würfel koppeln oder Würfel entfernen</summary>
+      <ol class="steps">
+        <li>Würfel einmal <strong>kippen</strong> (so wacht er auf) und dann <em>Nach Würfeln suchen</em> klicken. Die Suche dauert etwa 8 Sekunden.</li>
+        <li>Ihren Würfel in der Liste suchen (Würfel sind markiert), einen <strong>Namen</strong> geben und <em>Hinzufügen</em> klicken.</li>
+        <li>Legen Sie den Würfel danach auf eine Seite. Sobald er sich meldet, zeigt „Verbunden“ den Erfolg.</li>
+      </ol>
+      <div class="field field-token">
+        <label for="f-token-manage">Zugriffs-Token</label>
+        <input type="password" name="token" id="f-token-manage" autocomplete="current-password" placeholder="{{ 'Token eingeben' if writable else 'Nicht eingerichtet' }}"{% if not writable %} disabled{% endif %}>
+      </div>
+      <div class="btn-row">
+        <button type="submit" name="action" value="scan" class="btn"{% if not writable or not scan_available %} disabled{% endif %}>Nach Würfeln suchen</button>
+      </div>
+      {% if found_cubes %}
+      <ul class="plain found-list">
+        {% for d in found_cubes %}
+        <li class="found-item{% if d.looks_like_cube %} is-cube{% endif %}">
+          <div><strong>{{ d.name or 'Unbenanntes Gerät' }}</strong>{% if d.looks_like_cube %} <span class="pill pill-role">vermutlich Würfel</span>{% endif %}<br>
+            <small class="muted">{{ d.address[:2] }}:**:**:**:**:{{ d.address[-2:] }}{% if d.rssi is not none %} · Signal {{ d.rssi }} dBm{% endif %}</small></div>
+          {% if d.address in known_addresses %}
+          <span class="badge badge-ok">Schon eingerichtet</span>
+          {% else %}
+          <div class="found-add">
+            <input type="text" name="newname.{{ d.address }}" maxlength="40" placeholder="Name, z. B. Küche" aria-label="Name für diesen Würfel">
+            <select name="newrole.{{ d.address }}" aria-label="Verwendung">
+              <option value="general">Universal</option><option value="light">Licht</option><option value="music">Musik</option>
+            </select>
+            <button type="submit" name="action" value="add:{{ d.address }}" class="btn btn-small btn-primary"{% if not writable %} disabled{% endif %}>Hinzufügen</button>
+          </div>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      <details class="more">
+        <summary>Adresse selbst eintragen</summary>
+        <div class="fields-2">
+          <div class="field"><label for="f-manual-address">Bluetooth-Adresse</label><input type="text" name="manual_address" id="f-manual-address" placeholder="XX:XX:XX:XX:XX:XX" autocomplete="off"></div>
+          <div class="field"><label for="f-manual-name">Name</label><input type="text" name="manual_name" id="f-manual-name" maxlength="40" autocomplete="off"></div>
+          <div class="field"><label for="f-manual-role">Verwendung</label><select name="manual_role" id="f-manual-role"><option value="general">Universal</option><option value="light">Licht</option><option value="music">Musik</option></select></div>
+        </div>
+        <div class="btn-row"><button type="submit" name="action" value="add-manual" class="btn"{% if not writable %} disabled{% endif %}>Würfel hinzufügen</button></div>
+      </details>
+      <fieldset class="remove-box">
+        <legend>Würfel entfernen</legend>
+        <label class="check"><input type="checkbox" name="confirm_remove" value="on"> <span>Ja, entfernen (Zuordnungen und Namen dieses Würfels gehen verloren)</span></label>
+        <div class="btn-row">
+          {% for cube in tiles if cube.name != 'Joystick' %}<button type="submit" name="action" value="remove:{{ cube.name }}" class="btn btn-small btn-danger"{% if not writable %} disabled{% endif %}>„{{ cube.name }}“ entfernen</button>{% endfor %}
+        </div>
+      </fieldset>
+    </details>
+  </section>
+</form>
+
 <form method="post" action="/cubes/mapping" id="mapping-form" novalidate>
   <section class="panel" aria-labelledby="zuordnung-title">
     <div class="panel-head">
@@ -56,8 +117,10 @@
       {% endif %}
       <div class="face-grid">
         {% for tile in cube.tiles %}
-        <div class="face-tile{% if tile.scene_id or tile.locked %} is-set{% endif %}{% if tile.locked %} is-locked{% endif %}">
-          <div class="face-tile-head"><span class="face-chip">{{ tile.chip }}</span><span class="face-tile-title">{{ tile.label }}</span></div>
+        <div class="face-tile{% if tile.scene_id or tile.locked %} is-set{% endif %}{% if tile.locked %} is-locked{% endif %}{% if tile.color %} fc-{{ tile.color }}{% endif %}" data-cube="{{ cube.name }}" data-face="{{ tile.face }}">
+          <div class="face-tile-head"><span class="face-chip">{{ tile.chip }}</span><span class="face-tile-title">{% if tile.name %}{{ tile.name }}{% else %}{{ tile.label }}{% endif %}</span><span class="face-live" aria-hidden="true" title="Diese Seite ist gerade oben">●</span></div>
+          {% if tile.name %}<p class="face-sub">{{ tile.label }}</p>{% endif %}
+          {% if tile.locked %}<p class="face-summary">{{ tile.summary }}</p>{% endif %}
           {% if tile.locked %}
           <ul class="locked-actions">{% for text in tile.locked_actions %}<li>{{ text }}</li>{% endfor %}</ul>
           <p class="help">Mehrere oder andere Aktionen: nur in der Konfigurationsdatei änderbar.</p>
@@ -85,9 +148,10 @@
             {% endfor %}
           </select>
           {{ m.field_error(map_errors, tile.field) }}
-          {% if music_groups or light_groups %}
-          <details class="more tile-options"{% if tile.target or tile.shuffle or tile.repeat or tile.group or map_errors.get(tile.field ~ '.target') or map_errors.get(tile.field ~ '.group') %} open{% endif %}>
-            <summary>Optionen (Gerät, Lampen, Wiedergabe)</summary>
+          {% endif %}
+          <details class="more face-more"{% if tile.target or tile.shuffle or tile.repeat or tile.group or map_errors.get(tile.field ~ ".target") or map_errors.get(tile.field ~ ".group") or map_errors.get(tile.field ~ ".label") or map_errors.get(tile.field ~ ".color") %} open{% endif %}>
+            <summary>Name, Farbe, Optionen und Details</summary>
+            {% if music_groups or light_groups %}
             {% if light_groups %}
             <label for="f-{{ tile.field }}.group">Lampen / Raum (für Licht-Aktionen)</label>
             <select name="{{ tile.field }}.group" id="f-{{ tile.field }}.group">
@@ -113,9 +177,21 @@
             </select>
             <small class="help">Zufall und Wiederholen gelten nur für „Playlist abspielen“ und „starten oder pausieren“.</small>
             {% endif %}
+            {% endif %}
+            <label for="f-{{ tile.field }}.label">Name dieser Seite</label>
+            <input type="text" name="{{ tile.field }}.label" id="f-{{ tile.field }}.label" maxlength="40" autocomplete="off" placeholder="z. B. Morgenmusik" value="{{ tile.name }}"{% if map_errors.get(tile.field ~ '.label') %} aria-invalid="true"{% endif %}>
+            {{ m.field_error(map_errors, tile.field ~ '.label') }}
+            <fieldset class="swatches">
+              <legend>Farbe (nur zur Orientierung hier)</legend>
+              <label class="swatch fc-none"><input type="radio" name="{{ tile.field }}.color" value=""{% if not tile.color %} checked{% endif %}><span>Keine</span></label>
+              {% for key, label in face_colors.items() %}<label class="swatch fc-{{ key }}" title="{{ label }}"><input type="radio" name="{{ tile.field }}.color" value="{{ key }}"{% if key == tile.color %} checked{% endif %}><span class="visually-hidden">{{ label }}</span></label>{% endfor %}
+            </fieldset>
+            {{ m.field_error(map_errors, tile.field ~ '.color') }}
+            <div class="face-detail-box">
+              <strong>Was passiert, wenn diese Seite oben liegt?</strong>
+              {% if tile.detail %}<ul>{% for line in tile.detail %}<li>{{ line }}</li>{% endfor %}</ul>{% else %}<p class="help">Noch nichts. Wählen Sie oben eine Aktion.</p>{% endif %}
+            </div>
           </details>
-          {% endif %}
-          {% endif %}
           {% if tile.saved %}<button type="submit" formaction="/cubes/trigger" name="trigger" value="{{ cube_index }}.{{ tile.face }}" data-source="{{ cube.name }}" class="btn btn-small btn-run"{% if not writable %} disabled{% endif %}>Jetzt auslösen</button>{% endif %}
         </div>
         {% endfor %}

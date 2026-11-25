@@ -25,9 +25,10 @@
   <div class="notice-body"><p class="notice-title">{{ text }}</p></div>
 </div>
 {% endfor %}
+{% if cube_views %}<p class="summary-strip level-{{ cube_level }}"><span class="dot" aria-hidden="true"></span><strong>{{ cube_text }}</strong></p>{% endif %}
 <div class="cards">
   {% for v in cube_views %}
-  <article class="card cube level-{{ v.level }}">
+  <article class="card cube level-{{ v.level }}" data-cube-name="{{ v.name }}" data-last-face="{{ v.face_number if v.face_number is not none else '' }}">
     <header class="card-head">
       <span class="chip-ico">{{ m.icon('cube') }}</span>
       <h3>{{ v.name }}</h3>

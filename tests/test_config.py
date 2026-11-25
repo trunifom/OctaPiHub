@@ -39,7 +39,7 @@ def test_parse_config_applies_defaults_and_normalizes_addresses() -> None:
     config = parse_config(valid_config())
 
     assert isinstance(config, AppConfig)
-    assert config.schema_version == 6
+    assert config.schema_version == 7
     assert config.bluetooth.adapter == "hci0"
     assert config.debounce_ms == DEFAULT_DEBOUNCE_MS
     assert config.cubes[0].address == "AA:BB:CC:DD:EE:01"
@@ -63,7 +63,7 @@ def test_parse_config_applies_defaults_and_normalizes_addresses() -> None:
 def test_schema_v1_is_loaded_as_current_config_version() -> None:
     config = parse_config(valid_config())
 
-    assert config.schema_version == 6
+    assert config.schema_version == 7
     assert config.mappings == ()
 
 
@@ -72,8 +72,8 @@ def test_saving_schema_v1_upgrades_it_to_current_schema(tmp_path: Path) -> None:
     save_config(config_path, parse_config(valid_config()))
 
     saved = config_path.read_text(encoding="utf-8")
-    assert load_config(config_path).schema_version == 6
-    assert saved.startswith("schema_version = 6\n")
+    assert load_config(config_path).schema_version == 7
+    assert saved.startswith("schema_version = 7\n")
     assert "[sense_hat.sensors.temperature]" in saved
 
 
@@ -108,7 +108,7 @@ def test_schema_v2_parses_and_freezes_action_mapping_parameters() -> None:
 
     config = parse_config(data)
 
-    assert config.schema_version == 6
+    assert config.schema_version == 7
     assert config.mappings[0].cube == "Licht"
     assert config.mappings[0].face == 3
     assert config.mappings[0].actions[0].parameters["scene_id"] == "id-with-\\-slash"
@@ -233,7 +233,7 @@ def test_save_config_atomically_round_trips_validated_config(tmp_path: Path) -> 
 
     assert load_config(config_path) == config
     assert config_path.read_text(encoding="utf-8").startswith(
-        "schema_version = 6\ndebounce_ms = 300\n"
+        "schema_version = 7\ndebounce_ms = 300\n"
     )
     assert list(tmp_path.glob(".config.toml.*.tmp")) == []
 
@@ -357,7 +357,7 @@ def test_rejects_invalid_cube_and_adapter_settings(change: str, expected_message
 
 def test_rejects_unsupported_schema_and_unknown_root_keys() -> None:
     data = valid_config()
-    data["schema_version"] = 7
+    data["schema_version"] = 8
     with pytest.raises(ConfigurationError, match="Unsupported configuration schema"):
         parse_config(data)
 
@@ -449,7 +449,7 @@ def test_schema_v2_migrates_mappings_and_defaults_sense_hat_settings() -> None:
 
     config = parse_config(data)
 
-    assert config.schema_version == 6
+    assert config.schema_version == 7
     assert config.mappings == ()
     assert config.sense_hat.sensors["temperature"].enabled
     assert not config.sense_hat.sensors["color"].enabled

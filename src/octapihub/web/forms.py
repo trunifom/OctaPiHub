@@ -15,6 +15,7 @@ from octapihub.core.config import (
     JOYSTICK_FACES,
     JOYSTICK_SOURCE,
     MATRIX_VIEW_IDS,
+    MAX_FACE_LABEL_LENGTH,
     AppConfig,
     HueConfig,
     RuleMappingConfig,
@@ -379,6 +380,24 @@ def scene_of(mapping: RuleMappingConfig | None) -> str | None:
     return None
 
 
+FACE_COLORS: dict[str, tuple[str, str]] = {
+    "green": ("#2fbf71", "Grün"),
+    "teal": ("#14b8a6", "Türkis"),
+    "blue": ("#3b82f6", "Blau"),
+    "purple": ("#8b5cf6", "Violett"),
+    "pink": ("#ec4899", "Pink"),
+    "red": ("#ef4444", "Rot"),
+    "orange": ("#f59e0b", "Orange"),
+    "gray": ("#94a3b8", "Grau"),
+}
+_HEX_TO_COLOR = {hex_value: name for name, (hex_value, _label) in FACE_COLORS.items()}
+
+
+def face_color_name(hex_value: str) -> str:
+    """The palette name of a stored colour ("" if none, the hex itself if it is custom)."""
+    return _HEX_TO_COLOR.get(hex_value, hex_value)
+
+
 MUSIC_KIND = "music"
 MUSIC_PREFIX = "music:"
 MUSIC_CONTROLS = {
@@ -582,8 +601,15 @@ def mapping_config_to_form(config: AppConfig) -> dict[str, str]:
     """Selected scene ID per editable face; faces with other actions have no field."""
     lookup = _mapping_lookup(config)
     values: dict[str, str] = {}
+    labels = {(lab.cube.casefold(), lab.face): lab for lab in config.face_labels}
     for index, (name, faces) in enumerate(mapping_sources(config)):
         values[f"cubetarget.{index}"] = common_music_target(config, name)
+        for face in faces:
+            label = labels.get((name.casefold(), face))
+            values[f"{mapping_field(index, face)}.label"] = label.name if label else ""
+            values[f"{mapping_field(index, face)}.color"] = (
+                face_color_name(label.color) if label else ""
+            )
         for face in faces:
             mapping = lookup.get((name.casefold(), face))
             if mapping is None:
@@ -604,6 +630,7 @@ class MappingResult:
 
     mappings: list[dict[str, object]] | None
     errors: dict[str, str]
+    labels: list[dict[str, object]] | None = None
 
 
 def parse_mapping_form(
@@ -627,6 +654,7 @@ def parse_mapping_form(
     groups = set(known_group_ids)
     errors: dict[str, str] = {}
     result: list[dict[str, object]] = []
+    raw_labels = _labels_from_form(form, config, errors)
     for index, (name, faces) in enumerate(mapping_sources(config)):
         cube_default = form.get(f"cubetarget.{index}", "").strip()
         apply_cube_default = bool(cube_default) and cube_default != common_music_target(
@@ -713,7 +741,42 @@ def parse_mapping_form(
                     ],
                 }
             )
-    return MappingResult(None if errors else result, errors)
+    return MappingResult(None if errors else result, errors, None if errors else raw_labels)
+
+
+def _labels_from_form(
+    form: Mapping[str, str], config: AppConfig, errors: dict[str, str]
+) -> list[dict[str, object]]:
+    """The face names and colours of the submission as raw tables."""
+    existing = {(lab.cube.casefold(), lab.face): lab for lab in config.face_labels}
+    labels: list[dict[str, object]] = []
+    for index, (name, faces) in enumerate(mapping_sources(config)):
+        for face in faces:
+            field = mapping_field(index, face)
+            text = form.get(f"{field}.label", "").strip()
+            color_name = form.get(f"{field}.color", "").strip()
+            if len(text) > MAX_FACE_LABEL_LENGTH or any(ord(c) < 32 for c in text):
+                errors[f"{field}.label"] = (
+                    f"Der Name darf höchstens {MAX_FACE_LABEL_LENGTH} Zeichen lang sein."
+                )
+                continue
+            hex_value = ""
+            if color_name:
+                if color_name in FACE_COLORS:
+                    hex_value = FACE_COLORS[color_name][0]
+                elif color_name == getattr(existing.get((name.casefold(), face)), "color", None):
+                    hex_value = color_name  # a custom colour from the file stays
+                else:
+                    errors[f"{field}.color"] = "Diese Farbe gibt es nicht."
+                    continue
+            if text or hex_value:
+                entry: dict[str, object] = {"cube": name, "face": face}
+                if text:
+                    entry["name"] = text
+                if hex_value:
+                    entry["color"] = hex_value
+                labels.append(entry)
+    return labels
 
 
 def _music_options_from_form(

@@ -45,6 +45,12 @@
     </div>
     {% for key, label in sections.items() %}
     <label class="check"><input type="checkbox" name="sec.{{ key }}"{% if form.get('sec.' ~ key) %} checked{% endif %}> <span>{{ label }}</span></label>
+    {% if key == 'cube' %}
+    <div class="field field-inline">
+      <label for="f-cube-name">Welcher Würfel?</label>
+      <select name="cube_name" id="f-cube-name">{% for name in cube_names %}<option value="{{ name }}"{% if name == form.get('cube_name') %} selected{% endif %}>{{ name }}</option>{% endfor %}</select>
+    </div>
+    {% endif %}
     {% endfor %}
     <div class="btn-row">
       <button type="submit" name="action" value="export" class="btn btn-primary"{% if not writable %} disabled{% endif %}>Export-Datei herunterladen</button>
@@ -64,6 +70,14 @@
     <div class="field field-wide">
       <label for="f-bundle">Inhalt der Export-Datei</label>
       <textarea name="bundle" id="f-bundle" rows="6" spellcheck="false" autocomplete="off">{{ form.get('bundle', '') }}</textarea>
+    </div>
+    <div class="field field-inline">
+      <label for="f-target-cube">Bei „Ein einzelner Würfel“ anwenden auf</label>
+      <select name="target_cube" id="f-target-cube">
+        <option value="">Gleichnamiger Würfel (sonst der erste)</option>
+        {% for name in cube_names %}<option value="{{ name }}"{% if name == form.get('target_cube') %} selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select>
+      <small class="help">So übertragen Sie die Belegung eines Würfels auf einen anderen oder auf einen neuen Würfel.</small>
     </div>
     <div class="btn-row">
       <button type="submit" name="action" value="import-check" class="btn"{% if not writable %} disabled{% endif %}>Datei prüfen</button>

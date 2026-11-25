@@ -15,6 +15,7 @@ from pathlib import Path
 
 from octapihub.application.ble import CharacteristicInfo, DeviceProfile
 from octapihub.application.ble_runtime import BleRuntime
+from octapihub.application.ble_scan import FoundDevice
 from octapihub.application.cube_service import CubeService
 from octapihub.application.hue_lights import HueGroup
 from octapihub.application.hue_service import HueGateway, HueService, SceneInfo
@@ -36,6 +37,7 @@ from octapihub.core.config import (
 )
 from octapihub.core.errors import HueLinkButtonError
 from octapihub.infrastructure.ble.fake import FakeTransportFactory
+from octapihub.infrastructure.ble.fake_scanner import FakeScanner
 from octapihub.infrastructure.ble.protocol import (
     BATTERY_LEVEL_CHARACTERISTIC_UUID,
     ORIENTATION_CHARACTERISTIC_UUID,
@@ -281,6 +283,12 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
         hue,
         matrix=matrix,
         music=music,
+        scanner=FakeScanner(
+            [
+                FoundDevice("Timeular Tracker", "AA:BB:CC:DD:EE:77", -52),
+                FoundDevice("Lautsprecher", "11:22:33:44:55:66", -70),
+            ]
+        ),
         discover_cast=discover,
         list_audio_devices=audio_devices,
     )

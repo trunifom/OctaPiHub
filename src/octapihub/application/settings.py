@@ -18,6 +18,8 @@ from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.core.config import (
     AppConfig,
     save_config,
+    with_cubes_table,
+    with_face_labels_table,
     with_hue_table,
     with_mappings_table,
     with_music_table,
@@ -92,20 +94,25 @@ class SettingsManager:
             logger.info("Hue settings saved and applied")
             return candidate
 
-    async def apply_mappings(self, raw_mappings: Sequence[object]) -> AppConfig:
-        """Validate, save, and switch the running rules to new cube mappings.
+    async def apply_mappings(
+        self, raw_mappings: Sequence[object], raw_labels: Sequence[object] | None = None
+    ) -> AppConfig:
+        """Validate, save, and switch the running rules to new cube mappings (and labels).
 
-        The file is written first; if the running rules then reject the change (for
-        example a plugin is missing) the previous file content is restored, so file and
-        running state never disagree.
+        Face names and colours (``raw_labels``) are saved together with the mappings. The file
+        is written first; if the running rules then reject the change (for example a plugin is
+        missing) the previous file content is restored, so file and running state never
+        disagree.
 
         Raises:
-            ValidationError: If a mapping is invalid (nothing is saved).
+            ValidationError: If a mapping or label is invalid (nothing is saved).
             ConfigurationError: If the file cannot be written (nothing changes).
             PluginError: A needed plugin is missing (file and rules stay unchanged).
         """
         async with self._lock:
             candidate = with_mappings_table(self._config, raw_mappings)
+            if raw_labels is not None:
+                candidate = with_face_labels_table(candidate, raw_labels)
             previous = self._config
             if self._cubes is not None:
                 # Validate against the running pipeline before touching the file.
@@ -118,6 +125,25 @@ class SettingsManager:
                 raise
             self._config = candidate
             logger.info("Cube mappings saved and applied")
+            return candidate
+
+    async def apply_cubes(self, raw_cubes: Sequence[object]) -> AppConfig:
+        """Validate, save, and restart the cube connections with a new cube list.
+
+        Mappings and face names of removed cubes are dropped. The cubes reconnect.
+
+        Raises:
+            ValidationError: If the list is invalid (nothing is saved).
+            ConfigurationError: If the file cannot be written (nothing changes).
+        """
+        async with self._lock:
+            candidate = with_cubes_table(self._config, raw_cubes)
+            await asyncio.to_thread(self._backup_file)
+            await asyncio.to_thread(save_config, self._path, candidate)
+            self._config = candidate
+            if self._cubes is not None:
+                await self._cubes.reconfigure(candidate)
+            logger.info("Cube list saved: %d cube(s)", len(candidate.cubes))
             return candidate
 
     async def apply_music(self, table: Mapping[str, object]) -> AppConfig:
@@ -177,7 +203,9 @@ class SettingsManager:
             ) from exc
         return target
 
-    async def apply_bundle(self, bundle: Bundle, sections: Sequence[str]) -> list[str]:
+    async def apply_bundle(
+        self, bundle: Bundle, sections: Sequence[str], target_cube: str = ""
+    ) -> list[str]:
         """Import the chosen ``sections`` of an export; all or nothing.
 
         Every section is validated against the current configuration first. The current file
@@ -199,16 +227,18 @@ class SettingsManager:
             candidate = self._config
             notes: list[str] = []
             for key in wanted:
-                candidate, extra = prepare_section(candidate, key, bundle.sections[key])
+                candidate, extra = prepare_section(
+                    candidate, key, bundle.sections[key], target_cube
+                )
                 notes.extend(extra)
             previous = self._config
             await asyncio.to_thread(self._backup_file)
-            if "mappings" in wanted and self._cubes is not None:
+            if ({"mappings", "cube", "labels"} & set(wanted)) and self._cubes is not None:
                 await self._cubes.update_config(candidate)
             try:
                 await asyncio.to_thread(save_config, self._path, candidate)
             except Exception:
-                if "mappings" in wanted and self._cubes is not None:
+                if ({"mappings", "cube", "labels"} & set(wanted)) and self._cubes is not None:
                     await self._cubes.update_config(previous)
                 raise
             self._config = candidate
