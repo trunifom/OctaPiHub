@@ -27,9 +27,8 @@ Aktuell implementiert sind:
 
 Der BLE-Transport und die Laufzeit sind implementiert und lokal mit Fakes getestet.
 Regelzuordnung, generische Outbox und Hue-Adapter sind lokal getestet. Der Hue-Adapter
-wurde nicht gegen eine echte Bridge geprüft; Hue-Kopplung/Key-Verwaltung, Audio-Aktionen,
-ein startbarer Systemdienst/Composition Root, und
-Weboberfläche sind noch nicht implementiert. Der Sense-HAT-Port und Hardwareadapter
+wurde nicht gegen eine echte Bridge geprüft. (Die Aufzählung oben ist historisch; Kopplung, Musik, Composition Root, systemd-Dienst und
+Weboberfläche sind inzwischen vorhanden, siehe die späteren Abschnitte.) Der Sense-HAT-Port und Hardwareadapter
 sind mit einem Fake getestet, aber nicht auf echter Hardware verifiziert. Die
 Fähigkeitserkennung meldet ohne erkannten Farbsensor absichtlich keine automatische
 v1-Revision, da das Fehlen des Sensors keinen sicheren Revisionsnachweis darstellt.
@@ -365,7 +364,7 @@ Die BLE-Laufzeit liest nach dem Verbinden und danach alle 10 Minuten (`battery_p
 
 ## LED-Matrix-Anzeige und Joystick
 
-**Schichten:** `application/matrix/` ist rein und ohne Hardware: `canvas` (8×8-Fläche, Farbfunktionen, 3×5-Schrift, Icons), `views` (19 Ansichten als reine Funktionen Zustand → Bild, robust gegen fehlende oder ungültige Werte, NaN/Inf zählen als fehlend), `controller` (Joystick-Zustandsmaschine), `overlays` (kurze Einblendungen und `AlertDetector`), `builder` (Anzeigezustand aus Würfeln, Hue, Sensoren, Host) und `service` (`MatrixDisplayService`). Die Ansichtennamen stehen einmal in `core.config.MATRIX_VIEW_IDS`; ein Import-Test erzwingt, dass Registry und Konfiguration übereinstimmen.
+**Schichten:** `application/matrix/` ist rein und ohne Hardware: `canvas` (8×8-Fläche, Farbfunktionen, 3×5-Schrift, Icons), `views` (21 Ansichten als reine Funktionen Zustand → Bild, robust gegen fehlende oder ungültige Werte, NaN/Inf zählen als fehlend), `controller` (Joystick-Zustandsmaschine), `overlays` (kurze Einblendungen und `AlertDetector`), `builder` (Anzeigezustand aus Würfeln, Hue, Sensoren, Host) und `service` (`MatrixDisplayService`). Die Ansichtennamen stehen einmal in `core.config.MATRIX_VIEW_IDS`; ein Import-Test erzwingt, dass Registry und Konfiguration übereinstimmen.
 
 **Betrieb:** Ein einziger Task besitzt Matrix und Joystick (kein Zugriff aus BLE-Callbacks, F-D8), nutzt den Port des Sense-HAT-Dienstes und schreibt nur bei geänderten Bildern. Priorität: Anzeige aus > Hinweis (Verbindung/Akku/Fehler) > Aktionsfeedback > Info-Text > Ansicht. Helligkeit = Joystick-/Konfigwert × optionale Umgebungslichtanpassung (Farbsensor) × Nachtfenster (aus oder 5 %; ein Joystick-Druck weckt 30 s gedimmt). Hardwarefehler (I2C) erzeugen Status `Störung` mit Code, Backoff bis 30 s und automatische Erholung; der Hub läuft immer weiter (F-D7). Fehlt das Sense HAT, bleibt die Vorschau auf der Webseite funktionsfähig.
 
@@ -373,7 +372,7 @@ Die BLE-Laufzeit liest nach dem Verbinden und danach alle 10 Minuten (`battery_p
 
 **Web:** Seite *Anzeige* mit Live-Vorschau (SSE `/events/display`, bis 4 Bilder/s), Galerie aller Ansichten, virtuellem Joystick und Helligkeit (alle Änderungen per Token über `POST /display/control`); Einstellungen für Ansichten, Startansicht, Auto-Weiterschalten, Nachtmodus, Helligkeit, Drehung. Änderungen werden ohne Neustart angewendet; wird die Startansicht geändert, gilt sie sofort.
 
-**Grenzen:** Joystick-Änderungen (Helligkeit, Ansicht) sind flüchtig und werden nicht gespeichert; der Verlauf der Anzeige umfasst nur die letzten 8 Messwerte im Speicher; der Joystick löst noch keine Hub-Aktionen aus (F-R7).
+**Grenzen:** Joystick-Änderungen (Helligkeit, Ansicht) sind flüchtig und werden nicht gespeichert; der Verlauf der Anzeige umfasst nur die letzten 8 Messwerte im Speicher; Hub-Aktionen löst der Joystick in der Ansicht *Steuerung* aus (siehe unten).
 
 ## Joystick als Aktionsquelle (F-R7)
 
@@ -384,3 +383,33 @@ Der Sense-HAT-Joystick ist eine eingebaute Aktionsquelle neben den Würfeln: Kon
 **Web:** Der Zuordnungseditor hat einen Joystick-Block mit fünf Feldern und zeigt, ob der Joystick einsatzbereit ist (Anzeige aktiv, Joystick eingeschaltet, Ansicht aktiviert). Der Knopf **„Jetzt auslösen“** führt die gespeicherte Aktion einer Würfelseite oder Joystick-Richtung sofort aus (`POST /cubes/trigger`, nur mit Token): Joystick und Weboberfläche lösen so dieselben Aktionen aus.
 
 **Grenzen:** Der Joystick wird vom Anzeige-Dienst gelesen; ist die LED-Anzeige ausgeschaltet, funktioniert er nicht. Nicht an echter Hardware geprüft.
+
+## Musik (F-M)
+
+**Schichten.** `application/music/` ist rein und ohne Netzwerk/Prozesse: `sources` (`parse_source` erkennt LOCAL, URL, YOUTUBE und SPOTIFY und weist `..`, UNC-Pfade, Zugangsdaten im Link und fehlerhafte Links ab), `queue` (`play_order`, `following`, `preceding`: Mischen, Wiederholen, Ende der Liste), `models` (Protokolle `MusicPlayer`, `PlayerFactory`, `TrackResolver` und Datentypen) und `service` (`MusicService`). `infrastructure/music/` enthält die Adapter: `library` (`LibraryResolver`: Ordner, Dateien, m3u/pls, **nur innerhalb des Musikordners**), `media` (`MediaRegistry` mit zufälligen, ablaufenden Tokens und `MediaUrls`, die LAN-Adresse), `mpv_player` (mpv per JSON-IPC auf einem Unix-Socket, Bluetooth-Verbindung per `bluetoothctl`), `cast_player` (pychromecast hinter einem `CastBackend`-Protokoll, eigene Warteschlange mit Monitor-Task), `players` (`DefaultPlayerFactory` wählt je Zielart) und `fake` (für Tests und Demo).
+
+**Aktionsplugin.** `MusicService` ist das Plugin `music` mit den Aktionen `play`, `pause`, `resume`, `toggle`, `stop`, `stop.all`, `next`, `previous`, `volume.set`, `volume.up`, `volume.down`. Würfel, Joystick und Weboberfläche lösen sie über denselben Weg (Regeln → Outbox → Plugin) aus; es gibt keinen Sondermodus für Musik. Die **Halterung** ist Seite 0 und wird wie eine Seite zugeordnet; die Baseline löst nie aus.
+
+**Zielauswahl und Exklusivität.** Ziel = ausdrücklich angegeben > Ziel der Playlist > zuletzt verwendet > das einzige vorhandene. Startet Musik auf einem Ziel, werden aktive andere Ziele gestoppt. Pause/Stopp ohne Ziel wirken nur auf aktive Ziele. Je Ziel gibt es ein eigenes `asyncio.Lock`, jede Player-Operation hat ein Zeitlimit von 20 s.
+
+**Fehlerbehandlung.** Typisierte Fehler: `MusicError` (CH-MUS-001, wiederholbar), `MusicTargetError` (002, Gerät antwortet nicht, wiederholbar), `MusicSourceError` (003, Quelle ungültig, **nicht** wiederholbar), `MusicNotConfiguredError` (004, nicht wiederholbar) und `MusicUnsupportedError` (005, fehlendes Paket oder Betriebssystem, nicht wiederholbar). Die Outbox lässt Fehler mit `retryable = False` sofort ablaufen und wiederholt nur vorübergehende. Für Musik gilt eine kurze Gültigkeit (`ttl_by_kind`, 60 s), damit eine Aktion nicht Minuten später plötzlich Musik startet. Der Status des Dienstes (`MusicStatus`) zeigt Zustand, Titel, Lautstärke und letzten Fehler je Ziel; Fehler eines Ziels beeinflussen andere nicht.
+
+**Dateien für Cast-Geräte.** Ein Google-Lautsprecher kann keine lokalen Pfade lesen. Für Dateien registriert `MediaRegistry` einen unratbaren Token mit Ablaufzeit; `GET /media/{token}` liefert die Datei (Bereichsanfragen unterstützt) und prüft bei **jeder** Anfrage erneut, dass die Datei noch im Musikordner liegt. Die Route braucht kein Token der Oberfläche, weil der Link selbst der Zugriffsschutz ist; sie liefert nur Audiodateien aus dem Musikordner. Der Dienst muss dafür im LAN erreichbar sein.
+
+**Web.** Seite *Musik* (`web/music_routes.py`, `web/music_forms.py`): Geräte und Playlists in einem Formular, pro Zeile validiert (alle Fehler gleichzeitig, deutsche Meldungen am Feld), gespeichert über `SettingsManager.apply_music` (atomar, dann live angewendet). Zusätzlich Geräte-/Audiosuche, Statusaktualisierung, Steuerungstasten je Gerät und Testwiedergabe. Der Zuordnungseditor bietet je Seite einen Aktionskatalog (Hue-Szene, Playlist abspielen, Playlist starten/pausieren, Steuern); Werte `music:play:<id>`, `music:toggle:<id>`, `music:<aktion>`, Hue-Szenen bleiben unverändert die rohe Szenen-ID.
+
+**LED.** Die Ansicht `music` zeigt den Zustand als Symbol und die Lautstärke als Balken; Daten stammen aus `DisplayStateBuilder`, die Anzeige scheitert nie an der Musik.
+
+**Grenzen.** Nichts davon wurde mit echtem mpv, echten Cast-Geräten oder einer Bluetooth-Box geprüft. Spotify ist nicht abspielbar. YouTube-Playlists ohne Video lassen sich auf Cast nicht starten. Verzögerungen (z. B. „nach 2 s“) sind in der Zuordnung nicht möglich.
+
+## Sichern, Export und Import (F-K3)
+
+`application/backup.py` ist rein: `build_bundle` erzeugt ein JSON-Bündel (`format = octapihub-export`, `version`) mit den Bereichen `music`, `playlists`, `mappings`, `sense_hat` und `hue`; Würfelliste, Bluetooth-Adapter, Pfad der Verlaufsdatenbank und Schlüssel sind absichtlich **nicht** enthalten. `parse_bundle` prüft Größe (512 KB), JSON, Format und Version; `prepare_section` wendet einen Bereich validiert auf die **aktuelle** Konfiguration an (z. B. müssen Zuordnungen zu vorhandenen Würfeln passen; Playlists werden nach Kennung zusammengeführt, unbekannte Geräte entfernt), `preview_bundle` fasst das für die Oberfläche zusammen.
+
+`SettingsManager.apply_bundle` übernimmt gewählte Bereiche **alles oder nichts**: zuerst Validierung aller Bereiche, dann Sicherungskopie `octapihub.toml.bak-<Zeit>` (die neuesten 5 bleiben; scheitert sie, wird nichts importiert), Aktualisierung der Zuordnung im laufenden Dienst, atomares Schreiben (mit Rücksetzen bei Fehler) und zuletzt das Anwenden von Sense HAT, Hue und Musik. Schlägt ein Anwenden zur Laufzeit fehl, bleibt die Datei gespeichert und die Oberfläche empfiehlt einen Neustart.
+
+**Web** (`web/backup_routes.py`): Export und Import per POST nur mit Token, Import in den Schritten *prüfen* und *übernehmen* (Datei wird im Browser gelesen und in ein Textfeld übernommen, kein Datei-Upload nötig; Formulargrenze 640 KB). Der Sensor-CSV-Export (`GET /export/sensor-data.csv`, Mittelwerte oder bis 24 h Rohwerte, Temperatur mit Rohwert und korrigiertem Wert, UTF-8 mit BOM) liest über denselben Weg wie die Diagramme; der Log-Download redigiert erneut.
+
+## Protokollierung
+
+`core/logging_support.py`: `Redactor` maskiert Zugangsdaten, Token, Bearer-Werte und kürzt MAC-Adressen; `RedactingFilter` gilt für jeden Handler. Handler: Konsole (journald), `LogRing` (die letzten 500 Zeilen für die Seite System und den Log-Download) und eine **rotierende Datei** (`create_file_handler`, Standard `<data-dir>/logs/octapihub.log`, 1 MB × 5 Rotationen, UTF-8). Ein nicht beschreibbarer Ordner kostet nur die Datei, nie den Start. Ausführlichkeit: `--log-level` oder `OCTAPIHUB_LOG_LEVEL`; Ausnahmetexte werden nicht protokolliert, nur der Typ.

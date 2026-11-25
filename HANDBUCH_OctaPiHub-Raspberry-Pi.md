@@ -2,7 +2,7 @@
 
 > ## ⚠️ EIGENES PROJEKT – NICHT TEIL VON OCTALEDGER
 > Projektname **„OctaPiHub“**. Dieses Handbuch gehört zu `PFLICHTENHEFT_OctaPiHub-Raspberry-Pi.md` und `RECHERCHE_OctaPiHub-Raspberry-Pi.md` (Nachtrag 3, §18). Das eigene lokale Repository liegt außerhalb von OctaLedger; eine Veröffentlichung oder ein Push erfolgt nur mit ausdrücklicher Freigabe.
-> Stand: 24.11.2026 · **Ehrlichkeitsvermerk:** Die Befehle sind aus Dokumentation und Fachwissen zusammengestellt und **nicht auf deiner Hardware ausgeführt**. Stellen mit **„Prüfen“** sind nicht verifiziert (BlueZ-Version auf Trixie, Sense HAT auf Trixie, Würfel-Details, Watchdog-Drop-in, Hue-Szenenaufruf). Bei Abweichungen gilt die offizielle Doku. Die eigentliche OctaPiHub-Software existiert noch nicht; Kapitel 8–12 beschreiben die Umgebung, in die sie später eingesetzt wird. Platzhalter in `<spitzen Klammern>` ersetzen.
+> Stand: 24.11.2026 · **Ehrlichkeitsvermerk:** Die Befehle sind aus Dokumentation und Fachwissen zusammengestellt und **nicht auf deiner Hardware ausgeführt**. Stellen mit **„Prüfen“** sind nicht verifiziert (BlueZ-Version auf Trixie, Sense HAT auf Trixie, Würfel-Details, Watchdog-Drop-in, Hue-Szenenaufruf). Bei Abweichungen gilt die offizielle Doku. Die Software existiert inzwischen: die aktuelle, Schritt-für-Schritt-Anleitung zur Installation steht in `deploy/INSTALL.md`, die Bedienung im `docs/BENUTZERHANDBUCH.md`. Dieses Handbuch bleibt als Hintergrund zur Hardware-Einrichtung (Kapitel 1–7, 9–10); Kapitel 8 und 11–12 gelten, soweit sie nicht von `deploy/INSTALL.md` abweichen (dann gilt `deploy/INSTALL.md`). Platzhalter in `<spitzen Klammern>` ersetzen.
 
 ---
 

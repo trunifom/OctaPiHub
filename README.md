@@ -6,47 +6,24 @@ von OctaLedger und Timeular.
 
 ## Stand
 
-Die Umsetzung hat begonnen. Es gibt ein schlankes Python-Projektgerüst,
-hardwareunabhängige Würfelprotokoll- und Entprellungslogik sowie Laden, Validierung
-und atomare Speicherung der ersten versionierten TOML-Konfiguration. Es gibt außerdem
-einen typisierten Plugin-Vertrag und Discovery für vertrauenswürdige Python-Plugins.
-Der BLE-Transportvertrag und ein hardwarefreier Fake sind vorhanden; der produktive
-Bleak-Adapter und eine hardwarefrei getestete Laufzeit für beide Würfel sind ergänzt.
-Schema-v2-Regelzuordnungen und eine generische SQLite-WAL-Outbox sind implementiert.
-Schema v3 ergänzt eine validierte Sense-HAT-Konfiguration mit pro Sensorgruppe
-einstellbaren Messintervallen, Verlauf, Anzeigeart und Präzision. Ein typisierter
-Anwendungs-Port, ein lazy geladener Hardwareadapter für Umweltwerte, IMU, v2-Farbsensor,
-Joystick und LED-Matrix sowie ein konfigurierbarer Fake sind hardwarefrei getestet.
-Automatische Fähigkeitserkennung stuft ein Board ohne erkannten Farbsensor bewusst
-nicht automatisch als v1 ein.
-Ein automatisierter End-to-End-Test führt ein simuliertes Würfelereignis durch Regeln
-und Outbox bis zu einem Fake-Hue-Plugin. Ein echter Hue-CLIP-v2-Adapter kann Szenen
-auflisten und aktivieren und wird gegen einen lokalen HTTPS-Fake-Server getestet.
-Kopplung/Key-Verwaltung, ein startbarer Systemdienst und ein Musik-Aktionsadapter fehlen.
-OctaPiHub wurde nicht mit echter Hardware oder einer Hue Bridge geprüft.
-Nach Nutzerangabe wurde im separaten OctaLedger-Projekt ein echter Würfel mit dem
-Musikplayer erprobt; das belegt weder OctaPiHub-BLE noch die Hue-Lichtsteuerung.
+OctaPiHub ist ein lauffähiger Hub **für Simulation und Entwicklung**: Würfel (bis zu drei),
+Hue-Licht, Musik, Sense-HAT-Sensoren, LED-Matrix und Joystick sowie eine Weboberfläche sind
+implementiert und mit Fakes getestet. **Nichts davon wurde bisher mit echter Hardware geprüft**
+(weder Würfel, Raspberry Pi, Sense HAT, Hue Bridge, Google-Lautsprecher, mpv noch Bluetooth-Box).
+Nach Nutzerangabe wurde im separaten OctaLedger-Projekt ein echter Würfel mit dem Musikplayer
+erprobt; das belegt weder OctaPiHub-BLE noch die Hue-Lichtsteuerung noch die neue Musikanbindung.
 
 | Teil | Status |
 |---|---|
-| Projektgerüst / Qualitätswerkzeuge | vorhanden |
-| Würfel-Protokolldecoder | erster Stand, nur Unit-getestet |
-| Entprellung / Reconnect-Backoff | erster Stand, nur Unit-getestet |
-| Versionierte TOML-Konfiguration | v1/v2-kompatibel; Schema v3 mit Sense-HAT-Einstellungen |
-| Plugin-Vertrag und Entry-Point-Registry | erster Stand, nur Unit-getestet |
-| Regelzuordnungen und SQLite-WAL-Outbox | generisch implementiert, lokal getestet |
-| Fake-Würfel → Regeln → Outbox → Fake Hue | als lokaler End-to-End-Test abgedeckt |
-| Hue CLIP v2 (Szenenliste/-Recall) | implementiert, TLS und API lokal gefaket; nicht hardwareverifiziert |
-| BLE-Transportvertrag und Fake | implementiert, hardwarefrei getestet |
-| BLE-Laufzeit und Bleak/BlueZ-Adapter | implementiert, mit Fakes getestet |
-| BLE-Verbindung zu echten Würfeln / Raspberry Pi | nicht hardwareverifiziert |
-| Sense-HAT-Port, Hardwareadapter und Fake | implementiert, hardwarefrei getestet; nicht auf echter Hardware verifiziert |
-| Sense-HAT-Messworker (Intervalle je Sensorgruppe, Fehlerisolation, Temperaturkorrektur neben Rohwert) | implementiert, mit Fake getestet; nicht auf echter Hardware verifiziert |
-| Sense-HAT-Sensorverlauf (SQLite/WAL, gebündeltes Schreiben, Aufbewahrung, Zeitreihen-Abfrage) | implementiert, mit Fake/Temp-DB getestet; noch nicht im Dienst verdrahtet |
-| Sense-HAT-Dienst (Composition Root: Port, Worker, Recorder, Speicher; Start/Stopp mit Flush, degradierter Betrieb) | implementiert, mit Fakes getestet; noch kein startbarer Hub-Prozess |
-| Weboberfläche (Übersicht, Sense HAT mit Live-Werten und Verlaufsdiagramm, Sense-HAT-Einstellungen) | implementiert, per Test und Browser-Screenshots am PC geprüft; nicht auf Raspberry Pi/Handy verifiziert. Seiten Würfel (Status, Zuordnung per Auswahlfeld bearbeitbar, gilt sofort) und Licht (Hue koppeln, Szenen laden/testen) vorhanden; Seiten Anzeige (LED-Matrix: Live-Vorschau, 19 Ansichten, virtueller Joystick) und System (CPU-Temperatur, Speicher, Stromversorgung, Laufzeit, redigierte Meldungen, Diagnose-ZIP) vorhanden; Seite Musik fehlt |
-| Hue-Anbindung | Pairing, Key in secrets.env, Szenenliste, Szenen-Test und Plugin `hue` implementiert; nur gegen lokale TLS-Fakes getestet, nicht mit echter Bridge verifiziert |
-| Musikadapter | nicht implementiert |
+| Würfel (BLE, Seiten 0–8 inkl. Halterung, Entprellung, Akkustand, bis zu 3 Würfel) | implementiert, mit Fakes getestet; nicht hardwareverifiziert |
+| Regeln und SQLite-Outbox (Warteschlange je Würfel, Wiederholung, Ablauf, kurze Gültigkeit für Musik) | implementiert, lokal getestet |
+| Hue (Kopplung, Szenen, Plugin `hue`) | implementiert, gegen lokale TLS-Fakes getestet; nicht mit echter Bridge |
+| Musik: Quellen (Ordner, Datei, m3u/pls, Radio, YouTube), Warteschlange, Aktionen | implementiert, mit Fakes getestet |
+| Musik: Google Nest / Home / Nest Hub (pychromecast), Audioausgang des Raspberry Pi und Bluetooth-Box (mpv) | implementiert, mit Fakes getestet; **kein echtes Gerät, kein echtes mpv, keine echte Box**; Spotify nicht abspielbar |
+| Sense HAT (Sensoren, Verlauf, Temperaturkorrektur, LED-Matrix mit 21 Ansichten, Joystick als Steuerung und Aktionsquelle) | implementiert, mit Fakes getestet |
+| Weboberfläche (Übersicht, Würfel/Zuordnung, Licht, Musik, Sense HAT, Anzeige, System, Einstellungen, Sichern) | implementiert, per Test und Browser-Screenshots am PC geprüft; nicht auf Raspberry Pi/Handy |
+| Export/Import (Einstellungen, Playlists), CSV-Export der Sensordaten, Log-Download, rotierende Logdatei | implementiert, getestet |
+| systemd-Dienst, Installationsanleitung | vorhanden; **nicht auf einem echten Raspberry Pi ausprobiert** |
 
 Lokale Tests:
 
@@ -62,9 +39,11 @@ Der Befehl setzt Python >= 3.12 voraus. Auf einer Entwicklungsmaschine mit älte
 Python-Version kann pytest derzeit mit `PYTHONPATH=src` ausgeführt werden, sofern
 die verwendete Version die Quellsyntax unterstützt.
 
+- [Installation auf dem Raspberry Pi](deploy/INSTALL.md)
+- [Benutzerhandbuch](docs/BENUTZERHANDBUCH.md)
 - [Pflichtenheft](PFLICHTENHEFT_OctaPiHub-Raspberry-Pi.md)
 - [Architektur](docs/ARCHITEKTUR.md)
-- [Handbuch und Hardwaretests](HANDBUCH_OctaPiHub-Raspberry-Pi.md)
+- [Hardware-Einrichtung (Hintergrund)](HANDBUCH_OctaPiHub-Raspberry-Pi.md)
 - [Recherche und offene Fragen](RECHERCHE_OctaPiHub-Raspberry-Pi.md)
 
 Dieses Repository ist lokal. Geheimnisse und persönliche Betriebsdaten gehören
@@ -89,4 +68,21 @@ Dateien und Anleitung liegen in `deploy/` (systemd-Unit mit Härtung, Beispielko
 
 ## LED-Matrix und Joystick
 
-Die 8×8-LEDs des Sense HAT zeigen **19 Ansichten**: Übersicht (Ampel je Komponente), Würfel, Akku, Temperatur, Luftfeuchtigkeit, Luftdruck, Verlauf, Uhr, Binäruhr, Laufschrift, Kompass, Wasserwaage, Umgebungsfarbe, Lampe, Regenbogen, Atmen, Farbpalette, Helligkeit und Aus. Joystick: links/rechts wechselt die Ansicht, hoch/runter wählt innerhalb der Ansicht (oder ändert die Helligkeit), Drücken erklärt per Laufschrift, langes Halten schaltet die Anzeige aus/ein. Würfelaktionen erscheinen kurz (Seite, dann Häkchen oder Kreuz); Verbindungsverlust, schwacher Akku und Fehler blinken als Symbol. Alles ist auf der Seite *Anzeige* live ansehbar und über einen virtuellen Joystick bedienbar. **Bis zu drei Würfel** mit frei wählbarer Rolle werden unterstützt; der Akkustand jedes Würfels wird gelesen und mit Ladehinweis angezeigt. Alles nur mit Fakes getestet, **nicht an echter Sense-HAT- oder Würfel-Hardware**.
+Die 8×8-LEDs des Sense HAT zeigen **21 Ansichten**: Übersicht (Ampel je Komponente), Würfel, Steuerung, Musik, Akku, Temperatur, Luftfeuchtigkeit, Luftdruck, Verlauf, Uhr, Binäruhr, Laufschrift, Kompass, Wasserwaage, Umgebungsfarbe, Lampe, Regenbogen, Atmen, Farbpalette, Helligkeit und Aus. Joystick: links/rechts wechselt die Ansicht, hoch/runter wählt innerhalb der Ansicht (oder ändert die Helligkeit), Drücken erklärt per Laufschrift, langes Halten schaltet die Anzeige aus/ein. Würfelaktionen erscheinen kurz (Seite, dann Häkchen oder Kreuz); Verbindungsverlust, schwacher Akku und Fehler blinken als Symbol. Alles ist auf der Seite *Anzeige* live ansehbar und über einen virtuellen Joystick bedienbar. **Bis zu drei Würfel** mit frei wählbarer Rolle werden unterstützt; der Akkustand jedes Würfels wird gelesen und mit Ladehinweis angezeigt. Alles nur mit Fakes getestet, **nicht an echter Sense-HAT- oder Würfel-Hardware**.
+
+## Musik
+
+Würfelseiten, die Halterung und die Joystick-Richtungen können Musik abspielen und steuern
+(Playlist starten oder pausieren, Pause, Weiter, Stopp, Nächster/Vorheriger Titel, Lauter, Leiser).
+Wiedergabeziele sind Google Nest / Home / Nest Hub, der Audioausgang des Raspberry Pi oder eine
+Bluetooth-Box; es spielt immer nur ein Ziel. Quellen sind Ordner und Dateien im Musikordner,
+m3u/pls-Playlists, Radio-Adressen und YouTube. Einrichtung auf der Seite *Musik*, Zuordnung auf der
+Seite *Würfel*. Optionale Abhängigkeit: `pip install ".[music]"` (pychromecast); `mpv` und `yt-dlp`
+sind Systempakete. Bedienung: [Benutzerhandbuch](docs/BENUTZERHANDBUCH.md).
+
+## Sichern, Importieren, Protokolle
+
+Die Seite *Einstellungen → Sichern & Wiederherstellen* exportiert und importiert Einstellungen
+(zweistufig prüfen, dann alles oder nichts übernehmen, mit Sicherungskopie), lädt Sensordaten als CSV
+und Logdateien ohne Zugangsdaten herunter. Logs gehen zusätzlich in eine rotierende Datei
+(`<data-dir>/logs/octapihub.log`; `--log-level`, `--log-dir`, `OCTAPIHUB_LOG_LEVEL`).
