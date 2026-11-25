@@ -25,7 +25,7 @@
   <section class="panel" aria-labelledby="zuordnung-title">
     <div class="panel-head">
       <h2 id="zuordnung-title">Zuordnung</h2>
-      <p class="muted">Wählen Sie für jede Würfelseite die Lichtszene, die beim Hinlegen eingeschaltet werden soll. Änderungen gelten sofort.</p>
+      <p class="muted">Wählen Sie für jede Würfelseite, was beim Hinlegen passieren soll: eine Lichtszene einschalten oder Musik abspielen und steuern. Die Halterung ist der Zustand ohne Seite oben. Änderungen gelten sofort. Ihre Playlists legen Sie auf der Seite <a href="/music">Musik</a> an.</p>
     </div>
 
     {% if not scenes_known %}
@@ -56,8 +56,18 @@
           <select name="{{ tile.field }}" id="f-{{ tile.field }}"{% if map_errors.get(tile.field) %} aria-invalid="true" aria-describedby="err-{{ tile.field }}"{% endif %}>
             <option value="">Keine Aktion</option>
             {% set ids = scene_options | map(attribute='id') | list %}
-            {% if tile.scene_id and tile.scene_id not in ids %}<option value="{{ tile.scene_id }}" selected>{{ tile.scene_label }}</option>{% endif %}
+            {% if tile.scene_id and not tile.scene_id.startswith('music:') and tile.scene_id not in ids %}<option value="{{ tile.scene_id }}" selected>{{ tile.scene_label }}</option>{% endif %}
+            {% if scene_options %}<optgroup label="Licht: Szene einschalten">
             {% for scene in scene_options %}<option value="{{ scene.id }}"{% if scene.id == map_form.get(tile.field) %} selected{% endif %}>{{ scene.name }}</option>{% endfor %}
+            </optgroup>{% endif %}
+            {% set music_values = [] %}
+            {% for group_label, items in music_groups %}{% for value, _label in items %}{% if music_values.append(value) %}{% endif %}{% endfor %}{% endfor %}
+            {% if tile.scene_id and tile.scene_id.startswith('music:') and tile.scene_id not in music_values %}<option value="{{ tile.scene_id }}" selected>{{ tile.scene_label }}</option>{% endif %}
+            {% for group_label, items in music_groups %}
+            <optgroup label="{{ group_label }}">
+            {% for value, label in items %}<option value="{{ value }}"{% if value == map_form.get(tile.field) %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </optgroup>
+            {% endfor %}
           </select>
           {{ m.field_error(map_errors, tile.field) }}
           {% endif %}

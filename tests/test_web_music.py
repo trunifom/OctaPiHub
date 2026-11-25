@@ -316,3 +316,76 @@ def test_without_a_music_service_the_page_explains_itself(tmp_path: Path) -> Non
         assert client.get("/music").status_code == 200
         response = rig.post(client, "save")
     assert response.status_code == 503 and "CH-WEB-014" in response.text
+
+
+# ---------- mapping editor: music actions per face ----------
+
+
+def post_mapping(rig: Rig, client: TestClient, fields: dict[str, str], token: str = TOKEN):  # type: ignore[no-untyped-def]
+    from octapihub.web import forms
+
+    body = {**forms.mapping_config_to_form(rig.settings.config), **fields}
+    if token:
+        body["token"] = token
+    return client.post(
+        "/cubes/mapping",
+        content=urlencode(body),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+
+def test_mapping_page_offers_music_actions_and_playlists(tmp_path: Path) -> None:
+    rig = Rig(tmp_path)
+    with rig.client() as client:
+        text = client.get("/cubes").text
+    assert "Musik: Playlist abspielen" in text and "▶ Morgens" in text
+    assert "Musik: Steuern" in text and "Lauter" in text and "Alle Wiedergaben stoppen" in text
+    assert 'value="music:toggle:morgen"' in text
+
+
+def test_music_actions_can_be_assigned_to_faces_and_the_holder(tmp_path: Path) -> None:
+    rig = Rig(tmp_path)
+    fields = {
+        "map.0.1": "music:play:morgen",
+        "map.0.2": "music:toggle",
+        "map.0.3": "music:volume.up",
+        "map.0.0": "music:stop.all",
+        "map.1.1": "music:toggle:morgen",
+    }
+    with rig.client() as client:
+        response = post_mapping(rig, client, fields)
+    assert response.status_code == 200, response.text[:500]
+    saved = {(m.cube, m.face): m.actions[0] for m in load_config(rig.path).mappings}
+    play = saved[("Musik", 1)]
+    assert (play.kind, play.action, dict(play.parameters)) == (
+        "music",
+        "play",
+        {"playlist": "morgen"},
+    )
+    assert saved[("Musik", 2)].action == "toggle" and dict(saved[("Musik", 2)].parameters) == {}
+    assert saved[("Musik", 0)].action == "stop.all"
+    assert saved[("Joystick", 1)].action == "toggle"
+    with rig.client() as client:
+        page = client.get("/cubes").text
+    assert 'value="music:play:morgen" selected' in page
+    assert 'value="music:stop.all" selected' in page
+
+
+@pytest.mark.parametrize(
+    "choice", ["music:explode", "music:play:", "music:play:gibtsnicht", "music:"]
+)
+def test_invalid_music_choices_are_refused(tmp_path: Path, choice: str) -> None:
+    rig = Rig(tmp_path)
+    with rig.client() as client:
+        response = post_mapping(rig, client, {"map.0.1": choice})
+    assert response.status_code == 422
+    assert load_config(rig.path).mappings == ()
+
+
+def test_a_removed_playlist_stays_visible_in_an_existing_mapping(tmp_path: Path) -> None:
+    rig = Rig(tmp_path)
+    with rig.client() as client:
+        post_mapping(rig, client, {"map.0.1": "music:play:morgen"})
+        rig.post(client, "save", {"p.0.remove": "on"})
+        page = client.get("/cubes").text
+    assert "nicht mehr vorhanden" in page

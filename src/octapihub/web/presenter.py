@@ -35,7 +35,7 @@ from octapihub.core.config import (
 )
 from octapihub.core.logging_support import LogLine
 from octapihub.infrastructure.system_info import SystemSnapshot
-from octapihub.web.forms import mapping_sources
+from octapihub.web.forms import choice_label, mapping_sources
 
 # Scalar groups that can be drawn as a time series.
 CHARTABLE_GROUPS = ("temperature", "humidity", "pressure", "compass")
@@ -418,8 +418,19 @@ _CUBE_ERROR_CODES = {
 _ACTION_TEXT = {
     "scene.activate": "Szene aktivieren",
     "light.brightness": "Helligkeit setzen",
+    "play": "Abspielen",
+    "pause": "Pause",
+    "resume": "Weiter",
+    "toggle": "Pause / Weiter",
+    "stop": "Stopp",
+    "stop.all": "Alles stoppen",
+    "next": "Nächster Titel",
+    "previous": "Vorheriger Titel",
+    "volume.set": "Lautstärke setzen",
+    "volume.up": "Lauter",
+    "volume.down": "Leiser",
 }
-_KIND_TEXT = {"hue": "Hue-Licht"}
+_KIND_TEXT = {"hue": "Hue-Licht", "music": "Musik"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -684,9 +695,13 @@ _JOYSTICK_CHIPS = ("▲", "▶", "▼", "◀", "●")
 
 
 def build_cube_tiles(
-    config: AppConfig, scenes: Mapping[str, str], form: Mapping[str, str]
+    config: AppConfig,
+    scenes: Mapping[str, str],
+    form: Mapping[str, str],
+    playlists: Mapping[str, str] | None = None,
 ) -> tuple[CubeTiles, ...]:
-    """Tiles for the editor; ``form`` holds the currently selected scene IDs."""
+    """Tiles for the editor; ``form`` holds the currently selected choices (scene or music)."""
+    playlist_names = playlists or {}
     lookup = {(m.cube.casefold(), m.face): m for m in config.mappings}
     result: list[CubeTiles] = []
     for index, (name, faces) in enumerate(mapping_sources(config)):
@@ -697,7 +712,7 @@ def build_cube_tiles(
             existing = lookup.get((name.casefold(), face))
             locked = existing is not None and field not in form
             scene_id = form.get(field, "")
-            label = scenes.get(scene_id, f"{scene_id} (nicht in der Liste)") if scene_id else ""
+            label = choice_label(scene_id, scenes, playlist_names) if scene_id else ""
             tiles.append(
                 FaceTile(
                     field=field,

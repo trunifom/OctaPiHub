@@ -402,13 +402,16 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
         values: dict[str, str], errors: dict[str, str], banner: dict[str, str] | None
     ) -> dict[str, Any]:
         scenes = {scene.id: scene.name for scene in backend.hue.scenes} if backend.hue else {}
+        playlists = {p.id: p.name for p in backend.settings.config.music.playlists}
         return {
             "map_form": values,
             "map_errors": errors,
             "banner": banner,
             "writable": bool(backend.token),
-            "tiles": build_cube_tiles(backend.settings.config, scenes, values),
+            "tiles": build_cube_tiles(backend.settings.config, scenes, values, playlists),
             "scene_options": [{"id": sid, "name": name} for sid, name in scenes.items()],
+            "music_groups": forms.music_choice_options(playlists) if backend.music else [],
+            "music_enabled": backend.settings.config.music.enabled,
             "scenes_known": bool(scenes),
             **joystick_readiness(),
         }
@@ -690,7 +693,8 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             status, title, detail, code = problem
             return respond(status, "error", title, detail, code)
         known = {scene.id for scene in backend.hue.scenes} if backend.hue else set()
-        result = forms.parse_mapping_form(submitted, backend.settings.config, known)
+        playlist_ids = {p.id for p in backend.settings.config.music.playlists}
+        result = forms.parse_mapping_form(submitted, backend.settings.config, known, playlist_ids)
         if result.mappings is None:
             errors.update(result.errors)
             return respond(

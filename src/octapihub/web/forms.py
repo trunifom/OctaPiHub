@@ -378,6 +378,96 @@ def scene_of(mapping: RuleMappingConfig | None) -> str | None:
     return None
 
 
+MUSIC_KIND = "music"
+MUSIC_PREFIX = "music:"
+MUSIC_CONTROLS = {
+    "toggle": "Pause / Weiter",
+    "pause": "Pause",
+    "resume": "Weiter",
+    "stop": "Stopp",
+    "stop.all": "Alle Wiedergaben stoppen",
+    "next": "Nächster Titel",
+    "previous": "Vorheriger Titel",
+    "volume.up": "Lauter",
+    "volume.down": "Leiser",
+}
+
+
+def music_choice_of(mapping: RuleMappingConfig | None) -> str | None:
+    """Catalog value (``music:...``) if the mapping is exactly one editable music action."""
+    if mapping is None or len(mapping.actions) != 1:
+        return None
+    action = mapping.actions[0]
+    if action.kind != MUSIC_KIND:
+        return None
+    params = dict(action.parameters)
+    if action.action in MUSIC_CONTROLS and not params:
+        return f"{MUSIC_PREFIX}{action.action}"
+    playlist = params.get("playlist")
+    if (
+        action.action in ("play", "toggle")
+        and set(params) == {"playlist"}
+        and isinstance(playlist, str)
+    ):
+        return f"{MUSIC_PREFIX}{action.action}:{playlist}"
+    return None
+
+
+def choice_of(mapping: RuleMappingConfig | None) -> str | None:
+    """The editable choice of a mapping (a Hue scene ID or a ``music:`` value), else ``None``."""
+    return scene_of(mapping) or music_choice_of(mapping)
+
+
+def music_choice_action(choice: str) -> dict[str, object] | None:
+    """The raw action for a ``music:`` choice, or ``None`` if it is not a valid catalog value."""
+    parts = choice.removeprefix(MUSIC_PREFIX).split(":", 1)
+    name = parts[0]
+    if len(parts) == 2:
+        playlist = parts[1]
+        if name not in ("play", "toggle") or not playlist:
+            return None
+        return {"kind": MUSIC_KIND, "action": name, "parameters": {"playlist": playlist}}
+    if name not in MUSIC_CONTROLS:
+        return None
+    return {"kind": MUSIC_KIND, "action": name, "parameters": {}}
+
+
+def music_choice_options(playlists: Mapping[str, str]) -> list[tuple[str, list[tuple[str, str]]]]:
+    """Option groups for the music part of a face selection: (group label, [(value, label)])."""
+    groups: list[tuple[str, list[tuple[str, str]]]] = []
+    if playlists:
+        groups.append(
+            (
+                "Musik: Playlist abspielen",
+                [(f"{MUSIC_PREFIX}play:{pid}", f"▶ {name}") for pid, name in playlists.items()],
+            )
+        )
+        groups.append(
+            (
+                "Musik: Playlist starten oder pausieren",
+                [(f"{MUSIC_PREFIX}toggle:{pid}", f"⏯ {name}") for pid, name in playlists.items()],
+            )
+        )
+    groups.append(
+        (
+            "Musik: Steuern",
+            [(f"{MUSIC_PREFIX}{op}", label) for op, label in MUSIC_CONTROLS.items()],
+        )
+    )
+    return groups
+
+
+def choice_label(choice: str, scenes: Mapping[str, str], playlists: Mapping[str, str]) -> str:
+    """Readable name of a choice for the editor."""
+    if not choice.startswith(MUSIC_PREFIX):
+        return scenes.get(choice, f"{choice} (nicht in der Liste)")
+    parts = choice.removeprefix(MUSIC_PREFIX).split(":", 1)
+    if len(parts) == 2:
+        name = playlists.get(parts[1], f"{parts[1]} (nicht mehr vorhanden)")
+        return f"{'▶' if parts[0] == 'play' else '⏯'} {name}"
+    return f"Musik: {MUSIC_CONTROLS.get(parts[0], parts[0])}"
+
+
 def _mapping_lookup(config: AppConfig) -> dict[tuple[str, int], RuleMappingConfig]:
     return {(m.cube.casefold(), m.face): m for m in config.mappings}
 
@@ -391,8 +481,8 @@ def mapping_config_to_form(config: AppConfig) -> dict[str, str]:
             mapping = lookup.get((name.casefold(), face))
             if mapping is None:
                 values[mapping_field(index, face)] = ""
-            elif (scene := scene_of(mapping)) is not None:
-                values[mapping_field(index, face)] = scene
+            elif (choice := choice_of(mapping)) is not None:
+                values[mapping_field(index, face)] = choice
     return values
 
 
@@ -405,7 +495,10 @@ class MappingResult:
 
 
 def parse_mapping_form(
-    form: Mapping[str, str], config: AppConfig, known_scene_ids: Collection[str]
+    form: Mapping[str, str],
+    config: AppConfig,
+    known_scene_ids: Collection[str],
+    known_playlist_ids: Collection[str] = (),
 ) -> MappingResult:
     """Build the new mapping list from the submitted scene choices.
 
@@ -415,12 +508,13 @@ def parse_mapping_form(
     """
     lookup = _mapping_lookup(config)
     known = set(known_scene_ids)
+    playlists = set(known_playlist_ids)
     errors: dict[str, str] = {}
     result: list[dict[str, object]] = []
     for index, (name, faces) in enumerate(mapping_sources(config)):
         for face in faces:
             existing = lookup.get((name.casefold(), face))
-            if existing is not None and scene_of(existing) is None:
+            if existing is not None and choice_of(existing) is None:
                 result.append(_raw_mapping(existing))
                 continue
             field = mapping_field(index, face)
@@ -429,6 +523,24 @@ def parse_mapping_form(
                 continue
             if len(chosen) > MAX_SCENE_ID_LENGTH or any(ord(c) < 32 for c in chosen):
                 errors[field] = "Diese Auswahl ist ungültig."
+                continue
+            if chosen.startswith(MUSIC_PREFIX):
+                action = music_choice_action(chosen)
+                if action is None:
+                    errors[field] = "Diese Auswahl ist ungültig."
+                    continue
+                params = action["parameters"]
+                playlist = params.get("playlist") if isinstance(params, dict) else None
+                if (
+                    playlist is not None
+                    and chosen != music_choice_of(existing)
+                    and playlist not in playlists
+                ):
+                    errors[field] = (
+                        "Diese Playlist gibt es nicht. Legen Sie sie auf der Seite Musik an."
+                    )
+                    continue
+                result.append({"cube": name, "face": face, "actions": [action]})
                 continue
             if chosen != scene_of(existing):
                 if not known:
