@@ -10,7 +10,8 @@ Die Umsetzung hat begonnen. Es gibt ein schlankes Python-Projektgerüst,
 hardwareunabhängige Würfelprotokoll- und Entprellungslogik sowie einen streng
 validierten Loader für die erste versionierte TOML-Konfiguration. Es gibt außerdem
 einen typisierten Plugin-Vertrag und Discovery für vertrauenswürdige Python-Plugins.
-Der Dienst und echte Hardwareadapter sind noch nicht implementiert.
+Der BLE-Transportvertrag und ein hardwarefreier Fake sind vorhanden; der produktive
+BLE-Dienst und echte Hardwareadapter sind noch nicht implementiert.
 
 | Teil | Status |
 |---|---|
@@ -19,6 +20,7 @@ Der Dienst und echte Hardwareadapter sind noch nicht implementiert.
 | Entprellung / Reconnect-Backoff | erster Stand, nur Unit-getestet |
 | Versioniertes TOML-Konfigurationsladen | erster Stand, nur lokal getestet |
 | Plugin-Vertrag und Entry-Point-Registry | erster Stand, nur Unit-getestet |
+| BLE-Transportvertrag und Fake | implementiert, hardwarefrei getestet |
 | BLE-Verbindung zu echten Würfeln | nicht hardwareverifiziert |
 | Hue, Sense HAT, Musik und Weboberfläche | nicht implementiert |
 

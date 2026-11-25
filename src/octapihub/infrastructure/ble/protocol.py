@@ -1,10 +1,34 @@
 """Read-only Timeular / ZEI orientation protocol decoder."""
 
+from uuid import UUID
+
 from octapihub.core.errors import ProtocolError
 from octapihub.domain.cube import MAX_FACE, NEUTRAL_VALUES
+from octapihub.infrastructure.ble.transport import DeviceProfile
 
 ORIENTATION_SERVICE_UUID = "c7e70010-c847-11e6-8175-8c89a55d403c"
 ORIENTATION_CHARACTERISTIC_UUID = "c7e70012-c847-11e6-8175-8c89a55d403c"
+
+
+def normalize_uuid(value: str) -> str:
+    """Normalize a full BLE UUID to its canonical lowercase representation."""
+    try:
+        return str(UUID(value))
+    except (ValueError, AttributeError) as exc:
+        raise ProtocolError(
+            "Invalid BLE characteristic UUID",
+            details={"uuid": value},
+        ) from exc
+
+
+def supports_orientation_notifications(profile: DeviceProfile) -> bool:
+    """Return whether the device exposes the expected readable event channel."""
+    expected_uuid = normalize_uuid(ORIENTATION_CHARACTERISTIC_UUID)
+    return any(
+        normalize_uuid(characteristic.uuid) == expected_uuid
+        and bool({"notify", "indicate"} & characteristic.properties)
+        for characteristic in profile.characteristics
+    )
 
 
 def decode_orientation(payload: bytes) -> int:

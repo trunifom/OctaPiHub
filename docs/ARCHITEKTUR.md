@@ -12,11 +12,13 @@ Aktuell implementiert sind:
 - `domain`: Würfel-Orientierungsereignisse, Baseline, Entprellung und Reconnect-Backoff.
 - `core`: Fehlerklassen sowie versioniertes TOML-Laden und dessen Validierung.
 - `application.plugins`: Plugin-Vertrag, Registry und Discovery über Python-Entry-Points.
-- `infrastructure.ble.protocol`: hardwareunabhängiger Decoder der bekannten BLE-Nutzdaten.
+- `infrastructure.ble`: hardwareunabhängiger BLE-Transportvertrag, Fake und Decoder
+  der bekannten BLE-Nutzdaten.
 
-BLE-Transport, Laufzeit/Prozesssteuerung, Regeln/Aktionen, Hue, Audio/Cast,
-Sense HAT, Weboberfläche und dauerhafte Konfigurationsspeicherung sind noch nicht
-implementiert. Sie gelten erst nach eigenen Tests und einem eigenen Commit als fertig.
+Der produktive Bleak-Transport, Laufzeit/Prozesssteuerung, Regeln/Aktionen, Hue,
+Audio/Cast, Sense HAT, Weboberfläche und dauerhafte Konfigurationsspeicherung sind
+noch nicht implementiert. Sie gelten erst nach eigenen Tests und einem eigenen Commit
+als fertig.
 
 ## Abhängigkeitsrichtung
 
@@ -32,7 +34,11 @@ domain  <-  application  <-  infrastructure adapters
 - `application` orchestriert Anwendungsfälle und definiert Verträge für austauschbare
   Adapter. Es importiert keine konkreten Adapter.
 - `infrastructure` implementiert diese Verträge für BlueZ/BLE, Hue, Audio/Cast und
-  Sense HAT. Adapter bleiben ersetzbar durch Fakes.
+  Sense HAT. Hardwareadapter bleiben ersetzbar durch Fakes. Der BLE-Transportvertrag
+  (`DeviceTransport`, `TransportFactory`) enthält absichtlich keine GATT-Schreibmethode.
+- Der BLE-Transport kapselt einen Verbindungszyklus. Sein Besitzer steuert Verbindung,
+  Erkennung, Abonnement und Freigabe; nur der Besitzer orchestriert mehrere Cubes.
+  Detaillierte Wiederverbindung und die globale Serialisierung folgen in der BLE-Runtime.
 - `core` stellt querschnittliche, stabile Grundtypen bereit, etwa Fehler und
   Konfigurationsvalidierung; es hängt nicht von den anderen Schichten ab.
 - Der Composition Root (noch nicht implementiert) lädt Konfiguration und Plugins,
@@ -78,3 +84,14 @@ besitzen.
    committed markiert wird.
 5. Nur implementierte Fähigkeiten als solche dokumentieren; Hardwaretests getrennt von
    lokalen Tests ausweisen.
+
+## BLE-Vertrag und Fake
+
+`DeviceProfile` enthält ausschließlich entdeckte Characteristic-UUIDs und Eigenschaften,
+keine Backend- oder GATT-Client-Objekte. Eine Gerätefähigkeit gilt erst dann als
+Orientierungskanal, wenn die erwartete UUID `notify` oder `indicate` anbietet.
+Unbekannte schreibbare Characteristics werden nicht verwendet.
+
+`FakeDeviceTransport` bildet die gleiche öffentliche Transportoberfläche ab und erlaubt
+Tests von Notifications, Trennung, Capability-Fehlern und gezielten Transportfehlern
+ohne Bluetooth. Der Fake beweist weder BlueZ-/Bleak-Kompatibilität noch Hardwareverhalten.

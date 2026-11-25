@@ -68,6 +68,13 @@ class BleConnectionError(OctaPiHubError):
     )
 
 
+class UnsupportedDeviceError(OctaPiHubError):
+    """A device does not expose the required BLE capability."""
+
+    code = "CH-BLE-003"
+    default_user_message = "Der Würfel bietet die benötigte Bluetooth-Funktion nicht an."
+
+
 class PluginError(OctaPiHubError):
     """A plugin could not be loaded, validated or resolved."""
 

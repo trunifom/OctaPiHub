@@ -234,6 +234,7 @@ Nachweis für einen Hardwaretest. Commits werden nach erfolgreicher Prüfung ers
 | 2026-11-25 13:49:07 +01:00 | `9888f4abde23d20dc7d72787e551b8f0585461a0` | Python-Projektbasis, BLE-Orientierungsdecoder, Baseline/Entprellung und begrenztes Reconnect-Backoff; 8 lokale Unit-Tests, Ruff und mypy strict bestanden. Keine Hardwareprüfung. |
 | 2026-11-25 13:57:50 +01:00 | `580a40f7bfb6a1ab449d2642456fb10e4019eb4f` | Versioniertes TOML-Konfigurationsladen und Validierung für zwei Würfelrollen, BLE-Adapter, Adressen und Entprellzeit; insgesamt 22 lokale Unit-Tests, Ruff, mypy strict und Pylance-Diagnose bestanden. Keine Hardwareprüfung. |
 | 2026-11-25 14:20:19 +01:00 | `5c363a32ebf53b071aa373d85d270401d6e06c97` | Typisierter Plugin-Vertrag, Python-Entry-Point-Discovery und atomare Registrierung; 34 lokale Unit-Tests, Ruff und mypy strict bestanden. Keine Hardwareprüfung. |
+| 2026-11-25 14:26 (Commit folgt) | in Bearbeitung | BLE-Transportvertrag, read-only Capability-Prüfung und Fake; derzeit 42 lokale Tests, Ruff und mypy strict bestanden. Eintrag wird nach dem Funktions-Commit auf exakte Commit-Uhrzeit und Hash aktualisiert. Keine Hardwareprüfung. |
 
 Die Einträge verweisen jeweils auf den Commit mit der Funktion. Änderungen an diesem
 Nachweis erfolgen in einem nachfolgenden Dokumentations-Commit, damit der tatsächliche
