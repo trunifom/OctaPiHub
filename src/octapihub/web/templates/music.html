@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Musik</h1>
+    <p class="lead">Legen Sie fest, wo Musik abgespielt wird und was auf den Würfelseiten laufen soll. Zuordnen können Sie die Playlists danach auf der Seite „Würfel“.</p>
+  </div>
+</div>
+
+{% if banner %}
+<div class="notice notice-{{ banner.level }}" role="{{ 'alert' if banner.level == 'error' else 'status' }}">
+  <span class="notice-ico">{{ m.icon(banner.level) }}</span>
+  <div class="notice-body">
+    <p class="notice-title">{{ banner.title }}</p>
+    {% if banner.detail %}<p>{{ banner.detail }}</p>{% endif %}
+    {% if banner.code %}<p class="notice-code">Fehlercode <code>{{ banner.code }}</code></p>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if not writable %}
+<div class="notice notice-info" role="status">
+  <span class="notice-ico">{{ m.icon('info') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Nur ansehen: Ändern ist noch nicht freigeschaltet</p>
+    <p>Legen Sie ein Zugriffs-Token mit <code>OCTAPIHUB_WEB_TOKEN</code> fest und starten Sie den Dienst neu.</p>
+  </div>
+</div>
+{% endif %}
+
+<form method="post" action="/music" id="music-form" novalidate>
+  <button type="submit" name="action" value="save" class="visually-hidden" tabindex="-1" aria-hidden="true">Speichern</button>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2><span class="step-no">1</span> Musik einschalten</h2>
+      <p class="muted">Solange Musik aus ist, tun die Musik-Aktionen der Würfel nichts.</p>
+    </div>
+    {{ m.toggle('music.enabled', form, 'Musik verwenden', 'Schaltet alle Musik-Aktionen der Würfel und des Joysticks ein.') }}
+    <div class="fields-2">
+      <div class="field">
+        <label for="f-music.library_dir">Musikordner auf diesem Gerät</label>
+        <input type="text" name="music.library_dir" id="f-music.library_dir" autocomplete="off" placeholder="/home/pi/Music" value="{{ form.get('music.library_dir', '') }}"{% if errors.get('music.library_dir') %} aria-invalid="true" aria-describedby="err-music.library_dir"{% endif %}>
+        {{ m.field_error(errors, 'music.library_dir') }}
+        <small class="help">Aus Sicherheitsgründen werden nur Dateien aus diesem Ordner abgespielt. Leer lassen, wenn Sie nur Radio oder YouTube nutzen.</small>
+      </div>
+      <div class="field">
+        <label for="f-music.media_host">Adresse dieses Geräts für Google-Lautsprecher</label>
+        <input type="text" name="music.media_host" id="f-music.media_host" autocomplete="off" placeholder="automatisch" value="{{ form.get('music.media_host', '') }}"{% if errors.get('music.media_host') %} aria-invalid="true" aria-describedby="err-music.media_host"{% endif %}>
+        {{ m.field_error(errors, 'music.media_host') }}
+        <small class="help">Nur nötig für Dateien aus dem Musikordner auf Google-Geräten. Meist wird die Adresse automatisch erkannt. Der Dienst muss dafür im Netzwerk erreichbar sein, nicht nur auf diesem Gerät.</small>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2><span class="step-no">2</span> Wiedergabegeräte</h2>
+      <p class="muted">Hier spielt die Musik: Google Nest / Home, Nest Hub, der Audioausgang dieses Raspberry Pi oder eine Bluetooth-Box. Es spielt immer nur ein Gerät.</p>
+    </div>
+
+    <div class="btn-row">
+      <button type="submit" name="action" value="discover" class="btn"{% if not writable %} disabled{% endif %}>Google-Geräte suchen</button>
+      <button type="submit" name="action" value="audio-devices" class="btn"{% if not writable %} disabled{% endif %}>Audioausgänge anzeigen</button>
+      <button type="submit" name="action" value="refresh" class="btn"{% if not writable %} disabled{% endif %}>Status aktualisieren</button>
+      <button type="submit" name="action" value="stop-all" class="btn btn-danger"{% if not writable %} disabled{% endif %}>Alles stoppen</button>
+    </div>
+    {% if found_devices %}
+    <div class="found">
+      <p><strong>Gefundene Google-Geräte:</strong> Tragen Sie den Namen unten als „Gerätename“ ein.</p>
+      <ul class="chips">{% for name in found_devices %}<li><code>{{ name }}</code></li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+    {% if audio_devices %}
+    <div class="found">
+      <p><strong>Audioausgänge dieses Geräts:</strong> Tragen Sie die Bezeichnung links als „Gerätename“ ein.</p>
+      <ul class="chips">{% for name, label in audio_devices %}<li><code>{{ name }}</code> {{ label }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    {% for row in target_rows %}
+    {% set k = row.key %}
+    {% set st = row.status %}
+    <fieldset class="card-edit">
+      <legend>{% if k == 'new' %}Neues Wiedergabegerät{% else %}{{ form.get('t.' ~ k ~ '.name', 'Gerät') }}{% endif %}</legend>
+      {% if k != 'new' %}<input type="hidden" name="t.{{ k }}.id" value="{{ form.get('t.' ~ k ~ '.id', '') }}">{% endif %}
+      {% if st %}
+      <div class="now">
+        <span class="badge badge-{{ 'ok' if st.state.value == 'playing' else ('error' if st.state.value == 'error' or st.error else 'off') }}">
+          {% if st.error %}Fehler{% elif st.state.value == 'playing' %}Spielt{% elif st.state.value == 'paused' %}Pausiert{% elif st.state.value == 'buffering' %}Lädt{% else %}Bereit{% endif %}
+        </span>
+        {% if st.state.value in ('playing', 'paused', 'buffering') %}
+        <span>{{ st.title }}{% if st.track_title %} · {{ st.track_title }}{% endif %}{% if st.volume is not none %} · Lautstärke {{ st.volume }} %{% endif %}</span>
+        {% endif %}
+        {% if st.error %}<span class="field-error">{{ st.error }}{% if st.error_code %} <code>{{ st.error_code }}</code>{% endif %}</span>{% endif %}
+      </div>
+      <div class="btn-row transport">
+        {% for op, label in [('previous', '⏮ Zurück'), ('toggle', '⏯ Pause / Weiter'), ('next', '⏭ Weiter'), ('stop', '⏹ Stopp'), ('volume.down', '🔉 Leiser'), ('volume.up', '🔊 Lauter')] %}
+        <button type="submit" name="action" value="ctl:{{ form.get('t.' ~ k ~ '.id', '') }}:{{ op }}" class="btn"{% if not writable %} disabled{% endif %}>{{ label }}</button>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="fields-2">
+        <div class="field">
+          <label for="f-t.{{ k }}.name">Name</label>
+          <input type="text" name="t.{{ k }}.name" id="f-t.{{ k }}.name" maxlength="60" placeholder="z. B. Küche" value="{{ form.get('t.' ~ k ~ '.name', '') }}"{% if errors.get('t.' ~ k ~ '.name') %} aria-invalid="true" aria-describedby="err-t.{{ k }}.name"{% endif %}>
+          {{ m.field_error(errors, 't.' ~ k ~ '.name') }}
+        </div>
+        <div class="field">
+          <label for="f-t.{{ k }}.kind">Art</label>
+          {{ m.select('t.' ~ k ~ '.kind', kind_labels, form, errors) }}
+          {{ m.field_error(errors, 't.' ~ k ~ '.kind') }}
+        </div>
+        <div class="field">
+          <label for="f-t.{{ k }}.device">Gerätename</label>
+          <input type="text" name="t.{{ k }}.device" id="f-t.{{ k }}.device" autocomplete="off" placeholder="Google: Name aus der Home-App · Audio: leer = Standard" value="{{ form.get('t.' ~ k ~ '.device', '') }}"{% if errors.get('t.' ~ k ~ '.device') %} aria-invalid="true" aria-describedby="err-t.{{ k }}.device"{% endif %}>
+          {{ m.field_error(errors, 't.' ~ k ~ '.device') }}
+        </div>
+        <div class="field">
+          <label for="f-t.{{ k }}.bluetooth_address">Bluetooth-Adresse (nur Bluetooth-Box)</label>
+          <input type="text" name="t.{{ k }}.bluetooth_address" id="f-t.{{ k }}.bluetooth_address" autocomplete="off" placeholder="AA:BB:CC:DD:EE:FF" value="{{ form.get('t.' ~ k ~ '.bluetooth_address', '') }}"{% if errors.get('t.' ~ k ~ '.bluetooth_address') %} aria-invalid="true" aria-describedby="err-t.{{ k }}.bluetooth_address"{% endif %}>
+          {{ m.field_error(errors, 't.' ~ k ~ '.bluetooth_address') }}
+        </div>
+        <div class="field">
+          <label for="f-t.{{ k }}.volume">Standard-Lautstärke (0 bis 100)</label>
+          <input type="text" name="t.{{ k }}.volume" id="f-t.{{ k }}.volume" inputmode="numeric" value="{{ form.get('t.' ~ k ~ '.volume', '40') }}"{% if errors.get('t.' ~ k ~ '.volume') %} aria-invalid="true" aria-describedby="err-t.{{ k }}.volume"{% endif %}>
+          {{ m.field_error(errors, 't.' ~ k ~ '.volume') }}
+        </div>
+        {% if k != 'new' %}
+        <label class="check"><input type="checkbox" name="t.{{ k }}.remove" value="on"> <span>Dieses Gerät entfernen</span></label>
+        {% endif %}
+      </div>
+    </fieldset>
+    {% endfor %}
+    {{ m.field_error(errors, '_form') }}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2><span class="step-no">3</span> Playlists</h2>
+      <p class="muted">Eine Playlist ist ein Ordner, eine Datei, eine Radio-Adresse oder ein YouTube-Link. Sie wählen sie später für eine Würfelseite aus. Spotify lässt sich noch nicht abspielen.</p>
+    </div>
+    {% for row in playlist_rows %}
+    {% set k = row.key %}
+    <fieldset class="card-edit">
+      <legend>{% if k == 'new' %}Neue Playlist{% else %}{{ form.get('p.' ~ k ~ '.name', 'Playlist') }}{% endif %}</legend>
+      {% if k != 'new' %}<input type="hidden" name="p.{{ k }}.id" value="{{ form.get('p.' ~ k ~ '.id', '') }}">{% endif %}
+      <div class="fields-2">
+        <div class="field">
+          <label for="f-p.{{ k }}.name">Name</label>
+          <input type="text" name="p.{{ k }}.name" id="f-p.{{ k }}.name" maxlength="60" placeholder="z. B. Morgens" value="{{ form.get('p.' ~ k ~ '.name', '') }}"{% if errors.get('p.' ~ k ~ '.name') %} aria-invalid="true" aria-describedby="err-p.{{ k }}.name"{% endif %}>
+          {{ m.field_error(errors, 'p.' ~ k ~ '.name') }}
+        </div>
+        <div class="field field-wide">
+          <label for="f-p.{{ k }}.source">Quelle</label>
+          <input type="text" name="p.{{ k }}.source" id="f-p.{{ k }}.source" autocomplete="off" placeholder="Jazz/Album · https://radio.example.org/stream · https://youtu.be/…" value="{{ form.get('p.' ~ k ~ '.source', '') }}"{% if errors.get('p.' ~ k ~ '.source') %} aria-invalid="true" aria-describedby="err-p.{{ k }}.source"{% endif %}>
+          {{ m.field_error(errors, 'p.' ~ k ~ '.source') }}
+          <small class="help">Ordner, Datei oder .m3u im Musikordner (relativer Pfad genügt), Radio-Adresse oder YouTube-Video bzw. -Playlist.</small>
+        </div>
+        <div class="field">
+          <label for="f-p.{{ k }}.target">Abspielen auf</label>
+          <select name="p.{{ k }}.target" id="f-p.{{ k }}.target"{% if errors.get('p.' ~ k ~ '.target') %} aria-invalid="true" aria-describedby="err-p.{{ k }}.target"{% endif %}>
+            <option value="">Zuletzt verwendetes Gerät</option>
+            {% for tid, tname in target_options.items() %}<option value="{{ tid }}"{% if tid == form.get('p.' ~ k ~ '.target', '') %} selected{% endif %}>{{ tname }}</option>{% endfor %}
+          </select>
+          {{ m.field_error(errors, 'p.' ~ k ~ '.target') }}
+        </div>
+        <div class="field">
+          <label for="f-p.{{ k }}.repeat">Wiederholen</label>
+          {{ m.select('p.' ~ k ~ '.repeat', repeat_labels, form, errors) }}
+        </div>
+        <div class="field">
+          <label for="f-p.{{ k }}.volume">Lautstärke (leer = wie das Gerät)</label>
+          <input type="text" name="p.{{ k }}.volume" id="f-p.{{ k }}.volume" inputmode="numeric" value="{{ form.get('p.' ~ k ~ '.volume', '') }}"{% if errors.get('p.' ~ k ~ '.volume') %} aria-invalid="true" aria-describedby="err-p.{{ k }}.volume"{% endif %}>
+          {{ m.field_error(errors, 'p.' ~ k ~ '.volume') }}
+        </div>
+        <label class="check"><input type="checkbox" name="p.{{ k }}.shuffle"{% if form.get('p.' ~ k ~ '.shuffle') %} checked{% endif %}> <span>Zufällige Reihenfolge</span></label>
+        {% if k != 'new' %}
+        <label class="check"><input type="checkbox" name="p.{{ k }}.remove" value="on"> <span>Diese Playlist entfernen</span></label>
+        {% endif %}
+      </div>
+      {% if row.saved %}
+      <div class="btn-row">
+        <button type="submit" name="action" value="play:{{ form.get('p.' ~ k ~ '.id', '') }}" class="btn"{% if not writable or not music_enabled %} disabled{% endif %}>▶ Jetzt abspielen (Test)</button>
+      </div>
+      {% endif %}
+    </fieldset>
+    {% endfor %}
+  </section>
+
+  <div class="savebar">
+    <div class="savebar-in">
+      <div class="field field-token">
+        <label for="f-token">Zugriffs-Token</label>
+        <input type="password" name="token" id="f-token" autocomplete="current-password" placeholder="{{ 'Token eingeben' if writable else 'Nicht eingerichtet' }}"{% if not writable %} disabled{% endif %}>
+      </div>
+      <button type="submit" name="action" value="save" class="btn btn-primary"{% if not writable %} disabled{% endif %}>Einstellungen speichern</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

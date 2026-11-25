@@ -43,6 +43,7 @@ from octapihub.infrastructure.music.media import MediaRegistry, content_type_for
 from octapihub.infrastructure.system_info import SystemInfoReader
 from octapihub.web import forms
 from octapihub.web.diagnostics import build_zip, collect_diagnostics
+from octapihub.web.music_routes import register_music_routes
 from octapihub.web.presenter import (
     CHARTABLE_GROUPS,
     GROUP_INFO,
@@ -113,6 +114,8 @@ class WebBackend:
     matrix: MatrixDisplayService | None = None
     music: MusicService | None = None
     media: MediaRegistry | None = None
+    discover_cast: Callable[[], Awaitable[list[str]]] | None = None
+    list_audio_devices: Callable[[], Awaitable[list[tuple[str, str]]]] | None = None
     logs: LogRing | None = None
     redactor: Redactor | None = None
     tz: tzinfo = field(default_factory=display_timezone)
@@ -714,6 +717,8 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "Zuordnung gespeichert",
             "Sie gilt sofort, die Würfel müssen nicht neu verbunden werden.",
         )
+
+    register_music_routes(app, backend, page, _read_form, _access_problem)
 
     @app.get("/sense-hat", response_class=HTMLResponse)
     def sense_hat_page(request: Request) -> Response:

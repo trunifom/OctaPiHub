@@ -118,7 +118,7 @@ code { font: 0.88em ui-monospace, "Cascadia Mono", Consolas, monospace; backgrou
   /* backdrop-filter would turn the top bar into the containing block of the fixed tab bar */
   .topbar { backdrop-filter: none; background: var(--surface); }
   .nav { position: fixed; inset: auto 0 0 0; margin: 0; z-index: 30; background: var(--surface); border-top: 1px solid var(--border); padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom)); justify-content: space-around; min-height: var(--tabbar-h); }
-  .nav a { flex-direction: column; gap: 0.15rem; font-size: 0.75rem; padding: 0.4rem 0.9rem; flex: 1; align-items: center; }
+  .nav a { flex-direction: column; gap: 0.15rem; font-size: 0.7rem; padding: 0.4rem 0.15rem; flex: 1; min-width: 0; align-items: center; }
   .pref span { display: none; }
   .pref { padding: 0.5rem; }
   .brand span { font-size: 1rem; }
@@ -393,3 +393,14 @@ input[type="time"] { width: 100%; font: inherit; color: var(--text); background:
 .legend div { background: var(--surface-2); border-radius: 12px; padding: 0.6rem 0.9rem; }
 .legend dt { font-weight: 650; }
 .legend dd { margin: 0.15rem 0 0; color: var(--muted); }
+
+/* Musik */
+.btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.card-edit { border: 1px solid var(--border); border-radius: 14px; background: var(--surface-2); padding: 1rem 1.1rem; margin: 0; display: flex; flex-direction: column; gap: 0.8rem; min-width: 0; }
+.card-edit legend { font-weight: 650; padding: 0 0.4rem; }
+.card-edit .now { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+.found { background: var(--info-soft); color: var(--text); border-radius: 12px; padding: 0.7rem 0.9rem; }
+.found p { margin: 0 0 0.4rem; }
+.chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.chips li { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 0.15rem 0.7rem; }
+.transport .btn { padding: 0.45rem 0.8rem; min-height: 2.4rem; }

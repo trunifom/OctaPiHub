@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import os
 import sys
@@ -22,6 +23,8 @@ from octapihub.composition import (
 from octapihub.core.config import load_config
 from octapihub.core.errors import OctaPiHubError, SecretsError
 from octapihub.core.logging_support import LogRing, RedactingFilter, Redactor
+from octapihub.infrastructure.music.cast_player import PyChromecastBackend
+from octapihub.infrastructure.music.mpv_player import list_audio_devices
 from octapihub.infrastructure.secrets import SecretsFile
 from octapihub.infrastructure.system_info import SystemInfoReader
 from octapihub.web.app import WebBackend, create_app
@@ -80,6 +83,11 @@ def token_problem(token: str | None) -> str | None:
     if len(token) < MIN_TOKEN_LENGTH:
         return f"Das Token ist zu kurz (mindestens {MIN_TOKEN_LENGTH} Zeichen)."
     return None
+
+
+async def discover_cast() -> list[str]:
+    """Names of the Google Cast devices in the network (the search takes a few seconds)."""
+    return await asyncio.to_thread(PyChromecastBackend().discover, 5.0)
 
 
 def host_level_from(reader: SystemInfoReader) -> Callable[[], str]:
@@ -151,6 +159,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             matrix=matrix,
             music=music,
             media=media,
+            discover_cast=discover_cast,
+            list_audio_devices=list_audio_devices,
         )
     problem = token_problem(backend.token) if not args.demo else None
     if problem is not None:
