@@ -42,6 +42,7 @@ from octapihub.infrastructure.fake_sense_hat import FakeSenseHat
 from octapihub.infrastructure.sense_hat import SenseHatAdapter
 from octapihub.infrastructure.sqlite_outbox import SQLiteOutbox
 from octapihub.infrastructure.sqlite_sense_hat_history import SQLiteSenseHatHistory
+from octapihub.infrastructure.system_info import SystemInfoReader
 from octapihub.web.app import WebBackend
 
 DEMO_TOKEN = "demo"  # noqa: S105 - public demo credential, never used in production
@@ -119,6 +120,24 @@ def _seed_history(store: SQLiteSenseHatHistory, config: SenseHatConfig, days: in
         )
         moment += step
     store.append_many(samples)
+
+
+def demo_system_reader() -> SystemInfoReader:
+    """Simulated host values in a temporary folder; clearly not measurements."""
+    directory = Path(tempfile.mkdtemp(prefix="octapihub-demo-proc-"))
+    (directory / "uptime").write_text("273600.5 1000.0\n", encoding="utf-8")
+    (directory / "loadavg").write_text("0.21 0.30 0.28 1/210 4242\n", encoding="utf-8")
+    (directory / "meminfo").write_text(
+        "MemTotal: 948000 kB\nMemAvailable: 512000 kB\n", encoding="utf-8"
+    )
+    temperature = directory / "temp"
+    temperature.write_text("52400\n", encoding="utf-8")
+    return SystemInfoReader(
+        directory,
+        proc=directory,
+        thermal_file=temperature,
+        runner=lambda _command: "throttled=0x50000\n",
+    )
 
 
 def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:

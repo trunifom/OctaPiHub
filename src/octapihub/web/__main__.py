@@ -17,10 +17,37 @@ from octapihub.composition import (
     build_sense_hat_service,
 )
 from octapihub.core.config import load_config
-from octapihub.core.errors import OctaPiHubError
+from octapihub.core.errors import OctaPiHubError, SecretsError
+from octapihub.core.logging_support import LogRing, RedactingFilter, Redactor
+from octapihub.infrastructure.secrets import SecretsFile
+from octapihub.infrastructure.system_info import SystemInfoReader
 from octapihub.web.app import WebBackend, create_app
 
 TOKEN_VARIABLE = "OCTAPIHUB_WEB_TOKEN"  # noqa: S105 - name of the variable, not a secret
+
+
+def install_logging(redactor: Redactor) -> LogRing:
+    """Send redacted logs to the console and keep recent lines for the System page."""
+    console = logging.StreamHandler()
+    console.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    console.addFilter(RedactingFilter(redactor))
+    ring = LogRing(redactor)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(console)
+    root_logger.addHandler(ring)
+    return ring
+
+
+def register_secrets(redactor: Redactor, secrets_path: str) -> None:
+    """Make every stored secret value unprintable in logs; a bad file is not fatal here."""
+    try:
+        for value in SecretsFile(secrets_path).read().values():
+            redactor.add_secret(value)
+    except SecretsError as exc:
+        logging.getLogger(__name__).warning(
+            "Secrets could not be registered for log masking: %s", exc
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -37,14 +64,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Simuliertes Sense HAT mit Beispieldaten (Token: demo), ohne Hardware",
     )
     args = parser.parse_args(argv)
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    redactor = Redactor()
+    logs = install_logging(redactor)
 
     if args.demo:
-        from octapihub.web.demo import build_demo_backend
+        from octapihub.web.demo import build_demo_backend, demo_system_reader
 
         backend = build_demo_backend()
+        backend.system = demo_system_reader()
     else:
         try:
             config = load_config(args.config)
@@ -61,6 +88,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             cubes,
             hue,
         )
+    backend.logs = logs
+    if backend.system is None:
+        backend.system = SystemInfoReader(args.data_dir)
+    redactor.add_secret(backend.token)
+    if not args.demo:
+        register_secrets(redactor, args.secrets)
     uvicorn.run(
         create_app(backend, manage_service=True),
         host=args.host,

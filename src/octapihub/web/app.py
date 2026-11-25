@@ -33,6 +33,8 @@ from octapihub.core.errors import (
     OctaPiHubError,
     ValidationError,
 )
+from octapihub.core.logging_support import LogRing
+from octapihub.infrastructure.system_info import SystemInfoReader
 from octapihub.web import forms
 from octapihub.web.presenter import (
     CHARTABLE_GROUPS,
@@ -42,8 +44,10 @@ from octapihub.web.presenter import (
     build_cube_views,
     build_group_views,
     build_hue_view,
+    build_log_rows,
     build_mapping_views,
     build_notices,
+    build_system_items,
     chart_groups,
     correction_active,
     cube_summary,
@@ -93,6 +97,8 @@ class WebBackend:
     token: str | None = None
     cubes: CubeService | None = None
     hue: HueService | None = None
+    system: SystemInfoReader | None = None
+    logs: LogRing | None = None
     tz: tzinfo = field(default_factory=display_timezone)
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
 
@@ -329,6 +335,25 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "scene_options": [{"id": sid, "name": name} for sid, name in scenes.items()],
             "scenes_known": bool(scenes),
         }
+
+    @app.get("/system", response_class=HTMLResponse)
+    def system_page(request: Request, level: str = "INFO") -> Response:
+        levels = {"INFO": logging.INFO, "WARNING": logging.WARNING, "ERROR": logging.ERROR}
+        if level not in levels:
+            raise HTTPException(status_code=422, detail="Unknown log level")
+        items = build_system_items(backend.system.read(), backend.tz) if backend.system else ()
+        rows = build_log_rows(backend.logs.lines(levels[level]), backend.tz) if backend.logs else ()
+        return page(
+            request,
+            "system.html",
+            "system",
+            live=False,
+            system_items=items,
+            system_available=backend.system is not None,
+            log_rows=rows,
+            logs_available=backend.logs is not None,
+            log_level=level,
+        )
 
     @app.get("/cubes", response_class=HTMLResponse)
     def cubes_page(request: Request) -> Response:

@@ -36,9 +36,17 @@
     <footer class="card-foot"><a class="btn btn-quiet" href="/light">Licht einrichten</a></footer>
   </article>
 
+  <article class="card status-card">
+    <header class="card-head">
+      <span class="chip-ico">{{ m.icon('system') }}</span>
+      <h2>System</h2>
+    </header>
+    <p class="muted">Temperatur, Speicher, Stromversorgung und die letzten Meldungen des Geräts.</p>
+    <footer class="card-foot"><a class="btn btn-quiet" href="/system">System ansehen</a></footer>
+  </article>
+
   {% for icon, title, text in [
     ('music', 'Musik', 'Hier erscheinen später das Abspielziel und die Musiksteuerung.'),
-    ('system', 'System', 'Hier erscheinen später Uhrzeit, Prozessortemperatur, Speicher und Laufzeit des Geräts.'),
   ] %}
   <article class="card status-card is-pending">
     <header class="card-head">

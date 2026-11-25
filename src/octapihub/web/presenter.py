@@ -30,6 +30,8 @@ from octapihub.core.config import (
     SenseHatVersion,
     SensorPresentation,
 )
+from octapihub.core.logging_support import LogLine
+from octapihub.infrastructure.system_info import SystemSnapshot
 
 # Scalar groups that can be drawn as a time series.
 CHARTABLE_GROUPS = ("temperature", "humidity", "pressure", "compass")
@@ -638,3 +640,187 @@ def build_cube_tiles(
             CubeTiles(cube.name, _ROLE_TEXT.get(cube.role.value, cube.role.value), tuple(tiles))
         )
     return tuple(result)
+
+
+# ---------- system ----------
+
+
+@dataclass(frozen=True, slots=True)
+class SystemItem:
+    """One health value with its severity."""
+
+    key: str
+    label: str
+    value: str
+    detail: str
+    level: str
+    percent: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LogRow:
+    """One log line for display."""
+
+    time: str
+    level: str
+    logger: str
+    message: str
+
+
+def _duration_text(seconds: float) -> str:
+    minutes = int(seconds // 60)
+    days, minutes = divmod(minutes, 1440)
+    hours, minutes = divmod(minutes, 60)
+    if days:
+        return f"{days} Tage, {hours} Std."
+    if hours:
+        return f"{hours} Std., {minutes} Min."
+    return f"{minutes} Min."
+
+
+def _size_text(kilobytes: float) -> str:
+    megabytes = kilobytes / 1024
+    return f"{megabytes / 1024:.1f} GB" if megabytes >= 1024 else f"{megabytes:.0f} MB"
+
+
+UNAVAILABLE = "Nicht verfügbar"
+_PI_ONLY = "Nur auf einem Raspberry Pi verfügbar."
+
+
+def build_system_items(snapshot: SystemSnapshot, tz: tzinfo) -> tuple[SystemItem, ...]:
+    """Turn a snapshot into labelled items; unavailable values are explained, not hidden."""
+    items: list[SystemItem] = [
+        SystemItem(
+            "time",
+            "Uhrzeit",
+            local_time_text(snapshot.taken_at, tz),
+            "Zeitzone Europe/Zurich. Falsche Zeit? Prüfen Sie die Netzwerkzeit (NTP) des Geräts.",
+            "ok",
+        )
+    ]
+    items.append(
+        SystemItem(
+            "uptime",
+            "Laufzeit",
+            _duration_text(snapshot.uptime_seconds)
+            if snapshot.uptime_seconds is not None
+            else UNAVAILABLE,
+            "Seit dem letzten Start des Geräts."
+            if snapshot.uptime_seconds is not None
+            else _PI_ONLY,
+            "ok" if snapshot.uptime_seconds is not None else "off",
+        )
+    )
+    temperature = snapshot.cpu_temperature_c
+    if temperature is None:
+        items.append(SystemItem("temperature", "CPU-Temperatur", UNAVAILABLE, _PI_ONLY, "off"))
+    else:
+        level = "error" if temperature >= 80 else "warn" if temperature >= 70 else "ok"
+        detail = {
+            "error": "Zu heiß: Der Raspberry Pi drosselt sich. Sorgen Sie für Kühlung und Luftzug.",
+            "warn": "Warm. Bei dauerhaft über 80 °C drosselt sich der Raspberry Pi.",
+            "ok": "Normal.",
+        }[level]
+        items.append(
+            SystemItem(
+                "temperature",
+                "CPU-Temperatur",
+                f"{format_number(temperature, 1)} °C",
+                detail,
+                level,
+            )
+        )
+    percent = snapshot.memory_used_percent
+    if percent is None or snapshot.memory_total_kb is None or snapshot.memory_available_kb is None:
+        items.append(SystemItem("memory", "Arbeitsspeicher", UNAVAILABLE, _PI_ONLY, "off"))
+    else:
+        used = snapshot.memory_total_kb - snapshot.memory_available_kb
+        level = "error" if percent >= 90 else "warn" if percent >= 80 else "ok"
+        items.append(
+            SystemItem(
+                "memory",
+                "Arbeitsspeicher",
+                f"{percent:.0f} % belegt",
+                f"{_size_text(used)} von {_size_text(snapshot.memory_total_kb)}.",
+                level,
+                round(percent),
+            )
+        )
+    throttle = snapshot.throttle
+    if throttle is None:
+        items.append(SystemItem("power", "Stromversorgung", UNAVAILABLE, _PI_ONLY, "off"))
+    elif throttle.under_voltage_now:
+        items.append(
+            SystemItem(
+                "power",
+                "Stromversorgung",
+                "Unterspannung",
+                "Das Netzteil liefert zu wenig Spannung. Verwenden Sie ein passendes "
+                "Netzteil und ein kurzes Kabel.",
+                "error",
+            )
+        )
+    elif throttle.any_now:
+        items.append(
+            SystemItem(
+                "power",
+                "Stromversorgung",
+                "Gedrosselt",
+                "Der Prozessor wird gerade gebremst (Hitze oder Strom).",
+                "warn",
+            )
+        )
+    elif throttle.any_occurred:
+        items.append(
+            SystemItem(
+                "power",
+                "Stromversorgung",
+                "In Ordnung",
+                "Seit dem Start gab es zeitweise Unterspannung oder Drosselung.",
+                "warn",
+            )
+        )
+    else:
+        items.append(
+            SystemItem(
+                "power", "Stromversorgung", "In Ordnung", "Keine Probleme seit dem Start.", "ok"
+            )
+        )
+    if snapshot.load_average is not None:
+        items.append(
+            SystemItem(
+                "load",
+                "Auslastung",
+                " / ".join(format_number(v, 2) for v in snapshot.load_average),
+                "Durchschnitt der letzten 1, 5 und 15 Minuten.",
+                "ok",
+            )
+        )
+    if snapshot.disk_total_bytes and snapshot.disk_free_bytes is not None:
+        free_percent = snapshot.disk_free_bytes * 100 / snapshot.disk_total_bytes
+        level = "error" if free_percent < 5 else "warn" if free_percent < 15 else "ok"
+        items.append(
+            SystemItem(
+                "disk",
+                "Speicherplatz",
+                f"{_size_text(snapshot.disk_free_bytes / 1024)} frei",
+                f"{free_percent:.0f} % von "
+                f"{_size_text(snapshot.disk_total_bytes / 1024)} sind frei.",
+                level,
+                round(100 - free_percent),
+            )
+        )
+    return tuple(items)
+
+
+def build_log_rows(lines: Sequence[LogLine], tz: tzinfo) -> tuple[LogRow, ...]:
+    """Format recent log lines (already redacted) for the table."""
+    return tuple(
+        LogRow(
+            line.time.astimezone(tz).strftime("%H:%M:%S"),
+            line.level,
+            line.logger.removeprefix("octapihub."),
+            line.message,
+        )
+        for line in lines
+    )

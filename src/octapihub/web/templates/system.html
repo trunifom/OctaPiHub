@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>System</h1>
+    <p class="lead">Zustand des Geräts, auf dem OctaPiHub läuft, und die letzten Meldungen.</p>
+  </div>
+  <a class="btn" href="/system?level={{ log_level }}">Aktualisieren</a>
+</div>
+
+{% if not system_available %}
+<div class="notice notice-info" role="status">
+  <span class="notice-ico">{{ m.icon('info') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Systemwerte sind in diesem Modus nicht verfügbar</p>
+    <p>Starten Sie die Oberfläche mit <code>python -m octapihub.web</code>, um die Werte des Geräts zu sehen.</p>
+  </div>
+</div>
+{% else %}
+<div class="cards">
+  {% for item in system_items %}
+  <article class="card sys sys-{{ item.level }}">
+    <header class="card-head">
+      <h3>{{ item.label }}</h3>
+      {% if item.level != 'off' %}<span class="badge badge-{{ item.level }}"><span class="dot" aria-hidden="true"></span>{{ {'ok': 'In Ordnung', 'warn': 'Hinweis', 'error': 'Achtung'}[item.level] }}</span>{% endif %}
+    </header>
+    <p class="sys-value{% if item.level == 'off' %} is-off{% endif %}">{{ item.value }}</p>
+    {% if item.percent is not none %}<progress class="meter meter-{{ item.level }}" max="100" value="{{ item.percent }}" aria-label="{{ item.label }}">{{ item.percent }} %</progress>{% endif %}
+    <p class="sub">{{ item.detail }}</p>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+
+<section class="panel" aria-labelledby="logs-title">
+  <div class="panel-head">
+    <h2 id="logs-title">Letzte Meldungen</h2>
+    <p class="muted">Die neuesten Einträge des Protokolls. Zugangsdaten sind unkenntlich gemacht und Geräteadressen gekürzt.</p>
+  </div>
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Detailgrad">
+      {% for key, label in [('INFO', 'Alles'), ('WARNING', 'Warnungen'), ('ERROR', 'Nur Fehler')] %}
+      <a class="seg-btn seg-link" href="/system?level={{ key }}" aria-pressed="{{ 'true' if key == log_level else 'false' }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% if not logs_available %}
+  <p class="empty-inline">Das Protokoll ist in diesem Modus nicht verfügbar.</p>
+  {% elif not log_rows %}
+  <p class="empty-inline">Keine Meldungen in dieser Stufe. Das ist ein gutes Zeichen.</p>
+  {% else %}
+  <div class="table-wrap">
+    <table class="table log-table">
+      <thead><tr><th scope="col">Zeit</th><th scope="col">Stufe</th><th scope="col">Bereich</th><th scope="col">Meldung</th></tr></thead>
+      <tbody>
+        {% for row in log_rows %}
+        <tr class="log-{{ row.level | lower }}">
+          <td class="nowrap">{{ row.time }}</td>
+          <td><span class="pill pill-log-{{ row.level | lower }}">{{ {'INFO': 'Info', 'WARNING': 'Warnung', 'ERROR': 'Fehler', 'CRITICAL': 'Kritisch'}.get(row.level, row.level) }}</span></td>
+          <td class="muted">{{ row.logger }}</td>
+          <td class="log-msg">{{ row.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
