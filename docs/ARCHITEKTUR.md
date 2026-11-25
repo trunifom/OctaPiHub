@@ -21,15 +21,21 @@ Aktuell implementiert sind:
 - `infrastructure.hue`: lokaler CLIP-v2-Client und Plugin für Szenenliste/-Recall mit
   verifizierter TLS-Verbindung und begrenzter Anfragerate.
 - `infrastructure.sqlite_outbox`: SQLite-WAL-Speicherung, FIFO je Würfel und Retry-Status.
+- `application.sense_hat` definiert den typisierten Port für Messwerte, Fähigkeiten,
+  Joystick und Matrix; `infrastructure.sense_hat` adaptiert die offizielle Bibliothek
+  lazy, während `infrastructure.fake_sense_hat` Hardware-freie Tests ermöglicht.
 
 Der BLE-Transport und die Laufzeit sind implementiert und lokal mit Fakes getestet.
 Regelzuordnung, generische Outbox und Hue-Adapter sind lokal getestet. Der Hue-Adapter
 wurde nicht gegen eine echte Bridge geprüft; Hue-Kopplung/Key-Verwaltung, Audio-Aktionen,
-ein startbarer Systemdienst/Composition Root, der Sense-HAT-Hardwareadapter, die
-Sensorhistorie und die Weboberfläche sind noch nicht implementiert. Schema v3 enthält
-bereits validierte Sense-HAT-Einstellungen; daraus folgt kein Hardware- oder
-Weboberflächennachweis. Die BLE-Laufzeit wurde nicht auf Raspberry Pi oder echter
-Hardware verifiziert.
+ein startbarer Systemdienst/Composition Root, Sense-HAT-Messworker, Sensorhistorie und
+Weboberfläche sind noch nicht implementiert. Der Sense-HAT-Port und Hardwareadapter
+sind mit einem Fake getestet, aber nicht auf echter Hardware verifiziert. Die
+Fähigkeitserkennung meldet ohne erkannten Farbsensor absichtlich keine automatische
+v1-Revision, da das Fehlen des Sensors keinen sicheren Revisionsnachweis darstellt.
+Schema v3 enthält bereits validierte Sense-HAT-Einstellungen; daraus folgt kein
+Hardware- oder Weboberflächennachweis. Die BLE-Laufzeit wurde nicht auf Raspberry Pi
+oder echter Hardware verifiziert.
 
 ## Abhängigkeitsrichtung
 

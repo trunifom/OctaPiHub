@@ -14,7 +14,11 @@ Der BLE-Transportvertrag und ein hardwarefreier Fake sind vorhanden; der produkt
 Bleak-Adapter und eine hardwarefrei getestete Laufzeit für beide Würfel sind ergänzt.
 Schema-v2-Regelzuordnungen und eine generische SQLite-WAL-Outbox sind implementiert.
 Schema v3 ergänzt eine validierte Sense-HAT-Konfiguration mit pro Sensorgruppe
-einstellbaren Messintervallen, Verlauf, Anzeigeart und Präzision.
+einstellbaren Messintervallen, Verlauf, Anzeigeart und Präzision. Ein typisierter
+Anwendungs-Port, ein lazy geladener Hardwareadapter für Umweltwerte, IMU, v2-Farbsensor,
+Joystick und LED-Matrix sowie ein konfigurierbarer Fake sind hardwarefrei getestet.
+Automatische Fähigkeitserkennung stuft ein Board ohne erkannten Farbsensor bewusst
+nicht automatisch als v1 ein.
 Ein automatisierter End-to-End-Test führt ein simuliertes Würfelereignis durch Regeln
 und Outbox bis zu einem Fake-Hue-Plugin. Ein echter Hue-CLIP-v2-Adapter kann Szenen
 auflisten und aktivieren und wird gegen einen lokalen HTTPS-Fake-Server getestet.
@@ -36,7 +40,8 @@ Musikplayer erprobt; das belegt weder OctaPiHub-BLE noch die Hue-Lichtsteuerung.
 | BLE-Transportvertrag und Fake | implementiert, hardwarefrei getestet |
 | BLE-Laufzeit und Bleak/BlueZ-Adapter | implementiert, mit Fakes getestet |
 | BLE-Verbindung zu echten Würfeln / Raspberry Pi | nicht hardwareverifiziert |
-| Sense-HAT-Adapter, Sensorverlauf und Weboberfläche | noch nicht implementiert; Konfiguration vorbereitet |
+| Sense-HAT-Port, Hardwareadapter und Fake | implementiert, hardwarefrei getestet; nicht auf echter Hardware verifiziert |
+| Sense-HAT-Messworker, Sensorverlauf und Weboberfläche | noch nicht implementiert |
 | Hue-/Musikadapter | Hue CLIP v2 vorhanden; Pairing/Key-Verwaltung und Musik fehlen |
 
 Lokale Tests:

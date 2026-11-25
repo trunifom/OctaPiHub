@@ -143,8 +143,11 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 Schema v3 bereitet die Sense-HAT-Einstellungen vor: Temperatur, Feuchte und Druck
 sind standardmäßig aktiviert; IMU- und Farbsensorgruppen bleiben deaktiviert, sind
 aber individuell konfigurierbar. Als Kompatibilitäts-Override sind `auto`, `v1` und
-`v2` vorgesehen. Sensoradapter, Laufzeit-Erkennung, Verlaufsspeicherung und GUI
-werden schrittweise ergänzt; die Konfiguration allein ist kein Hardwaretest.
+`v2` vorgesehen. Der typisierte Sensor-/Matrix-/Joystick-Port, der lazy geladene
+Hardwareadapter und ein Fake für hardwarefreie Tests sind implementiert. Die automatische
+Erkennung leitet v1 nicht allein aus dem Fehlen eines Farbsensors ab. Messworker,
+Verlaufsspeicherung und GUI werden schrittweise ergänzt; der Adapter wurde nicht auf
+echter Hardware geprüft.
 
 ## 5. Nichtfunktionale Anforderungen
 | ID | Prio | Kategorie | Anforderung | Messung |

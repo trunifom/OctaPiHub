@@ -76,6 +76,20 @@ class UnsupportedDeviceError(OctaPiHubError):
     default_user_message = "Der Würfel bietet die benötigte Bluetooth-Funktion nicht an."
 
 
+class SenseHatError(OctaPiHubError):
+    """The Sense HAT could not be initialized or accessed."""
+
+    code = "CH-SENSE-001"
+    default_user_message = "Das Sense HAT konnte nicht angesprochen werden."
+
+
+class SenseHatFeatureUnavailable(SenseHatError):
+    """A requested feature is not present on this Sense HAT revision."""
+
+    code = "CH-SENSE-002"
+    default_user_message = "Diese Funktion ist auf dem erkannten Sense HAT nicht verfügbar."
+
+
 class PluginError(OctaPiHubError):
     """A plugin could not be loaded, validated or resolved."""
 
