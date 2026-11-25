@@ -114,6 +114,8 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 | F-S6 | S | Joystick-Ereignisse als Quelle für Aktionen (z. B. Lautstärke, nächste Szene, Ansicht wechseln). |
 | F-S7 | S | Farb-/Helligkeitssensor (nur v2) als Messwert. |
 | F-S8 | M | Sensorfehler führen zu „Wert nicht verfügbar“, nicht zu Absturz. |
+| F-S9 | M | Jede Sensorgruppe einzeln aktivierbar; Intervall, Verlauf, Anzeige (Wert/Graph) und Anzeigepräzision einstellbar. Rundung verändert keine gespeicherten Rohwerte. |
+| F-S10 | S | Sense-HAT-Version und verfügbare Fähigkeiten erkennen; wenn automatische Erkennung nicht zuverlässig ist, Version manuell in der Konfiguration setzen. |
 
 ### 4.7 Weboberfläche und CLI (F-U)
 | ID | Prio | Anforderung |
@@ -136,6 +138,13 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 | F-K3 | S | Export/Import der Konfiguration (ohne Geheimnisse), Import erst validieren, dann einmal anwenden. |
 | F-K4 | M | Geheimnisse getrennt (`secrets.env`, 0600). |
 | F-K5 | S | Backup-Skript für Konfiguration + Zustandsdatenbank. |
+| F-K6 | M | Sense-HAT-Einstellungen liegen in derselben versionierten, validierten TOML-Konfiguration und werden später auch über die Weboberfläche bearbeitet. |
+
+Schema v3 bereitet die Sense-HAT-Einstellungen vor: Temperatur, Feuchte und Druck
+sind standardmäßig aktiviert; IMU- und Farbsensorgruppen bleiben deaktiviert, sind
+aber individuell konfigurierbar. Als Kompatibilitäts-Override sind `auto`, `v1` und
+`v2` vorgesehen. Sensoradapter, Laufzeit-Erkennung, Verlaufsspeicherung und GUI
+werden schrittweise ergänzt; die Konfiguration allein ist kein Hardwaretest.
 
 ## 5. Nichtfunktionale Anforderungen
 | ID | Prio | Kategorie | Anforderung | Messung |
@@ -240,6 +249,7 @@ Nachweis für einen Hardwaretest. Commits werden nach erfolgreicher Prüfung ers
 | 2026-11-25 15:31:49 +01:00 | `69f7382384dbd723e2e5286ca125336adf32a1b2` | Schritt 4: Schema-v2-Regelzuordnungen mit v1-Kompatibilität, Rule Engine und SQLite-WAL-Outbox mit FIFO je Würfel, Retry/Backoff, Ablauf, Neustart-Recovery und Fehlerisolation; 79 lokale Tests, Ruff check, Python-Formatprüfung für `src`/`tests` und mypy strict bestanden. Keine Hardwareprüfung. Der repo-weite Formatcheck meldet eine bereits vorhandene Abweichung in `HANDBUCH_OctaPiHub-Raspberry-Pi.md`, die unverändert blieb. |
 | 2026-11-25 15:37:24 +01:00 | `33f40e6676edb96e011eaff7db4bca3877af5741` | Schritt 5: automatisierter End-to-End-Pfad vom Fake-BLE-Würfel über Runtime, Regeln und SQLite-Outbox bis zum Fake-Hue-Plugin; Baseline wird ignoriert, zwei Aktionen werden der Reihe nach erfolgreich ausgeführt; 80 lokale Tests, Ruff check, Python-Formatprüfung und mypy strict bestanden. Keine OctaPiHub-Hardwareprüfung. Der Nutzer berichtete separat von einem Realtest mit Würfel/Musikplayer in OctaLedger; Hue-Licht wurde nicht real getestet. |
 | 2026-11-25 16:03:48 +01:00 | `3a9b34460c0ada5741f676bee0e89338c923ad99` | Hue-CLIP-v2-Adapter für Szenenliste und Szenen-Recall mit TLS-CA-/Hostnameprüfung, optionaler CA-Datei, Drosselung und HTTP-429-`Retry-After`-Unterstützung in der Outbox; lokaler HTTPS-Fake-Server; 88 lokale Tests, Ruff, Python-Formatprüfung und mypy strict bestanden. Keine Prüfung mit realer Bridge; Signify-Zertifikat und Szenen-Recall müssen an der Bridge bestätigt werden. |
+| 2026-11-25 16:27:11 +01:00 | `e965401c79efafbdb799ab26ed91e338de6b002a` | Sense-HAT-Konfiguration in Schema v3: v1/v2-Dateien bleiben lesbar und werden auf v3 migriert; Sensorguppen mit Intervall, Verlaufs- und Anzeigeeinstellungen, Temperaturkorrektur, Historienaufbewahrung, Matrix, Joystick sowie v1/v2-Override und v2-Farb-Sensorparameter; nur Temperatur/Feuchte/Druck standardmäßig aktiv. 95 Tests, Ruff, Formatprüfung, mypy strict und `git diff --check` bestanden. Keine Hardwareprüfung; Adapter, automatische Fähigkeitserkennung, Datenhaltung und GUI folgen separat. |
 
 Die Einträge verweisen jeweils auf den Commit mit der Funktion. Änderungen an diesem
 Nachweis erfolgen in einem nachfolgenden Dokumentations-Commit, damit der tatsächliche
