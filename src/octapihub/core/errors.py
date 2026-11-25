@@ -97,6 +97,16 @@ class HistoryError(OctaPiHubError):
     default_user_message = "Der Sensorverlauf konnte nicht gelesen oder gespeichert werden."
 
 
+class SecretsError(OctaPiHubError):
+    """The secrets file is unreadable, unsafe, malformed, or cannot be written."""
+
+    code = "CH-SEC-001"
+    default_user_message = (
+        "Die Datei mit den Zugangsdaten (secrets.env) ist ungültig, unsicher oder nicht "
+        "beschreibbar."
+    )
+
+
 class PluginError(OctaPiHubError):
     """A plugin could not be loaded, validated or resolved."""
 
