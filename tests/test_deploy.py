@@ -228,7 +228,7 @@ def test_example_config_music_section_is_off_and_its_commented_examples_are_vali
     assert config.music.enabled is False and config.music.library_dir == "/srv/music"
     lines = path.read_text(encoding="utf-8").splitlines()
     start = lines.index("# [[music.targets]]")
-    end = next(i for i, line in enumerate(lines) if line == "[hue]")
+    end = next(i for i, line in enumerate(lines) if line.startswith("# Smart Home"))
     block = [line[2:] if line.startswith("# ") else line.lstrip("#") for line in lines[start:end]]
     uncommented = "\n".join(line for line in lines[:start] if not line.startswith("#"))
     data = tomllib.loads(uncommented + "\n" + "\n".join(block))
@@ -241,3 +241,22 @@ def test_unit_gives_the_service_audio_access_and_room_for_the_player() -> None:
     service = _unit()["Service"]
     assert "audio" in service["SupplementaryGroups"].split()
     assert service["MemoryMax"].endswith("M") and int(service["MemoryMax"][:-1]) >= 500
+
+
+def test_example_config_smarthome_examples_are_valid_and_the_backup_script_is_shipped() -> None:
+    from octapihub.core.config import parse_config
+
+    path = DEPLOY / "octapihub.toml.example"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start = lines.index("# [[smarthome.connections]]")
+    end = lines.index("[hue]")
+    block = [line[2:] if line.startswith("# ") else "" for line in lines[start:end]]
+    first_comment = next(i for i, line in enumerate(lines) if line.startswith("# Musik (alles"))
+    head = "\n".join(line for line in lines[:first_comment] if not line.startswith("#"))
+    parsed = parse_config(tomllib.loads(head + "\n" + "\n".join(block)))
+    assert parsed.smarthome.actions[0].topic == "zigbee2mqtt/schreibtisch/set"
+    script = (DEPLOY / "octapihub-backup.sh").read_text(encoding="utf-8")
+    assert script.startswith("#!/bin/sh") and "set -eu" in script
+    for word in ("backup", "restore", "list"):
+        assert word in script
+    assert "octapihub-backup.sh" in (DEPLOY / "INSTALL.md").read_text(encoding="utf-8")

@@ -207,7 +207,7 @@ bei Ihrem Gerät etwas anderes, melden Sie das bitte.
 „Jetzt abspielen (Test)“ klicken. Es sollte Musik kommen und die Karte „Spielt“ zeigen.
 
 ## 10. Sichern, Aktualisieren, Entfernen
-**Sichern:** Auf der Seite **Einstellungen → Sichern & Wiederherstellen** laden Sie eine
+**Sichern:** Das Skript `deploy/octapihub-backup.sh` sichert und stellt wieder her (`sudo /opt/octapihub/deploy/octapihub-backup.sh backup /pfad`, `restore ARCHIV`). Auf der Seite **Einstellungen → Sichern & Wiederherstellen** laden Sie eine
 Export-Datei mit Musik, Playlists, Zuordnung, Sense-HAT- und Hue-Einstellungen herunter. Die
 Datei enthält keine Schlüssel. Zusätzlich sichern Sie auf dem Gerät:
 ```bash

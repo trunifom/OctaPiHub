@@ -52,6 +52,23 @@ media_host = ""
 # shuffle = true
 # repeat = "all"           # off | all | one
 
+# Smart Home (alles hier lässt sich auch auf der Seite "Smart Home" einstellen).
+# Passwörter und Tokens gehören NICHT hierher, sondern werden in secrets.env gespeichert.
+# [[smarthome.connections]]
+# id = "mosquitto"
+# name = "Mosquitto"
+# kind = "mqtt"                  # mqtt | homeassistant
+# address = "192.168.1.20:1883"  # Home Assistant: http://192.168.1.20:8123
+# username = "hub"
+#
+# [[smarthome.actions]]
+# id = "lampe-an"
+# name = "Schreibtischlampe an"
+# kind = "mqtt"                  # http | mqtt | homeassistant
+# connection = "mosquitto"
+# topic = "zigbee2mqtt/schreibtisch/set"
+# payload = '{"state":"ON"}'
+
 [hue]
 enabled = false
 host = ""
