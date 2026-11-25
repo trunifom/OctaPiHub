@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 import ssl
 import threading
 import time
@@ -73,6 +74,9 @@ class _TestHueRequestHandler(BaseHTTPRequestHandler):
         self._respond()
 
     def do_PUT(self) -> None:
+        self._respond()
+
+    def do_POST(self) -> None:
         self._respond()
 
     def _respond(self) -> None:
@@ -235,3 +239,170 @@ def test_hue_settings_reject_invalid_hosts_and_header_values() -> None:
         HueBridgeSettings("https://localhost", "test-key")
     with pytest.raises(ValidationError, match="printable ASCII"):
         HueBridgeSettings("localhost", "key\r\ninjected: value")
+
+
+# ---------- pairing and certificate name ----------
+
+
+def _pair(port: int, host: str = "127.0.0.1", **options: object) -> str:
+    """Connect by IP (fast on every OS) but verify the certificate name ``localhost``."""
+    from octapihub.infrastructure.hue import pair_bridge
+
+    settings: dict[str, object] = {
+        "port": port,
+        "ca_file": _CA_FILE,
+        "tls_server_name": "localhost",
+        **options,
+    }
+    return asyncio.run(pair_bridge(host, **settings))  # type: ignore[arg-type]
+
+
+def test_pairing_returns_application_key_and_posts_device_type(
+    local_hue_server: tuple[int, _ServerState],
+) -> None:
+    port, state = local_hue_server
+    state.response_body = json.dumps([{"success": {"username": "new-app-key-123"}}]).encode()
+
+    key = _pair(port)
+
+    assert key == "new-app-key-123"
+    (request,) = state.requests
+    assert (request.method, request.path) == ("POST", "/api")
+    assert json.loads(request.body)["devicetype"] == "octapihub#hub"
+    assert request.application_key is None  # no key exists yet
+
+
+def test_pairing_without_button_press_is_a_distinct_retryable_error(
+    local_hue_server: tuple[int, _ServerState],
+) -> None:
+    from octapihub.core.errors import HueLinkButtonError
+
+    port, state = local_hue_server
+    state.response_body = json.dumps(
+        [{"error": {"type": 101, "description": "link button not pressed"}}]
+    ).encode()
+
+    with pytest.raises(HueLinkButtonError) as error:
+        _pair(port)
+
+    assert error.value.error_code == "CH-HUE-004"
+    assert "Taste" in error.value.user_message
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"[]",
+        b"{}",
+        b'"text"',
+        b"[1]",
+        b'[{"success": {}}]',
+        b'[{"success": {"username": ""}}]',
+        b'[{"success": {"username": "has space"}}]',
+        b'[{"success": {"username": 12}}]',
+        b'[{"error": {"type": 7}}]',
+        b"not json",
+    ],
+)
+def test_pairing_rejects_malformed_or_refused_responses(
+    local_hue_server: tuple[int, _ServerState], body: bytes
+) -> None:
+    port, state = local_hue_server
+    state.response_body = body
+
+    with pytest.raises(HueBridgeError) as error:
+        _pair(port)
+
+    assert error.value.error_code in {"CH-HUE-001"}
+
+
+def test_pairing_http_error_and_connection_failure_are_translated(
+    local_hue_server: tuple[int, _ServerState],
+) -> None:
+    port, state = local_hue_server
+    state.status = 500
+    with pytest.raises(HueBridgeError) as error:
+        _pair(port)
+    assert error.value.details["status"] == 500
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        closed_port = probe.getsockname()[1]
+    with pytest.raises(HueBridgeError) as unreachable:
+        _pair(closed_port)
+    assert unreachable.value.error_code == "CH-HUE-001"
+
+
+def test_pairing_verifies_the_certificate(local_hue_server: tuple[int, _ServerState]) -> None:
+    port, state = local_hue_server
+    state.response_body = json.dumps([{"success": {"username": "k"}}]).encode()
+    with pytest.raises(HueCertificateError):
+        _pair(port, ca_file=None)
+    assert state.requests == []
+
+
+def test_pairing_validates_arguments_before_connecting() -> None:
+    from octapihub.infrastructure.hue import pair_bridge
+
+    for kwargs in (
+        {"host": "bad host"},
+        {"host": "localhost", "port": 0},
+        {"host": "localhost", "tls_server_name": "no spaces"},
+    ):
+        with pytest.raises(ValidationError):
+            asyncio.run(pair_bridge(**kwargs))  # type: ignore[arg-type]
+
+
+def test_tls_server_name_allows_ip_connection_to_name_based_certificate(
+    local_hue_server: tuple[int, _ServerState],
+) -> None:
+    port, state = local_hue_server
+    state.response_body = json.dumps([{"success": {"username": "ip-key"}}]).encode()
+
+    # Without a server name the IP does not match the certificate ...
+    with pytest.raises(HueCertificateError):
+        _pair(port, tls_server_name=None)
+    # ... with the certificate's name it verifies and the key is returned.
+    assert _pair(port) == "ip-key"
+
+
+def test_wrong_tls_server_name_is_still_rejected(
+    local_hue_server: tuple[int, _ServerState],
+) -> None:
+    port, _ = local_hue_server
+    with pytest.raises(HueCertificateError):
+        _pair(port, tls_server_name="other.example")
+
+
+def test_client_supports_tls_server_name_for_normal_requests(
+    local_hue_server: tuple[int, _ServerState],
+) -> None:
+    port, _ = local_hue_server
+    client = HueBridgeClient(
+        HueBridgeSettings(
+            host="127.0.0.1",
+            application_key="test-only-application-key",
+            ca_file=_CA_FILE,
+            port=port,
+            tls_server_name="localhost",
+            minimum_request_interval_seconds=0,
+        )
+    )
+    assert asyncio.run(client.list_scenes()) == (HueScene("scene-one", "Evening"),)
+
+
+def test_settings_reject_invalid_tls_server_name() -> None:
+    with pytest.raises(ValidationError):
+        HueBridgeSettings(host="127.0.0.1", application_key="k", tls_server_name="no spaces")
+
+
+def test_client_translates_invalid_json_and_oversized_responses(
+    local_hue_server: tuple[int, _ServerState],
+) -> None:
+    port, state = local_hue_server
+    state.response_body = b"<html>"
+    with pytest.raises(HueBridgeError, match="invalid JSON"):
+        asyncio.run(_client(port).list_scenes())
+    state.response_body = b"[" + b"1," * 600_000 + b"1]"
+    with pytest.raises(HueBridgeError, match="size limit"):
+        asyncio.run(_client(port).list_scenes())

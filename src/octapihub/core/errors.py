@@ -156,6 +156,26 @@ class HueBridgeError(RetryableError):
     default_user_message = "Die Hue Bridge konnte nicht sicher angesprochen werden."
 
 
+class HueLinkButtonError(HueBridgeError):
+    """The pairing request was refused because the bridge button was not pressed."""
+
+    code = "CH-HUE-004"
+    default_user_message = (
+        "Die Taste auf der Hue Bridge wurde noch nicht gedrückt. Drücken Sie die Taste "
+        "und versuchen Sie es innerhalb von 30 Sekunden erneut."
+    )
+
+
+class HueNotConfiguredError(HueBridgeError):
+    """A Hue action ran before the bridge was configured and paired."""
+
+    code = "CH-HUE-005"
+    default_user_message = (
+        "Hue ist noch nicht eingerichtet. Tragen Sie die Bridge ein und verbinden Sie sie "
+        "auf der Seite Licht."
+    )
+
+
 class HueRateLimitError(HueBridgeError):
     """The Hue Bridge rejected a request because of rate limiting."""
 
