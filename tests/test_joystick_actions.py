@@ -114,7 +114,7 @@ def test_joystick_has_only_five_inputs(tmp_path: Path, face: int) -> None:
 
 def test_cubes_still_have_eight_faces_and_the_name_joystick_is_reserved(tmp_path: Path) -> None:
     assert config(tmp_path, [mapping("Licht", 8, scene("x"))]).mappings[0].face == 8
-    with pytest.raises(ValidationError, match="from 1 to 8"):
+    with pytest.raises(ValidationError, match="from 0 to 8"):
         config(tmp_path, [mapping("Licht", 9, scene("x"))])
     with pytest.raises(ValidationError, match="reserved"):
         parse_config(
@@ -535,7 +535,7 @@ def test_editor_has_a_joystick_block_with_five_labelled_inputs(tmp_path: Path) -
         text = client.get("/cubes").text
     for label in JOYSTICK_FACE_LABELS:
         assert f'<span class="face-tile-title">{label}</span>' in text
-    assert text.count("face-tile-head") == 2 * 8 + 5
+    assert text.count("face-tile-head") == 2 * 9 + 5
     assert 'name="map.2.5"' in text
     assert 'name="map.2.6"' not in text
     assert "Steuerung" in text
@@ -638,7 +638,7 @@ def test_run_now_button_triggers_cube_faces_and_joystick_inputs(tmp_path: Path) 
         ({"trigger": "9.1"}, 422, "CH-WEB-011"),
         ({"trigger": "0.9"}, 422, "CH-WEB-011"),
         ({"trigger": "2.6"}, 422, "CH-WEB-011"),
-        ({"trigger": "0.0"}, 422, "CH-WEB-011"),
+        ({"trigger": "0.0"}, 409, "CH-WEB-013"),  # the holder is a valid, unmapped face
         ({"trigger": "1.2"}, 409, "CH-WEB-013"),  # valid face, nothing mapped
     ],
 )

@@ -692,7 +692,7 @@ def build_cube_tiles(
     for index, (name, faces) in enumerate(mapping_sources(config)):
         is_joystick = name == JOYSTICK_SOURCE
         tiles: list[FaceTile] = []
-        for face in range(1, faces + 1):
+        for face in faces:
             field = f"map.{index}.{face}"
             existing = lookup.get((name.casefold(), face))
             locked = existing is not None and field not in form
@@ -708,8 +708,16 @@ def build_cube_tiles(
                     locked_actions=tuple(describe_action(a) for a in existing.actions)
                     if existing is not None and locked
                     else (),
-                    label=JOYSTICK_FACE_LABELS[face - 1] if is_joystick else f"Seite {face}",
-                    chip=_JOYSTICK_CHIPS[face - 1] if is_joystick else str(face),
+                    label=(
+                        JOYSTICK_FACE_LABELS[face - 1]
+                        if is_joystick
+                        else ("Halterung" if face == 0 else f"Seite {face}")
+                    ),
+                    chip=(
+                        _JOYSTICK_CHIPS[face - 1]
+                        if is_joystick
+                        else ("⏏" if face == 0 else str(face))
+                    ),
                     saved=existing is not None,
                 )
             )

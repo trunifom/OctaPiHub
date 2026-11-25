@@ -636,7 +636,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
         if not (index_text.isdigit() and face_text.isdigit()):
             return respond(422, "error", "Ungültige Auswahl", "", "CH-WEB-011")
         index, face = int(index_text), int(face_text)
-        if index >= len(sources) or not 1 <= face <= sources[index][1]:
+        if index >= len(sources) or face not in sources[index][1]:
             return respond(422, "error", "Ungültige Auswahl", "", "CH-WEB-011")
         name = sources[index][0]
         if backend.cubes is None:

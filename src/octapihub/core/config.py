@@ -20,7 +20,7 @@ from octapihub.core.errors import ConfigurationError, ValidationError
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 5
+SUPPORTED_SCHEMA_VERSION = 6
 MAX_CUBES = 3
 # The Sense HAT joystick is a built-in action source next to the cubes. Its five inputs are
 # the "faces" 1..5; mappings address it by this reserved name.
@@ -28,6 +28,12 @@ JOYSTICK_SOURCE = "Joystick"
 JOYSTICK_FACE_LABELS: tuple[str, ...] = ("Hoch", "Rechts", "Runter", "Links", "Mitte")
 JOYSTICK_FACES = len(JOYSTICK_FACE_LABELS)
 CUBE_FACES = 8
+HOLDER_FACE = 0  # "no face up": the cube rests in its holder (mappable, like the faces)
+MAX_MUSIC_TARGETS = 8
+MAX_PLAYLISTS = 64
+MAX_SOURCE_LENGTH = 2000
+_SLUG_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
+_MAC_PATTERN = re.compile(r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 LEGACY_SCHEMA_VERSION = 1
 DEFAULT_DEBOUNCE_MS = 300
 MAX_DEBOUNCE_MS = 999
@@ -256,6 +262,63 @@ class HueConfig:
     tls_server_name: str = ""
 
 
+class MusicTargetKind(StrEnum):
+    """Where music can be played."""
+
+    CAST = "cast"  # Google Nest speakers and Nest Hub displays (Google Cast)
+    LOCAL = "local"  # the audio output of this Raspberry Pi
+    BLUETOOTH = "bluetooth"  # a Bluetooth speaker connected to this Raspberry Pi
+
+
+class RepeatMode(StrEnum):
+    """What happens at the end of a track or playlist."""
+
+    OFF = "off"
+    ALL = "all"
+    ONE = "one"
+
+
+@dataclass(frozen=True, slots=True)
+class MusicTargetConfig:
+    """One place where music can play.
+
+    ``device`` is the Cast device's friendly name (kind ``cast``) or the audio device name
+    (kinds ``local`` and ``bluetooth``; empty means the system default). For Bluetooth,
+    ``bluetooth_address`` is connected before playing.
+    """
+
+    id: str
+    name: str
+    kind: MusicTargetKind
+    device: str = ""
+    bluetooth_address: str = ""
+    volume: int = 40
+
+
+@dataclass(frozen=True, slots=True)
+class PlaylistConfig:
+    """A named music source (link, stream, or local path) with playback preferences."""
+
+    id: str
+    name: str
+    source: str
+    target: str = ""
+    shuffle: bool = False
+    repeat: RepeatMode = RepeatMode.OFF
+    volume: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MusicConfig:
+    """Music playback settings (everything is off until enabled)."""
+
+    enabled: bool = False
+    library_dir: str = ""
+    media_host: str = ""
+    targets: tuple[MusicTargetConfig, ...] = ()
+    playlists: tuple[PlaylistConfig, ...] = ()
+
+
 @dataclass(frozen=True, slots=True)
 class CubeConfig:
     """Validated configuration for one cube."""
@@ -301,6 +364,7 @@ class AppConfig:
     mappings: tuple[RuleMappingConfig, ...] = ()
     sense_hat: SenseHatConfig = field(default_factory=SenseHatConfig)
     hue: HueConfig = field(default_factory=HueConfig)
+    music: MusicConfig = field(default_factory=MusicConfig)
 
 
 def load_config(path: str | Path) -> AppConfig:
@@ -446,6 +510,47 @@ def with_mappings_table(config: AppConfig, raw_mappings: Sequence[object]) -> Ap
     return replace(config, mappings=_parse_mappings(raw_mappings, config.cubes))
 
 
+def music_table(music: MusicConfig) -> dict[str, object]:
+    """Return the music settings as a plain TOML-shaped table for editing."""
+    return {
+        "enabled": music.enabled,
+        "library_dir": music.library_dir,
+        "media_host": music.media_host,
+        "targets": [
+            {
+                "id": t.id,
+                "name": t.name,
+                "kind": t.kind.value,
+                "device": t.device,
+                "bluetooth_address": t.bluetooth_address,
+                "volume": t.volume,
+            }
+            for t in music.targets
+        ],
+        "playlists": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "source": p.source,
+                "target": p.target,
+                "shuffle": p.shuffle,
+                "repeat": p.repeat.value,
+                **({"volume": p.volume} if p.volume is not None else {}),
+            }
+            for p in music.playlists
+        ],
+    }
+
+
+def with_music_table(config: AppConfig, table: Mapping[str, object]) -> AppConfig:
+    """Return ``config`` with replaced, fully validated music settings.
+
+    Raises:
+        ValidationError: If any music value violates the schema.
+    """
+    return replace(config, music=_parse_music(table))
+
+
 def with_hue_table(config: AppConfig, table: Mapping[str, object]) -> AppConfig:
     """Return ``config`` with a replaced, fully validated Hue table.
 
@@ -496,6 +601,7 @@ def _serialize_config(config: AppConfig) -> str:
         ],
         "sense_hat": sense_hat_data,
         "hue": hue_table(config.hue),
+        "music": music_table(config.music),
     }
     validated = parse_config(data)
     lines = [
@@ -582,6 +688,44 @@ def _serialize_config(config: AppConfig) -> str:
             f"tls_server_name = {_toml_string(hue.tls_server_name)}",
         ]
     )
+    music = validated.music
+    lines.extend(
+        [
+            "",
+            "[music]",
+            f"enabled = {_toml_value(music.enabled)}",
+            f"library_dir = {_toml_string(music.library_dir)}",
+            f"media_host = {_toml_string(music.media_host)}",
+        ]
+    )
+    for target in music.targets:
+        lines.extend(
+            [
+                "",
+                "[[music.targets]]",
+                f"id = {_toml_string(target.id)}",
+                f"name = {_toml_string(target.name)}",
+                f"kind = {_toml_string(target.kind.value)}",
+                f"device = {_toml_string(target.device)}",
+                f"bluetooth_address = {_toml_string(target.bluetooth_address)}",
+                f"volume = {target.volume}",
+            ]
+        )
+    for playlist in music.playlists:
+        lines.extend(
+            [
+                "",
+                "[[music.playlists]]",
+                f"id = {_toml_string(playlist.id)}",
+                f"name = {_toml_string(playlist.name)}",
+                f"source = {_toml_string(playlist.source)}",
+                f"target = {_toml_string(playlist.target)}",
+                f"shuffle = {_toml_value(playlist.shuffle)}",
+                f"repeat = {_toml_string(playlist.repeat.value)}",
+            ]
+        )
+        if playlist.volume is not None:
+            lines.append(f"volume = {playlist.volume}")
     for sensor_id in _SENSE_HAT_SENSOR_IDS:
         sensor = sense_hat.sensors[sensor_id]
         lines.extend(
@@ -671,7 +815,7 @@ def parse_config(data: object) -> AppConfig:
         raise ValidationError(
             "schema_version must be an integer", details={"field": "schema_version"}
         )
-    if schema_version not in {LEGACY_SCHEMA_VERSION, 2, 3, 4, SUPPORTED_SCHEMA_VERSION}:
+    if schema_version not in {LEGACY_SCHEMA_VERSION, 2, 3, 4, 5, SUPPORTED_SCHEMA_VERSION}:
         raise ConfigurationError(
             "Unsupported configuration schema version",
             details={
@@ -686,6 +830,8 @@ def parse_config(data: object) -> AppConfig:
         allowed_root_keys.add("sense_hat")
     if schema_version >= 4:
         allowed_root_keys.add("hue")
+    if schema_version >= 6:
+        allowed_root_keys.add("music")
     _check_keys(root, allowed_root_keys, "root")
 
     bluetooth_table = _require_table(root.get("bluetooth"), "bluetooth")
@@ -737,6 +883,7 @@ def parse_config(data: object) -> AppConfig:
     )
 
     hue = _parse_hue(root.get("hue", {})) if schema_version >= 4 else HueConfig()
+    music = _parse_music(root.get("music", {})) if schema_version >= 6 else MusicConfig()
 
     return AppConfig(
         schema_version=SUPPORTED_SCHEMA_VERSION,
@@ -746,6 +893,144 @@ def parse_config(data: object) -> AppConfig:
         mappings=mappings,
         sense_hat=sense_hat,
         hue=hue,
+        music=music,
+    )
+
+
+def _single_line(value: object, field: str, *, maximum: int, required: bool = False) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) > maximum
+        or any(ord(character) < 32 for character in value)
+    ):
+        raise ValidationError(
+            f"{field} must be a single line of at most {maximum} characters",
+            details={"field": field},
+        )
+    text = value.strip()
+    if required and not text:
+        raise ValidationError(f"{field} must not be empty", details={"field": field})
+    return text
+
+
+def _volume(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
+        raise ValidationError(f"{field} must be an integer from 0 to 100", details={"field": field})
+    return value
+
+
+def _parse_music(value: object) -> MusicConfig:
+    table = _require_table(value, "music")
+    _check_keys(table, {"enabled", "library_dir", "media_host", "targets", "playlists"}, "music")
+    media_host = _single_line(table.get("media_host", ""), "music.media_host", maximum=253)
+    if media_host and not _valid_host(media_host):
+        raise ValidationError(
+            "music.media_host must be a hostname or IP address",
+            details={"field": "music.media_host"},
+        )
+    raw_targets = table.get("targets", [])
+    if not isinstance(raw_targets, (list, tuple)) or len(raw_targets) > MAX_MUSIC_TARGETS:
+        raise ValidationError(
+            f"music.targets must be a list of at most {MAX_MUSIC_TARGETS} entries",
+            details={"field": "music.targets"},
+        )
+    targets = tuple(_parse_target(item, index) for index, item in enumerate(raw_targets))
+    if len({t.id for t in targets}) != len(targets):
+        raise ValidationError("Music target ids must be unique", details={"field": "music.targets"})
+    raw_playlists = table.get("playlists", [])
+    if not isinstance(raw_playlists, (list, tuple)) or len(raw_playlists) > MAX_PLAYLISTS:
+        raise ValidationError(
+            f"music.playlists must be a list of at most {MAX_PLAYLISTS} entries",
+            details={"field": "music.playlists"},
+        )
+    playlists = tuple(
+        _parse_playlist(item, index, {t.id for t in targets})
+        for index, item in enumerate(raw_playlists)
+    )
+    if len({p.id for p in playlists}) != len(playlists):
+        raise ValidationError("Playlist ids must be unique", details={"field": "music.playlists"})
+    return MusicConfig(
+        enabled=_require_bool(table.get("enabled", False), "music.enabled"),
+        library_dir=_single_line(table.get("library_dir", ""), "music.library_dir", maximum=500),
+        media_host=media_host,
+        targets=targets,
+        playlists=playlists,
+    )
+
+
+def _parse_target(value: object, index: int) -> MusicTargetConfig:
+    field = f"music.targets[{index}]"
+    table = _require_table(value, field)
+    _check_keys(table, {"id", "name", "kind", "device", "bluetooth_address", "volume"}, field)
+    target_id = _single_line(table.get("id"), f"{field}.id", maximum=32, required=True)
+    if not _SLUG_PATTERN.fullmatch(target_id):
+        raise ValidationError(
+            f"{field}.id must be lower-case letters, digits, '-' or '_' (start with a letter)",
+            details={"field": f"{field}.id"},
+        )
+    try:
+        kind = MusicTargetKind(_require_string(table.get("kind"), f"{field}.kind"))
+    except ValueError as exc:
+        raise ValidationError(
+            "music target kind must be 'cast', 'local' or 'bluetooth'",
+            details={"field": f"{field}.kind"},
+        ) from exc
+    device = _single_line(table.get("device", ""), f"{field}.device", maximum=200)
+    if kind is MusicTargetKind.CAST and not device:
+        raise ValidationError(
+            "A Cast target needs the device's name", details={"field": f"{field}.device"}
+        )
+    address = _single_line(
+        table.get("bluetooth_address", ""), f"{field}.bluetooth_address", maximum=17
+    )
+    if address and not _MAC_PATTERN.fullmatch(address):
+        raise ValidationError(
+            "bluetooth_address must look like AA:BB:CC:DD:EE:FF",
+            details={"field": f"{field}.bluetooth_address"},
+        )
+    return MusicTargetConfig(
+        id=target_id,
+        name=_single_line(table.get("name"), f"{field}.name", maximum=60, required=True),
+        kind=kind,
+        device=device,
+        bluetooth_address=address.upper(),
+        volume=_volume(table.get("volume", 40), f"{field}.volume"),
+    )
+
+
+def _parse_playlist(value: object, index: int, target_ids: set[str]) -> PlaylistConfig:
+    field = f"music.playlists[{index}]"
+    table = _require_table(value, field)
+    _check_keys(table, {"id", "name", "source", "target", "shuffle", "repeat", "volume"}, field)
+    playlist_id = _single_line(table.get("id"), f"{field}.id", maximum=32, required=True)
+    if not _SLUG_PATTERN.fullmatch(playlist_id):
+        raise ValidationError(
+            f"{field}.id must be lower-case letters, digits, '-' or '_' (start with a letter)",
+            details={"field": f"{field}.id"},
+        )
+    target = _single_line(table.get("target", ""), f"{field}.target", maximum=32)
+    if target and target not in target_ids:
+        raise ValidationError(
+            "A playlist refers to a music target that does not exist",
+            details={"field": f"{field}.target"},
+        )
+    try:
+        repeat = RepeatMode(_require_string(table.get("repeat", "off"), f"{field}.repeat"))
+    except ValueError as exc:
+        raise ValidationError(
+            "repeat must be 'off', 'all' or 'one'", details={"field": f"{field}.repeat"}
+        ) from exc
+    raw_volume = table.get("volume")
+    return PlaylistConfig(
+        id=playlist_id,
+        name=_single_line(table.get("name"), f"{field}.name", maximum=60, required=True),
+        source=_single_line(
+            table.get("source"), f"{field}.source", maximum=MAX_SOURCE_LENGTH, required=True
+        ),
+        target=target,
+        shuffle=_require_bool(table.get("shuffle", False), f"{field}.shuffle"),
+        repeat=repeat,
+        volume=None if raw_volume is None else _volume(raw_volume, f"{field}.volume"),
     )
 
 
@@ -1107,10 +1392,12 @@ def _parse_mapping(
             details={"field": f"{field}.cube"},
         )
     face = mapping.get("face")
-    highest = JOYSTICK_FACES if canonical_cube_name == JOYSTICK_SOURCE else CUBE_FACES
-    if isinstance(face, bool) or not isinstance(face, int) or not 1 <= face <= highest:
+    is_joystick = canonical_cube_name == JOYSTICK_SOURCE
+    lowest = 1 if is_joystick else HOLDER_FACE
+    highest = JOYSTICK_FACES if is_joystick else CUBE_FACES
+    if isinstance(face, bool) or not isinstance(face, int) or not lowest <= face <= highest:
         raise ValidationError(
-            f"Mapping face must be an integer from 1 to {highest}",
+            f"Mapping face must be an integer from {lowest} to {highest}",
             details={"field": f"{field}.face"},
         )
     raw_actions = mapping.get("actions")

@@ -160,8 +160,8 @@ class OutboxDispatcher:
         self._rules = rules
 
     def enqueue_event(self, event: CubeEvent) -> str | None:
-        """Persist actions for a configured face change; ignore unmatched events."""
-        if event.orientation.kind is not OrientationKind.FACE_CHANGE:
+        """Persist actions for a configured face change or holder event; ignore the rest."""
+        if event.orientation.kind not in (OrientationKind.FACE_CHANGE, OrientationKind.NEUTRAL):
             return None
         return self.enqueue_face_change(event.cube_name, event.orientation.value)
 

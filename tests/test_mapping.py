@@ -96,7 +96,7 @@ def test_mappings_table_round_trips_through_validation(tmp_path: Path) -> None:
     [
         [_mapping("Unbekannt", 1, _scene_action("a"))],
         [_mapping("Licht", 9, _scene_action("a"))],
-        [_mapping("Licht", 0, _scene_action("a"))],
+        [_mapping("Licht", -1, _scene_action("a"))],
         [_mapping("Licht", 1)],
         [_mapping("Licht", 1, _scene_action("a")), _mapping("licht", 1, _scene_action("b"))],
         [_mapping("Licht", 1, {"kind": "Bad Kind", "action": "x", "parameters": {}})],
@@ -593,7 +593,9 @@ def test_three_cubes_get_three_editors_and_independent_mappings(tmp_path: Path) 
     client = _loaded_client(rig)
     try:
         text = client.get("/cubes").text
-        assert text.count("face-tile-head") == 29  # 3 cubes x 8 faces + 5 joystick inputs
+        assert (
+            text.count("face-tile-head") == 32
+        )  # 3 cubes x (8 faces + holder) + 5 joystick inputs
         assert "Universal" in text
         assert 'name="map.2.6"' in text
         values = forms.mapping_config_to_form(rig.settings.config)

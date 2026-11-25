@@ -27,9 +27,9 @@ class RuleEngine:
         return self._required_plugin_kinds
 
     def actions_for(self, cube_name: str, face: int) -> tuple[RuleActionConfig, ...]:
-        """Resolve a configured cube and face to actions; an unmapped face has no actions."""
-        if isinstance(face, bool) or not isinstance(face, int) or not 1 <= face <= 8:
-            raise ValidationError("Rule face must be an integer from 1 to 8")
+        """Resolve a configured cube and face (0 = holder) to actions; unmapped means none."""
+        if isinstance(face, bool) or not isinstance(face, int) or not 0 <= face <= 8:
+            raise ValidationError("Rule face must be an integer from 0 to 8")
         canonical_cube_name = self._cube_names.get(cube_name.casefold())
         if canonical_cube_name is None:
             raise ValidationError("Rule event references an unknown cube")
@@ -37,6 +37,7 @@ class RuleEngine:
 
     def actions_for_event(self, event: CubeEvent) -> tuple[RuleActionConfig, ...]:
         """Resolve a stable face change; baselines and neutral sides do nothing."""
-        if event.orientation.kind is not OrientationKind.FACE_CHANGE:
+        if event.orientation.kind not in (OrientationKind.FACE_CHANGE, OrientationKind.NEUTRAL):
             return ()
+        # a cube resting in its holder reports the neutral value 0, which maps like a face
         return self.actions_for(event.cube_name, event.orientation.value)

@@ -96,7 +96,7 @@ def test_paths_the_service_writes_are_allowed_by_the_sandbox() -> None:
 
 def test_example_config_is_valid_and_safe_by_default() -> None:
     config = load_config(DEPLOY / "octapihub.toml.example")
-    assert config.schema_version == 5
+    assert config.schema_version == 6
     assert not config.hue.enabled
     assert {cube.role for cube in config.cubes} == {CubeRole.LIGHT, CubeRole.MUSIC}
     assert config.sense_hat.enabled
