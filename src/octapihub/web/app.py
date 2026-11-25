@@ -41,6 +41,7 @@ from octapihub.web.presenter import (
     CHARTABLE_GROUPS,
     GROUP_INFO,
     SECTIONS,
+    battery_warnings,
     build_cube_tiles,
     build_cube_views,
     build_group_views,
@@ -169,7 +170,9 @@ class LiveView:
         views = build_group_views(config, statuses, backend.tz)
         cubes = backend.cubes
         cube_views = build_cube_views(
-            backend.settings.config, cubes.statuses if cubes is not None else ()
+            backend.settings.config,
+            cubes.statuses if cubes is not None else (),
+            backend.tz,
         )
         cube_level, cube_text = cube_summary(cube_views)
         if cubes is None:
@@ -184,6 +187,7 @@ class LiveView:
             "hue_scenes": hue.scenes if hue is not None else (),
             "cubes_active": cubes is not None,
             "cube_views": cube_views,
+            "battery_warnings": battery_warnings(cube_views),
             "cube_level": cube_level,
             "cube_text": cube_text,
             "cube_error": cubes.error if cubes is not None else None,

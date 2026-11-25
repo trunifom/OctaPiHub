@@ -75,6 +75,8 @@ def _status(backend: WebBackend) -> dict[str, Any]:
                     "reconnect_attempt": s.reconnect_attempt,
                     "dropped_notifications": s.dropped_notifications,
                     "last_face": s.last_value,
+                    "battery_percent": s.battery_percent,
+                    "battery_supported": s.battery_supported,
                     "error": s.last_error,
                 }
                 for s in backend.cubes.statuses

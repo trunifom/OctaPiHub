@@ -8,6 +8,8 @@ from octapihub.domain.cube import MAX_FACE, NEUTRAL_VALUES
 
 ORIENTATION_SERVICE_UUID = "c7e70010-c847-11e6-8175-8c89a55d403c"
 ORIENTATION_CHARACTERISTIC_UUID = "c7e70012-c847-11e6-8175-8c89a55d403c"
+# Standard Bluetooth SIG Battery Service / Battery Level (one byte, 0-100 percent).
+BATTERY_LEVEL_CHARACTERISTIC_UUID = "00002a19-0000-1000-8000-00805f9b34fb"
 
 
 def normalize_uuid(value: str) -> str:
@@ -46,5 +48,29 @@ def decode_orientation(payload: bytes) -> int:
         raise ProtocolError(
             f"Unsupported orientation value (raw=0x{value:02X})",
             details={"value": value},
+        )
+    return value
+
+
+def supports_battery_read(profile: DeviceProfile) -> bool:
+    """Return whether the device exposes a readable standard battery level."""
+    expected_uuid = normalize_uuid(BATTERY_LEVEL_CHARACTERISTIC_UUID)
+    return any(
+        normalize_uuid(characteristic.uuid) == expected_uuid and "read" in characteristic.properties
+        for characteristic in profile.characteristics
+    )
+
+
+def decode_battery_level(payload: bytes) -> int:
+    """Decode the standard Battery Level characteristic (one byte, 0-100)."""
+    if len(payload) != 1:
+        raise ProtocolError(
+            f"Battery level packet must contain exactly one byte (len={len(payload)})",
+            details={"length": len(payload)},
+        )
+    value = payload[0]
+    if value > 100:
+        raise ProtocolError(
+            f"Battery level out of range (raw=0x{value:02X})", details={"value": value}
         )
     return value

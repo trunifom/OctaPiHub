@@ -19,8 +19,11 @@ from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.core.config import AppConfig, HueConfig
 from octapihub.infrastructure.ble.bleak_transport import BleakTransportFactory
 from octapihub.infrastructure.ble.protocol import (
+    BATTERY_LEVEL_CHARACTERISTIC_UUID,
     ORIENTATION_CHARACTERISTIC_UUID,
+    decode_battery_level,
     decode_orientation,
+    supports_battery_read,
     supports_orientation_notifications,
 )
 from octapihub.infrastructure.hue import HueBridgeClient, HueBridgeSettings, pair_bridge
@@ -82,6 +85,9 @@ def build_cube_service(
             orientation_characteristic_uuid=ORIENTATION_CHARACTERISTIC_UUID,
             decode_orientation=decode_orientation,
             supports_orientation=supports_orientation_notifications,
+            battery_characteristic_uuid=BATTERY_LEVEL_CHARACTERISTIC_UUID,
+            decode_battery=decode_battery_level,
+            supports_battery=supports_battery_read,
         )
 
     extra_plugins = tuple(plugins)

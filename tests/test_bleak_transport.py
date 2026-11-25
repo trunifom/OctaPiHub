@@ -47,6 +47,9 @@ class FakeBleakClient:
         self._notification_callback: Callable[[GattCharacteristic, bytearray], None] | None = None
         self.start_notify_calls: list[str] = []
         self.disconnect_calls = 0
+        self.read_value = bytearray(b"\x55")
+        self.read_error: Exception | None = None
+        self.read_calls: list[str] = []
 
     @property
     def is_connected(self) -> bool:
@@ -74,6 +77,12 @@ class FakeBleakClient:
     ) -> None:
         self.start_notify_calls.append(characteristic)
         self._notification_callback = callback
+
+    async def read_gatt_char(self, characteristic: str) -> bytearray:
+        self.read_calls.append(characteristic)
+        if self.read_error is not None:
+            raise self.read_error
+        return self.read_value
 
     def emit_notification(self, payload: bytes) -> None:
         callback = self._notification_callback
@@ -222,3 +231,59 @@ def test_unexpected_disconnect_notifies_owner_but_close_does_not() -> None:
 
     assert losses == [True]
     assert not transport.is_connected
+
+
+BATTERY_UUID = "00002a19-0000-1000-8000-00805f9b34fb"
+
+
+def _battery_characteristics(properties: tuple[str, ...]) -> list[FakeCharacteristic]:
+    return [
+        FakeCharacteristic(ORIENTATION_CHARACTERISTIC_UUID, ("notify",)),
+        FakeCharacteristic(BATTERY_UUID, properties),
+    ]
+
+
+def test_bleak_transport_reads_a_readable_characteristic() -> None:
+    transport, constructed = make_transport(characteristics=_battery_characteristics(("read",)))
+    asyncio.run(transport.connect())
+    asyncio.run(transport.discover())
+
+    value = asyncio.run(transport.read_characteristic(BATTERY_UUID.upper()))
+
+    assert value == b"\x55"
+    assert isinstance(value, bytes)
+    assert constructed[0][2].read_calls == [BATTERY_UUID]
+
+
+def test_bleak_transport_refuses_to_read_unreadable_or_unknown_characteristics() -> None:
+    transport, constructed = make_transport(characteristics=_battery_characteristics(("notify",)))
+    asyncio.run(transport.connect())
+    asyncio.run(transport.discover())
+
+    with pytest.raises(UnsupportedDeviceError):
+        asyncio.run(transport.read_characteristic(BATTERY_UUID))
+    with pytest.raises(UnsupportedDeviceError):
+        asyncio.run(transport.read_characteristic("00002a00-0000-1000-8000-00805f9b34fb"))
+    assert constructed[0][2].read_calls == []  # nothing was sent to the device
+
+
+def test_bleak_transport_requires_discovery_and_connection_before_reading() -> None:
+    transport, _ = make_transport(characteristics=_battery_characteristics(("read",)))
+    with pytest.raises(BleConnectionError):
+        asyncio.run(transport.read_characteristic(BATTERY_UUID))
+    asyncio.run(transport.connect())
+    with pytest.raises(UnsupportedDeviceError):  # connected but never discovered
+        asyncio.run(transport.read_characteristic(BATTERY_UUID))
+
+
+@pytest.mark.parametrize("failure", [BleakError("gatt"), OSError("io"), TimeoutError()])
+def test_bleak_read_failures_are_translated_to_project_errors(failure: Exception) -> None:
+    transport, constructed = make_transport(characteristics=_battery_characteristics(("read",)))
+    asyncio.run(transport.connect())
+    asyncio.run(transport.discover())
+    constructed[0][2].read_error = failure
+
+    with pytest.raises(BleConnectionError) as error:
+        asyncio.run(transport.read_characteristic(BATTERY_UUID))
+
+    assert error.value.__cause__ is failure

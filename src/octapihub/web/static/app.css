@@ -344,3 +344,14 @@ select:hover, input:hover { border-color: var(--muted); }
 }
 
 .inline-form { flex-direction: row; align-items: flex-end; flex-wrap: wrap; gap: 1rem; }
+
+/* ---------- battery ---------- */
+.battery { display: flex; flex-direction: column; gap: 0.3rem; }
+.battery-head { display: flex; justify-content: space-between; align-items: baseline; }
+.battery-label { color: var(--muted); font-size: 0.85rem; }
+.battery-off strong { color: var(--muted); font-weight: 600; }
+.battery-warn strong { color: var(--warn); }
+.battery-error strong { color: var(--error); }
+.battery-warn-line { font-size: 0.85rem; font-weight: 600; }
+.battery-warn-warn { color: var(--warn); }
+.battery-warn-error { color: var(--error); }

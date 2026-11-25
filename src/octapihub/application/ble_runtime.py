@@ -14,7 +14,12 @@ from typing import cast
 
 from octapihub.application.ble import DeviceProfile, DeviceTransport, TransportFactory
 from octapihub.core.config import AppConfig, CubeConfig
-from octapihub.core.errors import BleConnectionError, ProtocolError, UnsupportedDeviceError
+from octapihub.core.errors import (
+    BleConnectionError,
+    OctaPiHubError,
+    ProtocolError,
+    UnsupportedDeviceError,
+)
 from octapihub.domain.cube import OrientationDebouncer, OrientationEvent, reconnect_delay_seconds
 
 logger = logging.getLogger(__name__)
@@ -63,6 +68,10 @@ class CubeRuntimeStatus:
     last_value: int | None
     last_error: str | None
     dropped_notifications: int
+    battery_percent: int | None = None
+    battery_checked_at: float | None = None
+    battery_supported: bool | None = None
+    battery_error: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +86,7 @@ class BleRuntimeTuning:
     notification_queue_size: int = 100
     event_queue_size: int = 100
     debounce_ms: int = 300
+    battery_poll_seconds: float = 600.0
 
     def __post_init__(self) -> None:
         if self.connect_timeout_seconds <= 0 or self.operation_timeout_seconds <= 0:
@@ -89,6 +99,8 @@ class BleRuntimeTuning:
             raise ValueError("BLE queue sizes must be positive")
         if not 0 <= self.debounce_ms <= 999:
             raise ValueError("debounce_ms must be between 0 and 999")
+        if self.battery_poll_seconds <= 0:
+            raise ValueError("battery_poll_seconds must be positive")
 
 
 def _monotonic_ms() -> int:
@@ -120,6 +132,10 @@ class BleRuntime:
         tuning: BleRuntimeTuning | None = None,
         monotonic_ms: MonotonicClock = _monotonic_ms,
         jitter: Jitter = _random_jitter,
+        battery_characteristic_uuid: str | None = None,
+        decode_battery: Callable[[bytes], int] | None = None,
+        supports_battery: CapabilityCheck | None = None,
+        wall_clock: Callable[[], float] = time.time,
     ) -> None:
         self._config = config
         self._factory = transport_factory
@@ -129,6 +145,10 @@ class BleRuntime:
         self._tuning = tuning or BleRuntimeTuning(debounce_ms=config.debounce_ms)
         self._monotonic_ms = monotonic_ms
         self._jitter = jitter
+        self._battery_uuid = battery_characteristic_uuid
+        self._decode_battery = decode_battery
+        self._supports_battery = supports_battery
+        self._wall_clock = wall_clock
         self._connection_lock = asyncio.Lock()
         self._stop = asyncio.Event()
         self._events: asyncio.Queue[CubeEvent] = asyncio.Queue(
@@ -291,7 +311,17 @@ class BleRuntime:
                         raise UnsupportedDeviceError(
                             "Cube does not expose the expected orientation notification"
                         )
-                    status = self._replace_status(status, state=CubeConnectionState.SUBSCRIBING)
+                    battery_supported = bool(
+                        self._battery_uuid
+                        and self._decode_battery
+                        and self._supports_battery
+                        and self._supports_battery(profile)
+                    )
+                    status = self._replace_status(
+                        status,
+                        state=CubeConnectionState.SUBSCRIBING,
+                        battery_supported=battery_supported,
+                    )
                     status_ref[0] = status
                     await asyncio.wait_for(
                         transport.start_notify(self._orientation_uuid, on_notification),
@@ -301,6 +331,7 @@ class BleRuntime:
                 if self._stop.is_set():
                     break
                 debouncer = OrientationDebouncer(self._tuning.debounce_ms)
+                next_battery_read_s = 0.0
                 status = self._replace_status(
                     status,
                     state=CubeConnectionState.WAITING_FOR_BASELINE,
@@ -314,6 +345,7 @@ class BleRuntime:
                     disconnected,
                     debouncer,
                     status_ref,
+                    next_battery_read_s,
                 )
                 status = status_ref[0]
                 if not self._stop.is_set():
@@ -416,12 +448,16 @@ class BleRuntime:
         disconnected: asyncio.Event,
         debouncer: OrientationDebouncer,
         status_ref: list[CubeRuntimeStatus],
+        next_battery_read_s: float = 0.0,
     ) -> bool:
         reached_ready = False
         invalid_notifications = 0
         while not self._stop.is_set() and not disconnected.is_set():
             if not transport.is_connected:
                 return reached_ready
+            if status_ref[0].battery_supported and time.monotonic() >= next_battery_read_s:
+                await self._read_battery(cube, transport, status_ref)
+                next_battery_read_s = time.monotonic() + self._tuning.battery_poll_seconds
             timeout = self._tuning.health_poll_seconds
             deadline = debouncer.next_deadline_ms()
             if deadline is not None:
@@ -471,6 +507,38 @@ class BleRuntime:
                 self._publish_event(CubeEvent(cube.name, cube.role.value, event))
         return reached_ready
 
+    async def _read_battery(
+        self,
+        cube: CubeConfig,
+        transport: DeviceTransport,
+        status_ref: list[CubeRuntimeStatus],
+    ) -> None:
+        """Read the battery level; a failure is recorded but never ends the connection."""
+        assert self._battery_uuid is not None and self._decode_battery is not None
+        try:
+            payload = await asyncio.wait_for(
+                transport.read_characteristic(self._battery_uuid),
+                timeout=self._tuning.operation_timeout_seconds,
+            )
+            percent = self._decode_battery(payload)
+        except asyncio.CancelledError:
+            raise
+        except (ProtocolError, BleConnectionError, UnsupportedDeviceError, TimeoutError) as exc:
+            message = (
+                exc.user_message
+                if isinstance(exc, OctaPiHubError)
+                else "Der Akkustand konnte nicht gelesen werden (Zeitüberschreitung)."
+            )
+            status_ref[0] = self._replace_status(status_ref[0], battery_error=message)
+            logger.warning("Battery read failed for cube %s (%s)", cube.name, type(exc).__name__)
+            return
+        status_ref[0] = self._replace_status(
+            status_ref[0],
+            battery_percent=percent,
+            battery_checked_at=self._wall_clock(),
+            battery_error=None,
+        )
+
     def _publish_event(self, event: CubeEvent) -> None:
         if self._events.full():
             try:
@@ -493,6 +561,10 @@ class BleRuntime:
         last_value: int | None | object = _UNSET,
         last_error: str | None | object = _UNSET,
         dropped_notifications: int | None = None,
+        battery_percent: int | None | object = _UNSET,
+        battery_checked_at: float | None | object = _UNSET,
+        battery_supported: bool | None | object = _UNSET,
+        battery_error: str | None | object = _UNSET,
     ) -> CubeRuntimeStatus:
         updated = CubeRuntimeStatus(
             name=status.name,
@@ -512,6 +584,24 @@ class BleRuntime:
                 dropped_notifications
                 if dropped_notifications is not None
                 else status.dropped_notifications
+            ),
+            battery_percent=(
+                status.battery_percent
+                if battery_percent is _UNSET
+                else cast(int | None, battery_percent)
+            ),
+            battery_checked_at=(
+                status.battery_checked_at
+                if battery_checked_at is _UNSET
+                else cast(float | None, battery_checked_at)
+            ),
+            battery_supported=(
+                status.battery_supported
+                if battery_supported is _UNSET
+                else cast(bool | None, battery_supported)
+            ),
+            battery_error=(
+                status.battery_error if battery_error is _UNSET else cast(str | None, battery_error)
             ),
         )
         self._statuses[status.name] = updated

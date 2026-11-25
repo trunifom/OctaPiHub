@@ -60,6 +60,9 @@ class BleakClientLike(Protocol):
     ) -> None:
         """Subscribe to a GATT characteristic."""
 
+    async def read_gatt_char(self, characteristic: str) -> bytearray:
+        """Read one GATT characteristic."""
+
 
 ClientFactory = Callable[[str, Callable[[object], None], str], BleakClientLike]
 
@@ -184,6 +187,27 @@ class BleakDeviceTransport(DeviceTransport):
             )
         except (BleakError, OSError, TimeoutError) as exc:
             raise BleConnectionError("Could not subscribe to the Bluetooth characteristic") from exc
+
+    async def read_characteristic(self, characteristic_uuid: str) -> bytes:
+        """Read a characteristic only when discovery confirmed that it is readable."""
+        client = self._require_connected()
+        requested_uuid = normalize_uuid(characteristic_uuid)
+        readable = self._profile is not None and any(
+            characteristic.uuid == requested_uuid and "read" in characteristic.properties
+            for characteristic in self._profile.characteristics
+        )
+        if not readable:
+            raise UnsupportedDeviceError(
+                "The requested characteristic cannot be read",
+                details={"characteristic_uuid": requested_uuid},
+            )
+        try:
+            payload = await asyncio.wait_for(
+                client.read_gatt_char(requested_uuid), timeout=self._timeout_seconds
+            )
+        except (BleakError, OSError, TimeoutError) as exc:
+            raise BleConnectionError("Could not read the Bluetooth characteristic") from exc
+        return bytes(payload)
 
     async def disconnect(self) -> None:
         """Disconnect and release the cached GATT profile."""

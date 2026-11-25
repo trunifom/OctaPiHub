@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, tzinfo
+from datetime import UTC, datetime, tzinfo
 
 from octapihub.application.ble_runtime import CubeConnectionState, CubeRuntimeStatus
 from octapihub.application.hue_service import HueState, HueStatus
@@ -433,6 +433,11 @@ class CubeView:
     error_text: str
     error_code: str
     attempts: int
+    battery_percent: int | None = None
+    battery_level: str = "off"
+    battery_text: str = ""
+    battery_hint: str = ""
+    battery_checked: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -452,8 +457,48 @@ def _face_text(value: int | None) -> tuple[str, str]:
     return "Zuletzt erkannte Seite", str(value)
 
 
+BATTERY_LOW_PERCENT = 20
+BATTERY_CRITICAL_PERCENT = 10
+
+
+def describe_battery(
+    status: CubeRuntimeStatus | None, tz: tzinfo
+) -> tuple[int | None, str, str, str, str]:
+    """(percent, level, text, hint, checked) for the battery of one cube."""
+    if status is None or not status.connected and status.battery_percent is None:
+        return None, "off", "Unbekannt", "Der Akkustand wird nach dem Verbinden gelesen.", ""
+    percent = status.battery_percent
+    if percent is None:
+        if status.battery_supported is False:
+            return (
+                None,
+                "off",
+                "Nicht abrufbar",
+                "Dieser Würfel meldet keinen Akkustand.",
+                "",
+            )
+        if status.battery_error:
+            return None, "warn", "Nicht lesbar", status.battery_error, ""
+        return None, "off", "Wird gelesen …", "", ""
+    checked = (
+        f"Geprüft um {datetime.fromtimestamp(status.battery_checked_at, tz).strftime('%H:%M')}"
+        if status.battery_checked_at is not None
+        else ""
+    )
+    if percent <= BATTERY_CRITICAL_PERCENT:
+        return percent, "error", f"{percent} %", "Bitte jetzt laden.", checked
+    if percent <= BATTERY_LOW_PERCENT:
+        return percent, "warn", f"{percent} %", "Bald laden.", checked
+    hint = status.battery_error or ""
+    if hint:
+        hint = "Letzter Wert; aktuell nicht lesbar."
+    return percent, "ok", f"{percent} %", hint, checked
+
+
 def build_cube_views(
-    config: AppConfig, statuses: Sequence[CubeRuntimeStatus]
+    config: AppConfig,
+    statuses: Sequence[CubeRuntimeStatus],
+    tz: tzinfo = UTC,
 ) -> tuple[CubeView, ...]:
     """Cards for all configured cubes; cubes without a status show as stopped."""
     by_name = {status.name: status for status in statuses}
@@ -463,6 +508,7 @@ def build_cube_views(
         state = status.state if status is not None else CubeConnectionState.STOPPED
         level, headline, hint = _CUBE_STATE[state]
         face_text, face_number = _face_text(status.last_value if status else None)
+        b_percent, b_level, b_text, b_hint, b_checked = describe_battery(status, tz)
         views.append(
             CubeView(
                 name=cube.name,
@@ -476,6 +522,11 @@ def build_cube_views(
                 error_text=(status.last_error or "") if status else "",
                 error_code=_CUBE_ERROR_CODES.get(state, "") if status and status.last_error else "",
                 attempts=status.reconnect_attempt if status else 0,
+                battery_percent=b_percent,
+                battery_level=b_level,
+                battery_text=b_text,
+                battery_hint=b_hint,
+                battery_checked=b_checked,
             )
         )
     return tuple(views)
@@ -495,6 +546,18 @@ def build_mapping_views(config: AppConfig) -> tuple[MappingView, ...]:
     mappings = sorted(config.mappings, key=lambda m: (order.get(m.cube.casefold(), 99), m.face))
     return tuple(
         MappingView(m.cube, m.face, tuple(describe_action(a) for a in m.actions)) for m in mappings
+    )
+
+
+def battery_warnings(views: Sequence[CubeView]) -> tuple[tuple[str, str], ...]:
+    """(level, text) per cube whose battery should be charged soon."""
+    return tuple(
+        (
+            view.battery_level,
+            f"Würfel „{view.name}“: Akku {view.battery_text}. {view.battery_hint}".strip(),
+        )
+        for view in views
+        if view.battery_level in {"warn", "error"} and view.battery_percent is not None
     )
 
 

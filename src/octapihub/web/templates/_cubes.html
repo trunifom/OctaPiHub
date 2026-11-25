@@ -19,6 +19,12 @@
   </div>
 </div>
 {% endif %}
+{% for level, text in battery_warnings %}
+<div class="notice notice-{{ level }}" role="{{ 'alert' if level == 'error' else 'status' }}">
+  <span class="notice-ico">{{ m.icon('warn' if level == 'warn' else 'error') }}</span>
+  <div class="notice-body"><p class="notice-title">{{ text }}</p></div>
+</div>
+{% endfor %}
 <div class="cards">
   {% for v in cube_views %}
   <article class="card cube level-{{ v.level }}">
@@ -29,6 +35,11 @@
     </header>
     <p><span class="badge badge-{{ v.level }}"><span class="dot" aria-hidden="true"></span>{{ v.state_text }}</span></p>
     {% if v.hint %}<p class="sub">{{ v.hint }}</p>{% endif %}
+    <div class="battery battery-{{ v.battery_level }}">
+      <div class="battery-head"><span class="battery-label">Akku</span><strong>{{ v.battery_text }}</strong></div>
+      {% if v.battery_percent is not none %}<progress class="meter meter-{{ v.battery_level }}" max="100" value="{{ v.battery_percent }}" aria-label="Akkustand {{ v.battery_text }}">{{ v.battery_text }}</progress>{% endif %}
+      {% if v.battery_hint or v.battery_checked %}<p class="help">{{ v.battery_hint }}{% if v.battery_hint and v.battery_checked %} · {% endif %}{{ v.battery_checked }}</p>{% endif %}
+    </div>
     <div class="face">
       <span class="face-num" aria-hidden="true">{{ v.face_number }}</span>
       <span class="face-text">{{ v.face_text }}</span>

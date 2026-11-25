@@ -28,10 +28,11 @@ class FakeDeviceTransport:
         failures: dict[str, Failure] | None = None,
     ) -> None:
         self._profile = profile
-        self._failures = failures or {}
+        self._failures = failures if failures is not None else {}
         self._connected = False
         self._disconnect_callback: DisconnectCallback | None = None
         self._subscriptions: dict[str, NotificationCallback] = {}
+        self._values: dict[str, bytes] = {}
         self.operations: list[str] = []
 
     @property
@@ -76,6 +77,31 @@ class FakeDeviceTransport:
             )
         self._subscriptions[requested_uuid] = callback
         await asyncio.sleep(0)
+
+    async def read_characteristic(self, characteristic_uuid: str) -> bytes:
+        self.operations.append("read")
+        self._require_connected()
+        self._raise_failure("read")
+        requested_uuid = normalize_uuid(characteristic_uuid)
+        characteristic = next(
+            (
+                item
+                for item in self._profile.characteristics
+                if normalize_uuid(item.uuid) == requested_uuid
+            ),
+            None,
+        )
+        if characteristic is None or "read" not in characteristic.properties:
+            raise UnsupportedDeviceError(
+                "The requested characteristic cannot be read",
+                details={"characteristic_uuid": requested_uuid},
+            )
+        await asyncio.sleep(0)
+        return self._values.get(requested_uuid, b"")
+
+    def set_value(self, characteristic_uuid: str, payload: bytes) -> None:
+        """Set what the next read of a characteristic returns."""
+        self._values[normalize_uuid(characteristic_uuid)] = bytes(payload)
 
     async def disconnect(self) -> None:
         self.operations.append("disconnect")
@@ -126,9 +152,12 @@ class FakeTransportFactory:
     ) -> None:
         self._profile = profile
         self._failures = failures
+        self.values: dict[str, dict[str, bytes]] = {}
         self.created: list[tuple[str, str, FakeDeviceTransport]] = []
 
     def create(self, address: str, adapter: str) -> DeviceTransport:
         transport = FakeDeviceTransport(self._profile, failures=self._failures)
+        for uuid, payload in self.values.get(address, {}).items():
+            transport.set_value(uuid, payload)
         self.created.append((address, adapter, transport))
         return cast(DeviceTransport, transport)

@@ -356,3 +356,9 @@ Die Seite System bietet ein ZIP mit `status.json` (Komponentenzustände, Fehlerc
 ## Bis zu drei Würfel und Schema v5
 
 Schema v5 erlaubt **1 bis 3 Würfel** mit beliebiger Rolle (`light`, `music`, `general`; die Rolle beschriftet nur, jede Rolle darf mehrfach vorkommen) und ergänzt die LED-Matrix-Einstellungen: `brightness` (5–100 %), `default_view`, `views` (aktivierte Ansichten in Joystick-Reihenfolge), `auto_cycle_seconds`, Nachtmodus (`night_enabled`, `night_start`, `night_end`, `night_mode` = `off` oder `dim`). Ältere Dateien (v1–v4) bleiben lesbar und erhalten Standardwerte. Die BLE-Laufzeit verbindet die Würfel nacheinander und hält sie gleichzeitig; Zuordnungseditor, Statuskarten und Zuordnung arbeiten mit beliebig vielen konfigurierten Würfeln.
+
+## Akkustand der Würfel (F-W5)
+
+Die BLE-Laufzeit liest nach dem Verbinden und danach alle 10 Minuten (`battery_poll_seconds`) das Standard-Merkmal *Battery Level* (`0x2A19`, ein Byte, 0–100 %), sofern die Entdeckung es mit Eigenschaft `read` meldet. Das Lesen ist Teil des Transportvertrags (`read_characteristic`, nur für als lesbar bestätigte Merkmale; es gibt weiterhin keine Schreibzugriffe). Ein Lesefehler, eine Zeitüberschreitung oder ein ungültiges Paket beenden die Verbindung nie: der Fehler wird am Würfel vermerkt, der letzte bekannte Wert bleibt sichtbar. Fehlt der Dienst, gilt der Würfel als „nicht abrufbar“. Die Oberfläche zeigt je Würfel Balken, Prozent und Hinweis (ab 20 % „Bald laden“, ab 10 % „Bitte jetzt laden“), warnt oben auf der Seite Würfel und auf der Übersicht; das Diagnose-Paket enthält die Werte.
+
+**Ungeprüft:** Ob echte Timeular-/ZEI-Würfel das Standard-Merkmal tatsächlich anbieten und wie genau die Werte sind, ist an Hardware nicht verifiziert (Pflichtenheft F-W5: „Prüfen: lesbar?“). Der zuletzt gelesene Wert wird nicht über einen Neustart des Dienstes hinweg gespeichert.

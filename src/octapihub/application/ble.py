@@ -1,4 +1,4 @@
-"""Application ports for read-only BLE device transports."""
+"""Application ports for BLE device transports (notifications and reads only)."""
 
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ class DeviceProfile:
 class DeviceTransport(Protocol):
     """One connection to one cube, owned by a single asyncio event loop.
 
-    The contract intentionally exposes no GATT write method. Adapter-specific client
-    objects must not escape this boundary.
+    The contract intentionally exposes no GATT write method (reads are allowed).
+    Adapter-specific client objects must not escape this boundary.
     """
 
     @property
@@ -47,6 +47,9 @@ class DeviceTransport(Protocol):
 
     async def start_notify(self, characteristic_uuid: str, callback: NotificationCallback) -> None:
         """Subscribe to notifications or indications for one characteristic."""
+
+    async def read_characteristic(self, characteristic_uuid: str) -> bytes:
+        """Read one characteristic that discovery confirmed as readable."""
 
     async def disconnect(self) -> None:
         """Release the connection and all associated subscriptions."""
