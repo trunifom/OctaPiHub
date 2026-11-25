@@ -28,7 +28,7 @@ Aktuell implementiert sind:
 Der BLE-Transport und die Laufzeit sind implementiert und lokal mit Fakes getestet.
 Regelzuordnung, generische Outbox und Hue-Adapter sind lokal getestet. Der Hue-Adapter
 wurde nicht gegen eine echte Bridge geprüft; Hue-Kopplung/Key-Verwaltung, Audio-Aktionen,
-ein startbarer Systemdienst/Composition Root, Sensorhistorie und
+ein startbarer Systemdienst/Composition Root, und
 Weboberfläche sind noch nicht implementiert. Der Sense-HAT-Port und Hardwareadapter
 sind mit einem Fake getestet, aber nicht auf echter Hardware verifiziert. Die
 Fähigkeitserkennung meldet ohne erkannten Farbsensor absichtlich keine automatische
@@ -268,3 +268,17 @@ Farbsensor) wird als `unavailable` markiert und nicht abgefragt. Samples enthalt
 unveränderten Rohwert; die Temperaturkorrektur (`roh * Faktor + Offset`) liegt separat als
 `corrected_temperature_c` daneben, Anzeigepräzision wird hier nicht angewandt. Verlauf
 und Weboberfläche hängen sich später über den Sample-Sink an.
+
+## Sense-HAT-Verlauf
+
+`SenseHatHistoryRecorder` (application) ist ein Sample-Sink, der nur Gruppen mit
+aktivem Verlauf (`history.enabled` und `history_enabled` der Gruppe) puffert und in
+Stapeln schreibt (Standard: 20 Samples oder 300 s), um SQLite-Commits und SD-Karten-
+Schreibzugriffe zu reduzieren. Bei Speicherfehlern bleibt der begrenzte Puffer erhalten
+(älteste Samples werden verworfen und gezählt); der Worker bleibt unberührt.
+`SQLiteSenseHatHistory` (infrastructure, WAL, `synchronous=NORMAL`) speichert unrunde
+Rohwerte mit UTC-Zeitstempel, Skalarwerte in einer Spalte, Vektoren/Orientierung als JSON.
+Aufbewahrung (`retention_days`) wird höchstens stündlich per Löschung angewandt.
+`query_series` liefert Zeitreihen, optional als Mittelwert je Zeitfenster für Graphen.
+Beim Beenden muss der Dienst `flush()` aufrufen (Composition Root, noch offen); bei hartem
+Stromverlust können die zuletzt gepufferten Samples fehlen.

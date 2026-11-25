@@ -90,6 +90,13 @@ class SenseHatFeatureUnavailable(SenseHatError):
     default_user_message = "Diese Funktion ist auf dem erkannten Sense HAT nicht verfügbar."
 
 
+class HistoryError(OctaPiHubError):
+    """The persistent sensor history could not be accessed or updated."""
+
+    code = "CH-DB-002"
+    default_user_message = "Der Sensorverlauf konnte nicht gelesen oder gespeichert werden."
+
+
 class PluginError(OctaPiHubError):
     """A plugin could not be loaded, validated or resolved."""
 
