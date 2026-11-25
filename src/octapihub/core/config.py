@@ -15,6 +15,7 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
+from urllib.parse import urlsplit
 
 from octapihub.core.errors import ConfigurationError, ValidationError
 
@@ -31,6 +32,9 @@ CUBE_FACES = 8
 HOLDER_FACE = 0  # "no face up": the cube rests in its holder (mappable, like the faces)
 MAX_MUSIC_TARGETS = 8
 MAX_FACE_LABEL_LENGTH = 40
+MAX_SMART_CONNECTIONS = 8
+MAX_SMART_ACTIONS = 64
+MAX_SMART_TEXT = 500
 MAX_PLAYLISTS = 64
 MAX_SOURCE_LENGTH = 2000
 _SLUG_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
@@ -355,6 +359,62 @@ class BluetoothConfig:
     adapter: str
 
 
+class SmartConnectionKind(StrEnum):
+    """What a shared smart-home connection speaks."""
+
+    MQTT = "mqtt"  # address "host:port"
+    HOMEASSISTANT = "homeassistant"  # address "http(s)://host:port"; also the way to Matter
+
+
+class SmartActionKind(StrEnum):
+    """What a smart-home action does."""
+
+    HTTP = "http"
+    MQTT = "mqtt"
+    HOMEASSISTANT = "homeassistant"
+
+
+@dataclass(frozen=True, slots=True)
+class SmartConnectionConfig:
+    """A broker or Home Assistant address; its password or token lives in ``secrets.env``."""
+
+    id: str
+    name: str
+    kind: SmartConnectionKind
+    address: str
+    tls: bool = False
+    username: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class SmartActionConfig:
+    """One thing a cube face can do in another smart-home system."""
+
+    id: str
+    name: str
+    kind: SmartActionKind
+    connection: str = ""
+    url: str = ""
+    method: str = "POST"
+    body: str = ""
+    content_type: str = "application/json"
+    topic: str = ""
+    payload: str = ""
+    retain: bool = False
+    qos: int = 0
+    service: str = ""
+    entity_id: str = ""
+    data: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class SmartHomeConfig:
+    """Connections and actions for other smart-home systems (all off until defined)."""
+
+    connections: tuple[SmartConnectionConfig, ...] = ()
+    actions: tuple[SmartActionConfig, ...] = ()
+
+
 @dataclass(frozen=True, slots=True)
 class FaceLabelConfig:
     """A name and/or colour a person gave to one cube face or joystick direction."""
@@ -378,6 +438,7 @@ class AppConfig:
     hue: HueConfig = field(default_factory=HueConfig)
     music: MusicConfig = field(default_factory=MusicConfig)
     face_labels: tuple[FaceLabelConfig, ...] = ()
+    smarthome: SmartHomeConfig = field(default_factory=SmartHomeConfig)
 
 
 def load_config(path: str | Path) -> AppConfig:
@@ -521,6 +582,56 @@ def with_mappings_table(config: AppConfig, raw_mappings: Sequence[object]) -> Ap
         ValidationError: If any mapping violates the schema.
     """
     return replace(config, mappings=_parse_mappings(raw_mappings, config.cubes))
+
+
+def smarthome_table(smarthome: SmartHomeConfig) -> dict[str, object]:
+    """Return the smart-home settings as a plain TOML-shaped table for editing."""
+    return {
+        "connections": [
+            {
+                "id": c.id,
+                "name": c.name,
+                "kind": c.kind.value,
+                "address": c.address,
+                "tls": c.tls,
+                "username": c.username,
+            }
+            for c in smarthome.connections
+        ],
+        "actions": [
+            {
+                key: value
+                for key, value in {
+                    "id": a.id,
+                    "name": a.name,
+                    "kind": a.kind.value,
+                    "connection": a.connection,
+                    "url": a.url,
+                    "method": a.method,
+                    "body": a.body,
+                    "content_type": a.content_type,
+                    "topic": a.topic,
+                    "payload": a.payload,
+                    "retain": a.retain,
+                    "qos": a.qos,
+                    "service": a.service,
+                    "entity_id": a.entity_id,
+                    "data": a.data,
+                }.items()
+                if value not in ("", False, 0) or key in ("id", "name", "kind")
+            }
+            for a in smarthome.actions
+        ],
+    }
+
+
+def with_smarthome_table(config: AppConfig, table: Mapping[str, object]) -> AppConfig:
+    """Return ``config`` with replaced, fully validated smart-home settings.
+
+    Raises:
+        ValidationError: If any value violates the schema.
+    """
+    return replace(config, smarthome=_parse_smarthome(table))
 
 
 def cubes_table(config: AppConfig) -> list[dict[str, object]]:
@@ -678,6 +789,7 @@ def _serialize_config(config: AppConfig) -> str:
         "hue": hue_table(config.hue),
         "music": music_table(config.music),
         "face_labels": face_labels_table(config),
+        "smarthome": smarthome_table(config.smarthome),
     }
     validated = parse_config(data)
     lines = [
@@ -716,6 +828,23 @@ def _serialize_config(config: AppConfig) -> str:
                     f"parameters = {_toml_value(action.parameters)}",
                 ]
             )
+    for connection in validated.smarthome.connections:
+        lines.extend(
+            [
+                "",
+                "[[smarthome.connections]]",
+                f"id = {_toml_string(connection.id)}",
+                f"name = {_toml_string(connection.name)}",
+                f"kind = {_toml_string(connection.kind.value)}",
+                f"address = {_toml_string(connection.address)}",
+                f"tls = {_toml_value(connection.tls)}",
+                f"username = {_toml_string(connection.username)}",
+            ]
+        )
+    for action in smarthome_table(validated.smarthome)["actions"]:  # type: ignore[attr-defined]
+        lines.extend(["", "[[smarthome.actions]]"])
+        for key, value in action.items():
+            lines.append(f"{key} = {_toml_value(value)}")
     for label in validated.face_labels:
         lines.extend(
             ["", "[[face_labels]]", f"cube = {_toml_string(label.cube)}", f"face = {label.face}"]
@@ -917,7 +1046,7 @@ def parse_config(data: object) -> AppConfig:
     if schema_version >= 6:
         allowed_root_keys.add("music")
     if schema_version >= 7:
-        allowed_root_keys.add("face_labels")
+        allowed_root_keys.update({"face_labels", "smarthome"})
     _check_keys(root, allowed_root_keys, "root")
 
     bluetooth_table = _require_table(root.get("bluetooth"), "bluetooth")
@@ -978,6 +1107,10 @@ def parse_config(data: object) -> AppConfig:
             raise ValidationError("face_labels must be an array", details={"field": "face_labels"})
         face_labels = _parse_face_labels(raw_labels, cubes)
 
+    smarthome = (
+        _parse_smarthome(root.get("smarthome", {})) if schema_version >= 7 else SmartHomeConfig()
+    )
+
     return AppConfig(
         schema_version=SUPPORTED_SCHEMA_VERSION,
         bluetooth=BluetoothConfig(adapter=adapter),
@@ -988,6 +1121,7 @@ def parse_config(data: object) -> AppConfig:
         hue=hue,
         music=music,
         face_labels=face_labels,
+        smarthome=smarthome,
     )
 
 
@@ -1452,6 +1586,209 @@ def _parse_sensor(value: object, field: str, defaults: SensorConfig) -> SensorCo
         presentation=presentation,
         precision=precision,
     )
+
+
+_SERVICE_PATTERN = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
+_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
+
+
+def _parse_smarthome(value: object) -> SmartHomeConfig:
+    table = _require_table(value, "smarthome")
+    _check_keys(table, {"connections", "actions"}, "smarthome")
+    raw_connections = table.get("connections", [])
+    raw_actions = table.get("actions", [])
+    if (
+        not isinstance(raw_connections, (list, tuple))
+        or len(raw_connections) > MAX_SMART_CONNECTIONS
+    ):
+        raise ValidationError(
+            f"smarthome.connections must be a list of at most {MAX_SMART_CONNECTIONS} entries",
+            details={"field": "smarthome.connections"},
+        )
+    if not isinstance(raw_actions, (list, tuple)) or len(raw_actions) > MAX_SMART_ACTIONS:
+        raise ValidationError(
+            f"smarthome.actions must be a list of at most {MAX_SMART_ACTIONS} entries",
+            details={"field": "smarthome.actions"},
+        )
+    connections = tuple(_parse_smart_connection(c, i) for i, c in enumerate(raw_connections))
+    if len({c.id for c in connections}) != len(connections):
+        raise ValidationError(
+            "Smart-home connection ids must be unique", details={"field": "smarthome.connections"}
+        )
+    kinds = {c.id: c.kind for c in connections}
+    actions = tuple(_parse_smart_action(a, i, kinds) for i, a in enumerate(raw_actions))
+    if len({a.id for a in actions}) != len(actions):
+        raise ValidationError(
+            "Smart-home action ids must be unique", details={"field": "smarthome.actions"}
+        )
+    return SmartHomeConfig(connections, actions)
+
+
+def _slug(value: object, field: str) -> str:
+    text = _single_line(value, field, maximum=32, required=True)
+    if not _SLUG_PATTERN.fullmatch(text):
+        raise ValidationError(
+            f"{field} must be lower-case letters, digits, '-' or '_' (start with a letter)",
+            details={"field": field},
+        )
+    return text
+
+
+def _parse_smart_connection(value: object, index: int) -> SmartConnectionConfig:
+    field = f"smarthome.connections[{index}]"
+    table = _require_table(value, field)
+    _check_keys(table, {"id", "name", "kind", "address", "tls", "username"}, field)
+    try:
+        kind = SmartConnectionKind(_require_string(table.get("kind"), f"{field}.kind"))
+    except ValueError as exc:
+        raise ValidationError(
+            "connection kind must be 'mqtt' or 'homeassistant'", details={"field": f"{field}.kind"}
+        ) from exc
+    address = _single_line(table.get("address"), f"{field}.address", maximum=300, required=True)
+    if kind is SmartConnectionKind.MQTT:
+        host, _, port_text = address.rpartition(":")
+        if (
+            not host
+            or not port_text.isdigit()
+            or not 1 <= int(port_text) <= 65535
+            or not _valid_host(host)
+        ):
+            raise ValidationError(
+                "An MQTT address must look like host:1883", details={"field": f"{field}.address"}
+            )
+    else:
+        parts = urlsplit(address)
+        try:
+            parts.port  # noqa: B018
+        except ValueError as exc:
+            raise ValidationError(
+                "Invalid Home Assistant address", details={"field": f"{field}.address"}
+            ) from exc
+        if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username:
+            raise ValidationError(
+                "A Home Assistant address must look like http://host:8123",
+                details={"field": f"{field}.address"},
+            )
+        address = address.rstrip("/")
+    return SmartConnectionConfig(
+        id=_slug(table.get("id"), f"{field}.id"),
+        name=_single_line(table.get("name"), f"{field}.name", maximum=60, required=True),
+        kind=kind,
+        address=address,
+        tls=_require_bool(table.get("tls", False), f"{field}.tls"),
+        username=_single_line(table.get("username", ""), f"{field}.username", maximum=100),
+    )
+
+
+def _parse_smart_action(
+    value: object, index: int, connection_kinds: Mapping[str, SmartConnectionKind]
+) -> SmartActionConfig:
+    field = f"smarthome.actions[{index}]"
+    table = _require_table(value, field)
+    _check_keys(
+        table,
+        {
+            "id", "name", "kind", "connection", "url", "method", "body", "content_type",
+            "topic", "payload", "retain", "qos", "service", "entity_id", "data",
+        },
+        field,
+    )  # fmt: skip
+    try:
+        kind = SmartActionKind(_require_string(table.get("kind"), f"{field}.kind"))
+    except ValueError as exc:
+        raise ValidationError(
+            "action kind must be 'http', 'mqtt' or 'homeassistant'",
+            details={"field": f"{field}.kind"},
+        ) from exc
+
+    def text(key: str, maximum: int = MAX_SMART_TEXT) -> str:
+        return _single_line(table.get(key, ""), f"{field}.{key}", maximum=maximum)
+
+    action = SmartActionConfig(
+        id=_slug(table.get("id"), f"{field}.id"),
+        name=_single_line(table.get("name"), f"{field}.name", maximum=60, required=True),
+        kind=kind,
+        connection=text("connection", 32),
+        url=text("url", 2000),
+        method=text("method", 10) or "POST",
+        body=text("body"),
+        content_type=text("content_type", 60) or "application/json",
+        topic=text("topic", 200),
+        payload=text("payload"),
+        retain=_require_bool(table.get("retain", False), f"{field}.retain"),
+        qos=table.get("qos", 0) if isinstance(table.get("qos", 0), int) else -1,  # type: ignore[arg-type]
+        service=text("service", 100),
+        entity_id=text("entity_id", 100),
+        data=text("data"),
+    )
+    if action.kind is SmartActionKind.HTTP:
+        parts = urlsplit(action.url)
+        try:
+            parts.port  # noqa: B018
+        except ValueError as exc:
+            raise ValidationError("Invalid web address", details={"field": f"{field}.url"}) from exc
+        if (
+            parts.scheme not in {"http", "https"}
+            or not parts.hostname
+            or parts.username
+            or " " in action.url
+        ):
+            raise ValidationError(
+                "A web address must start with http:// or https://",
+                details={"field": f"{field}.url"},
+            )
+        if action.method not in _METHODS:
+            raise ValidationError(
+                "method must be GET, POST, PUT, PATCH or DELETE",
+                details={"field": f"{field}.method"},
+            )
+        if action.content_type not in ("application/json", "text/plain"):
+            raise ValidationError(
+                "content_type must be application/json or text/plain",
+                details={"field": f"{field}.content_type"},
+            )
+        return action
+    wanted = (
+        SmartConnectionKind.MQTT
+        if action.kind is SmartActionKind.MQTT
+        else SmartConnectionKind.HOMEASSISTANT
+    )
+    if connection_kinds.get(action.connection) is not wanted:
+        raise ValidationError(
+            "The action refers to a missing or wrong kind of connection",
+            details={"field": f"{field}.connection"},
+        )
+    if action.kind is SmartActionKind.MQTT:
+        if (
+            not action.topic
+            or any(c in action.topic for c in "+#\x00")
+            or action.topic.startswith("$")
+        ):
+            raise ValidationError(
+                "An MQTT topic must be set and may not contain +, # or start with $",
+                details={"field": f"{field}.topic"},
+            )
+        if action.qos not in (0, 1):
+            raise ValidationError("qos must be 0 or 1", details={"field": f"{field}.qos"})
+        return action
+    if not _SERVICE_PATTERN.fullmatch(action.service):
+        raise ValidationError(
+            "service must look like light.turn_on", details={"field": f"{field}.service"}
+        )
+    if action.entity_id and not _SERVICE_PATTERN.fullmatch(action.entity_id):
+        raise ValidationError(
+            "entity_id must look like light.desk", details={"field": f"{field}.entity_id"}
+        )
+    if action.data:
+        try:
+            parsed = json.loads(action.data)
+        except ValueError as exc:
+            raise ValidationError(
+                "data must be a JSON object", details={"field": f"{field}.data"}
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise ValidationError("data must be a JSON object", details={"field": f"{field}.data"})
+    return action
 
 
 _COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")

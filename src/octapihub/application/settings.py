@@ -8,6 +8,7 @@ import shutil
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 
 from octapihub.application.backup import SECTION_ORDER, Bundle, prepare_section
 from octapihub.application.cube_service import CubeService
@@ -15,6 +16,7 @@ from octapihub.application.hue_service import HueService
 from octapihub.application.matrix.service import MatrixDisplayService
 from octapihub.application.music.service import MusicService
 from octapihub.application.sense_hat_service import SenseHatService
+from octapihub.application.smarthome import SmartHomeService, secret_key
 from octapihub.core.config import (
     AppConfig,
     save_config,
@@ -24,12 +26,21 @@ from octapihub.core.config import (
     with_mappings_table,
     with_music_table,
     with_sense_hat_table,
+    with_smarthome_table,
 )
 from octapihub.core.errors import ConfigurationError, ValidationError
 
 logger = logging.getLogger(__name__)
 
 KEEP_BACKUPS = 5
+
+
+class SecretWriter(Protocol):
+    """Where connection passwords and tokens are kept."""
+
+    def set(self, key: str, value: str) -> None: ...
+
+    def delete(self, key: str) -> bool: ...
 
 
 class SettingsManager:
@@ -49,6 +60,8 @@ class SettingsManager:
         cubes: CubeService | None = None,
         matrix: MatrixDisplayService | None = None,
         music: MusicService | None = None,
+        smarthome: SmartHomeService | None = None,
+        secrets: SecretWriter | None = None,
     ) -> None:
         self._path = Path(path)
         self._config = config
@@ -57,6 +70,8 @@ class SettingsManager:
         self._cubes = cubes
         self._matrix = matrix
         self._music = music
+        self._smarthome = smarthome
+        self._secrets = secrets
         self._lock = asyncio.Lock()
 
     @property
@@ -262,3 +277,33 @@ class SettingsManager:
                 )
             logger.info("Imported settings: %s", ", ".join(wanted))
             return notes
+
+    async def apply_smarthome(
+        self, table: Mapping[str, object], secrets: Mapping[str, str] | None = None
+    ) -> AppConfig:
+        """Validate, save, and apply smart-home settings (new secrets go to the secrets file).
+
+        Secrets of removed connections are deleted. Nothing changes if validation fails.
+
+        Raises:
+            ValidationError: If the table is invalid (nothing is saved).
+            ConfigurationError: If the file cannot be written.
+            SecretsError: If a secret cannot be stored (the settings are not saved then).
+        """
+        async with self._lock:
+            candidate = with_smarthome_table(self._config, table)
+            if self._secrets is not None:
+                for connection_id, value in (secrets or {}).items():
+                    await asyncio.to_thread(self._secrets.set, secret_key(connection_id), value)
+            await asyncio.to_thread(save_config, self._path, candidate)
+            removed = {c.id for c in self._config.smarthome.connections} - {
+                c.id for c in candidate.smarthome.connections
+            }
+            self._config = candidate
+            if self._secrets is not None:
+                for connection_id in removed:
+                    await asyncio.to_thread(self._secrets.delete, secret_key(connection_id))
+            if self._smarthome is not None:
+                self._smarthome.reconfigure(candidate.smarthome)
+            logger.info("Smart-home settings saved and applied")
+            return candidate

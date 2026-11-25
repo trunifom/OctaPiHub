@@ -441,8 +441,9 @@ _ACTION_TEXT = {
     "light.color.next": "Nächste Farbe",
     "scene.next": "Nächste Szene",
     "scene.previous": "Vorherige Szene",
+    "trigger": "Auslösen",
 }
-_KIND_TEXT = {"hue": "Hue-Licht", "music": "Musik"}
+_KIND_TEXT = {"hue": "Hue-Licht", "music": "Musik", "smarthome": "Smart Home"}
 
 
 @dataclass(frozen=True, slots=True)

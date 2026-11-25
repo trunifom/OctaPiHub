@@ -152,6 +152,39 @@ class MusicUnsupportedError(MusicError):
     retryable = False
 
 
+class SmartHomeError(OctaPiHubError):
+    """A smart-home action (web request, MQTT message, Home Assistant call) failed."""
+
+    code = "CH-HOME-001"
+    default_user_message = "Die Smart-Home-Aktion ist fehlgeschlagen."
+    # Only failures that certainly sent nothing are retried (a repeated "toggle" flips twice).
+    retryable: ClassVar[bool] = False
+
+
+class SmartHomeConnectionError(SmartHomeError):
+    """The target could not be reached; nothing was sent, so trying again is safe."""
+
+    code = "CH-HOME-002"
+    default_user_message = (
+        "Das Smart-Home-Gerät ist nicht erreichbar. Bitte Adresse, Netzwerk und Gerät prüfen."
+    )
+    retryable = True
+
+
+class SmartHomeRejectedError(SmartHomeError):
+    """The target answered with an error, or refused the credentials."""
+
+    code = "CH-HOME-003"
+    default_user_message = "Das Smart-Home-Gerät hat die Anfrage abgelehnt."
+
+
+class SmartHomeNotConfiguredError(SmartHomeError):
+    """The action or its connection does not exist or is incomplete."""
+
+    code = "CH-HOME-004"
+    default_user_message = "Diese Smart-Home-Aktion ist nicht (mehr) eingerichtet."
+
+
 class PluginError(OctaPiHubError):
     """A plugin could not be loaded, validated or resolved."""
 

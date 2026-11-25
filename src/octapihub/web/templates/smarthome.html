@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Smart Home</h1>
+    <p class="lead">Steuern Sie mit Würfelseiten auch andere Systeme: Webhooks, MQTT-Geräte (Zigbee2MQTT, Tasmota, ESPHome …) und Home Assistant, der Weg zu Matter-, Zigbee- und Google-Home-Geräten.</p>
+  </div>
+</div>
+
+{% if banner %}
+<div class="notice notice-{{ banner.level }}" role="{{ 'alert' if banner.level == 'error' else 'status' }}">
+  <span class="notice-ico">{{ m.icon(banner.level) }}</span>
+  <div class="notice-body">
+    <p class="notice-title">{{ banner.title }}</p>
+    {% if banner.detail %}<p>{{ banner.detail }}</p>{% endif %}
+    {% if banner.code %}<p class="notice-code">Fehlercode <code>{{ banner.code }}</code></p>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if not writable %}
+<div class="notice notice-info" role="status">
+  <span class="notice-ico">{{ m.icon('info') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Nur ansehen: Ändern ist noch nicht freigeschaltet</p>
+    <p>Legen Sie ein Zugriffs-Token mit <code>OCTAPIHUB_WEB_TOKEN</code> fest und starten Sie den Dienst neu.</p>
+  </div>
+</div>
+{% endif %}
+
+<form method="post" action="/smarthome" id="smarthome-form" novalidate>
+  <button type="submit" name="action" value="save" class="visually-hidden" tabindex="-1" aria-hidden="true">Speichern</button>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2><span class="step-no">1</span> Verbindungen</h2>
+      <p class="muted">Eine Verbindung brauchen Sie für MQTT (Adresse des Brokers) und für Home Assistant (Adresse und Zugriffstoken). Für einfache Webhooks ist keine Verbindung nötig. Passwörter und Tokens werden nur in der geschützten Datei <code>secrets.env</code> gespeichert, nie in der Konfiguration, in Protokollen oder in Exporten.</p>
+    </div>
+    {% for row in connection_rows %}
+    {% set k = row.key %}
+    <fieldset class="card-edit">
+      <legend>{% if k == 'new' %}Neue Verbindung{% else %}{{ form.get('c.' ~ k ~ '.name', 'Verbindung') }}{% endif %}</legend>
+      {% if k != 'new' %}<input type="hidden" name="c.{{ k }}.id" value="{{ form.get('c.' ~ k ~ '.id', '') }}">{% endif %}
+      <div class="fields-2">
+        <div class="field">
+          <label for="f-c.{{ k }}.name">Name</label>
+          <input type="text" name="c.{{ k }}.name" id="f-c.{{ k }}.name" maxlength="60" placeholder="z. B. Home Assistant" value="{{ form.get('c.' ~ k ~ '.name', '') }}"{% if errors.get('c.' ~ k ~ '.name') %} aria-invalid="true" aria-describedby="err-c.{{ k }}.name"{% endif %}>
+          {{ m.field_error(errors, 'c.' ~ k ~ '.name') }}
+        </div>
+        <div class="field">
+          <label for="f-c.{{ k }}.kind">Art</label>
+          {{ m.select('c.' ~ k ~ '.kind', connection_kind_labels, form, errors) }}
+          {{ m.field_error(errors, 'c.' ~ k ~ '.kind') }}
+        </div>
+        <div class="field">
+          <label for="f-c.{{ k }}.address">Adresse</label>
+          <input type="text" name="c.{{ k }}.address" id="f-c.{{ k }}.address" autocomplete="off" placeholder="MQTT: 192.168.1.20:1883 · Home Assistant: http://192.168.1.20:8123" value="{{ form.get('c.' ~ k ~ '.address', '') }}"{% if errors.get('c.' ~ k ~ '.address') %} aria-invalid="true" aria-describedby="err-c.{{ k }}.address"{% endif %}>
+          {{ m.field_error(errors, 'c.' ~ k ~ '.address') }}
+        </div>
+        <div class="field">
+          <label for="f-c.{{ k }}.username">Benutzername (nur MQTT, leer = ohne Anmeldung)</label>
+          <input type="text" name="c.{{ k }}.username" id="f-c.{{ k }}.username" autocomplete="off" value="{{ form.get('c.' ~ k ~ '.username', '') }}"{% if errors.get('c.' ~ k ~ '.username') %} aria-invalid="true" aria-describedby="err-c.{{ k }}.username"{% endif %}>
+          {{ m.field_error(errors, 'c.' ~ k ~ '.username') }}
+        </div>
+        <div class="field">
+          <label for="f-c.{{ k }}.secret">Passwort (MQTT) oder Zugriffstoken (Home Assistant)</label>
+          <input type="password" name="c.{{ k }}.secret" id="f-c.{{ k }}.secret" autocomplete="new-password" placeholder="{{ 'gespeichert – leer lassen zum Behalten' if row.has_secret else 'noch nicht gespeichert' }}">
+          {% if row.has_secret %}<small class="help">Es ist ein Wert gespeichert. Ein neuer Wert ersetzt ihn.</small>{% endif %}
+        </div>
+        <label class="check"><input type="checkbox" name="c.{{ k }}.tls"{% if form.get('c.' ~ k ~ '.tls') %} checked{% endif %}> <span>Verschlüsselt (TLS, nur MQTT, meist Port 8883)</span></label>
+        {% if k != 'new' %}<label class="check"><input type="checkbox" name="c.{{ k }}.remove" value="on"> <span>Diese Verbindung entfernen</span></label>{% endif %}
+      </div>
+    </fieldset>
+    {% endfor %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2><span class="step-no">2</span> Aktionen</h2>
+      <p class="muted">Eine Aktion ist ein Schritt, den eine Würfelseite auslösen kann. Sie wählen sie danach auf der Seite „Würfel“ unter „Smart Home“. Nutzen Sie nach Möglichkeit „Ein“ und „Aus“ statt „Umschalten“: Umschalten wirkt bei jedem Senden erneut.</p>
+    </div>
+    {% for row in action_rows %}
+    {% set k = row.key %}
+    <fieldset class="card-edit">
+      <legend>{% if k == 'new' %}Neue Aktion{% else %}{{ form.get('a.' ~ k ~ '.name', 'Aktion') }}{% endif %}</legend>
+      {% if k != 'new' %}<input type="hidden" name="a.{{ k }}.id" value="{{ form.get('a.' ~ k ~ '.id', '') }}">{% endif %}
+      {% if row.result %}
+      <p class="now"><span class="badge badge-{{ 'ok' if row.result.ok else 'error' }}">{{ 'Zuletzt gesendet' if row.result.ok else 'Zuletzt fehlgeschlagen' }}</span>
+        {% if not row.result.ok %}<span class="field-error">{{ row.result.message }} <code>{{ row.result.code }}</code></span>{% endif %}</p>
+      {% endif %}
+      <div class="fields-2">
+        <div class="field">
+          <label for="f-a.{{ k }}.name">Name</label>
+          <input type="text" name="a.{{ k }}.name" id="f-a.{{ k }}.name" maxlength="60" placeholder="z. B. Schreibtischlampe an" value="{{ form.get('a.' ~ k ~ '.name', '') }}"{% if errors.get('a.' ~ k ~ '.name') %} aria-invalid="true" aria-describedby="err-a.{{ k }}.name"{% endif %}>
+          {{ m.field_error(errors, 'a.' ~ k ~ '.name') }}
+        </div>
+        <div class="field">
+          <label for="f-a.{{ k }}.kind">Art</label>
+          {{ m.select('a.' ~ k ~ '.kind', action_kind_labels, form, errors) }}
+          {{ m.field_error(errors, 'a.' ~ k ~ '.kind') }}
+        </div>
+        <div class="field">
+          <label for="f-a.{{ k }}.connection">Verbindung (MQTT und Home Assistant)</label>
+          <select name="a.{{ k }}.connection" id="f-a.{{ k }}.connection"{% if errors.get('a.' ~ k ~ '.connection') %} aria-invalid="true" aria-describedby="err-a.{{ k }}.connection"{% endif %}>
+            <option value="">–</option>
+            {% for cid, cname in connection_options.items() %}<option value="{{ cid }}"{% if cid == form.get('a.' ~ k ~ '.connection', '') %} selected{% endif %}>{{ cname }}</option>{% endfor %}
+          </select>
+          {{ m.field_error(errors, 'a.' ~ k ~ '.connection') }}
+        </div>
+      </div>
+      <details class="more"{% if form.get('a.' ~ k ~ '.kind', 'http') == 'http' or errors.get('a.' ~ k ~ '.url') %} open{% endif %}>
+        <summary>Webhook: Adresse aufrufen</summary>
+        <div class="fields-2">
+          <div class="field field-wide">
+            <label for="f-a.{{ k }}.url">Web-Adresse</label>
+            <input type="text" name="a.{{ k }}.url" id="f-a.{{ k }}.url" autocomplete="off" placeholder="http://192.168.1.30/cm?cmnd=Power%20On" value="{{ form.get('a.' ~ k ~ '.url', '') }}"{% if errors.get('a.' ~ k ~ '.url') %} aria-invalid="true" aria-describedby="err-a.{{ k }}.url"{% endif %}>
+            {{ m.field_error(errors, 'a.' ~ k ~ '.url') }}
+          </div>
+          <div class="field">
+            <label for="f-a.{{ k }}.method">Anfrage-Art</label>
+            {{ m.select('a.' ~ k ~ '.method', method_labels, form, errors) }}
+          </div>
+          <div class="field">
+            <label for="f-a.{{ k }}.content_type">Inhaltstyp</label>
+            {{ m.select('a.' ~ k ~ '.content_type', content_type_labels, form, errors) }}
+          </div>
+          <div class="field field-wide">
+            <label for="f-a.{{ k }}.body">Inhalt (optional)</label>
+            <input type="text" name="a.{{ k }}.body" id="f-a.{{ k }}.body" autocomplete="off" placeholder='{"state":"ON"}' value="{{ form.get('a.' ~ k ~ '.body', '') }}"{% if errors.get('a.' ~ k ~ '.body') %} aria-invalid="true" aria-describedby="err-a.{{ k }}.body"{% endif %}>
+            {{ m.field_error(errors, 'a.' ~ k ~ '.body') }}
+          </div>
+        </div>
+      </details>
+      <details class="more"{% if form.get('a.' ~ k ~ '.kind') == 'mqtt' or errors.get('a.' ~ k ~ '.topic') %} open{% endif %}>
+        <summary>MQTT: Nachricht senden</summary>
+        <div class="fields-2">
+          <div class="field">
+            <label for="f-a.{{ k }}.topic">Thema (Topic)</label>
+            <input type="text" name="a.{{ k }}.topic" id="f-a.{{ k }}.topic" autocomplete="off" placeholder="zigbee2mqtt/lampe/set" value="{{ form.get('a.' ~ k ~ '.topic', '') }}"{% if errors.get('a.' ~ k ~ '.topic') %} aria-invalid="true" aria-describedby="err-a.{{ k }}.topic"{% endif %}>
+            {{ m.field_error(errors, 'a.' ~ k ~ '.topic') }}
+          </div>
+          <div class="field">
+            <label for="f-a.{{ k }}.payload">Inhalt (Payload)</label>
+            <input type="text" name="a.{{ k }}.payload" id="f-a.{{ k }}.payload" autocomplete="off" placeholder='{"state":"ON"}' value="{{ form.get('a.' ~ k ~ '.payload', '') }}"{% if errors.get('a.' ~ k ~ '.payload') %} aria-invalid="true" aria-describedby="err-a.{{ k }}.payload"{% endif %}>
+            {{ m.field_error(errors, 'a.' ~ k ~ '.payload') }}
+          </div>
+          <div class="field">
+            <label for="f-a.{{ k }}.qos">Zustellung (QoS)</label>
+            {{ m.select('a.' ~ k ~ '.qos', qos_labels, form, errors) }}
+            {{ m.field_error(errors, 'a.' ~ k ~ '.qos') }}
+          </div>
+          <label class="check"><input type="checkbox" name="a.{{ k }}.retain"{% if form.get('a.' ~ k ~ '.retain') %} checked{% endif %}> <span>Nachricht auf dem Broker behalten (retain)</span></label>
+        </div>
+      </details>
+      <details class="more"{% if form.get('a.' ~ k ~ '.kind') == 'homeassistant' or errors.get('a.' ~ k ~ '.service') %} open{% endif %}>
+        <summary>Home Assistant: Dienst aufrufen</summary>
+        <div class="fields-2">
+          <div class="field">
+            <label for="f-a.{{ k }}.service">Dienst</label>
+            <input type="text" name="a.{{ k }}.service" id="f-a.{{ k }}.service" autocomplete="off" placeholder="light.turn_on" value="{{ form.get('a.' ~ k ~ '.service', '') }}"{% if errors.get('a.' ~ k ~ '.service') %} aria-invalid="true" aria-describedby="err-a.{{ k }}.service"{% endif %}>
+            {{ m.field_error(errors, 'a.' ~ k ~ '.service') }}
+          </div>
+          <div class="field">
+            <label for="f-a.{{ k }}.entity_id">Gerät (entity_id, optional)</label>
+            <input type="text" name="a.{{ k }}.entity_id" id="f-a.{{ k }}.entity_id" autocomplete="off" placeholder="light.schreibtisch" value="{{ form.get('a.' ~ k ~ '.entity_id', '') }}"{% if errors.get('a.' ~ k ~ '.entity_id') %} aria-invalid="true" aria-describedby="err-a.{{ k }}.entity_id"{% endif %}>
+            {{ m.field_error(errors, 'a.' ~ k ~ '.entity_id') }}
+          </div>
+          <div class="field field-wide">
+            <label for="f-a.{{ k }}.data">Zusatzdaten (JSON, optional)</label>
+            <input type="text" name="a.{{ k }}.data" id="f-a.{{ k }}.data" autocomplete="off" placeholder='{"brightness": 120}' value="{{ form.get('a.' ~ k ~ '.data', '') }}"{% if errors.get('a.' ~ k ~ '.data') %} aria-invalid="true" aria-describedby="err-a.{{ k }}.data"{% endif %}>
+            {{ m.field_error(errors, 'a.' ~ k ~ '.data') }}
+          </div>
+        </div>
+      </details>
+      <div class="btn-row">
+        {% if k != 'new' %}<label class="check"><input type="checkbox" name="a.{{ k }}.remove" value="on"> <span>Diese Aktion entfernen</span></label>{% endif %}
+        {% if row.saved %}<button type="submit" name="action" value="test:{{ form.get('a.' ~ k ~ '.id', '') }}" class="btn"{% if not writable %} disabled{% endif %}>▶ Jetzt senden (Test)</button>{% endif %}
+      </div>
+    </fieldset>
+    {% endfor %}
+    {{ m.field_error(errors, '_form') }}
+  </section>
+
+  <div class="savebar">
+    <div class="savebar-in">
+      <div class="field field-token">
+        <label for="f-token">Zugriffs-Token</label>
+        <input type="password" name="token" id="f-token" autocomplete="current-password" placeholder="{{ 'Token eingeben' if writable else 'Nicht eingerichtet' }}"{% if not writable %} disabled{% endif %}>
+      </div>
+      <button type="submit" name="action" value="save" class="btn btn-primary"{% if not writable %} disabled{% endif %}>Einstellungen speichern</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

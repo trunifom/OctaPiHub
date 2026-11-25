@@ -20,6 +20,7 @@ from octapihub.composition import (
     build_matrix_service,
     build_music_service,
     build_sense_hat_service,
+    build_smarthome_service,
 )
 from octapihub.core.config import load_config
 from octapihub.core.errors import OctaPiHubError, SecretsError
@@ -181,11 +182,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         service = build_sense_hat_service(config)
         hue = build_hue_service(config, args.secrets)
         music, media = build_music_service(config, args.port)
-        cubes = build_cube_service(config, args.data_dir, plugins=(hue, music))
+        smarthome = build_smarthome_service(config, args.secrets)
+        cubes = build_cube_service(config, args.data_dir, plugins=(hue, music, smarthome))
         system = SystemInfoReader(args.data_dir)
         matrix = build_matrix_service(config, service, cubes, hue, host_level_from(system), music)
         backend = WebBackend(
-            SettingsManager(args.config, config, service, hue, cubes, matrix, music),
+            SettingsManager(
+                args.config,
+                config,
+                service,
+                hue,
+                cubes,
+                matrix,
+                music,
+                smarthome,
+                SecretsFile(args.secrets),
+            ),
             service,
             os.environ.get(TOKEN_VARIABLE) or None,
             cubes,
@@ -193,6 +205,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             system,
             matrix=matrix,
             music=music,
+            smarthome=smarthome,
             media=media,
             scanner=BleakDeviceScanner(),
             discover_cast=discover_cast,

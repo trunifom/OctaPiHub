@@ -39,7 +39,7 @@ REPEAT_LABELS = {
 _UMLAUTS = str.maketrans(
     {"ä": "ae", "ö": "oe", "ü": "ue", "Ä": "Ae", "Ö": "Oe", "Ü": "Ue", "ß": "ss"}
 )
-_ROW_KEY = re.compile(r"^([tp])\.(\d+|new)\.(\w+)$")
+_ROW_KEY = re.compile(r"^([a-z])\.(\d+|new)\.(\w+)$")
 _FIELD_INDEX = re.compile(r"music\.(targets|playlists)\[(\d+)\]\.(\w+)")
 _TARGET_FIELDS = ("name", "kind", "device", "bluetooth_address", "volume")
 _PLAYLIST_FIELDS = ("name", "source", "target", "repeat", "volume")

@@ -31,6 +31,7 @@ from octapihub.application.music.service import MusicService
 from octapihub.application.sense_hat import JoystickAction, JoystickDirection
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.settings import SettingsManager
+from octapihub.application.smarthome import SmartHomeService
 from octapihub.core.config import JOYSTICK_FACE_LABELS, JOYSTICK_SOURCE, MAX_CUBES
 from octapihub.core.errors import (
     ConfigurationError,
@@ -72,6 +73,7 @@ from octapihub.web.presenter import (
     local_time_text,
     overall_level,
 )
+from octapihub.web.smarthome_routes import register_smarthome_routes
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +121,7 @@ class WebBackend:
     music: MusicService | None = None
     media: MediaRegistry | None = None
     scanner: DeviceScanner | None = None
+    smarthome: SmartHomeService | None = None
     discover_cast: Callable[[], Awaitable[list[str]]] | None = None
     list_audio_devices: Callable[[], Awaitable[list[tuple[str, str]]]] | None = None
     logs: LogRing | None = None
@@ -467,6 +470,9 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "scene_options": [{"id": sid, "name": name} for sid, name in scenes.items()],
             "music_groups": forms.music_choice_options(playlists) if backend.music else [],
             "light_groups": forms.hue_choice_options() if backend.hue else [],
+            "home_groups": forms.home_choice_options(
+                {a.id: a.name for a in backend.settings.config.smarthome.actions}
+            ),
             "lamp_groups": {g.id: g.name for g in getattr(backend.hue, "groups", ())}
             if backend.hue
             else {},
@@ -883,6 +889,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             playlist_ids,
             target_ids,
             {g.id for g in getattr(backend.hue, "groups", ())} if backend.hue else (),
+            {a.id for a in backend.settings.config.smarthome.actions},
         )
         if result.mappings is None:
             errors.update(result.errors)
@@ -912,6 +919,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
         )
 
     register_music_routes(app, backend, page, _read_form, _access_problem)
+    register_smarthome_routes(app, backend, page, _read_form, _access_problem)
 
     async def read_backup_form(request: Request) -> tuple[dict[str, str], str]:
         return await _read_form(request, BACKUP_FORM_BYTES)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from urllib.parse import urlsplit
 
 from octapihub.application.hue_lights import COLORS
 from octapihub.application.music.sources import SourceKind, parse_source
@@ -130,6 +131,25 @@ def _hue_lines(
     return [text, room]
 
 
+def _home_lines(config: AppConfig, action: RuleActionConfig) -> list[str]:
+    found = next((a for a in config.smarthome.actions if a.id == action.parameters.get("id")), None)
+    if found is None:
+        return ["Die gewählte Smart-Home-Aktion gibt es nicht mehr"]
+    if found.kind.value == "http":
+        return [f"Smart Home: „{found.name}“", f"Ruft {found.method} {_hide_query(found.url)} auf"]
+    connection = next((c for c in config.smarthome.connections if c.id == found.connection), None)
+    where = f" über {connection.name}" if connection else ""
+    if found.kind.value == "mqtt":
+        return [f"Smart Home: „{found.name}“", f"Sendet an das Thema {found.topic}{where}"]
+    return [f"Smart Home: „{found.name}“", f"Ruft den Dienst {found.service} auf{where}"]
+
+
+def _hide_query(url: str) -> str:
+    """Web addresses can carry secrets (webhook ids); show only scheme, host and port."""
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}/…" if parts.path.strip("/") or parts.query else url
+
+
 def describe_face(
     config: AppConfig,
     mapping: RuleMappingConfig | None,
@@ -148,6 +168,8 @@ def describe_face(
             lines.extend(_music_lines(config, action, playlists))
         elif action.kind == "hue":
             lines.extend(_hue_lines(action, scenes, groups))
+        elif action.kind == "smarthome":
+            lines.extend(_home_lines(config, action))
         else:
             lines.append(f"{action.kind}: {action.action}")
     return lines

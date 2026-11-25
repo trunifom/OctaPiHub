@@ -19,6 +19,7 @@ from octapihub.application.plugins import (
 )
 from octapihub.application.rules import RuleEngine
 from octapihub.application.sense_hat_service import SenseHatService
+from octapihub.application.smarthome import SmartHomeService
 from octapihub.core.config import JOYSTICK_SOURCE, AppConfig, HueConfig
 from octapihub.infrastructure.ble.bleak_transport import BleakTransportFactory
 from octapihub.infrastructure.ble.protocol import (
@@ -39,6 +40,7 @@ from octapihub.infrastructure.sqlite_outbox import SQLiteOutbox
 from octapihub.infrastructure.sqlite_sense_hat_history import SQLiteSenseHatHistory
 
 LIGHT_ACTION_TTL_SECONDS = 120.0  # a switched light must not change minutes later
+SMARTHOME_ACTION_TTL_SECONDS = 120.0
 MUSIC_ACTION_TTL_SECONDS = 60.0  # a pressed play button must not start music minutes later
 
 
@@ -95,6 +97,13 @@ def build_music_service(config: AppConfig, port: int = 8080) -> tuple[MusicServi
     return service, registry
 
 
+def build_smarthome_service(
+    config: AppConfig, secrets_path: str | Path = "secrets.env"
+) -> SmartHomeService:
+    """Create the smart-home service (web requests, MQTT, Home Assistant)."""
+    return SmartHomeService(config.smarthome, SecretsFile(secrets_path))
+
+
 def build_cube_service(
     config: AppConfig,
     state_dir: str | Path = "data",
@@ -130,7 +139,11 @@ def build_cube_service(
             RuleEngine(settings),
             SQLiteOutbox(directory / "state.sqlite3"),
             registry,
-            ttl_by_kind={"music": MUSIC_ACTION_TTL_SECONDS, "hue": LIGHT_ACTION_TTL_SECONDS},
+            ttl_by_kind={
+                "music": MUSIC_ACTION_TTL_SECONDS,
+                "hue": LIGHT_ACTION_TTL_SECONDS,
+                "smarthome": SMARTHOME_ACTION_TTL_SECONDS,
+            },
         )
 
     return CubeService(config, make_runtime, make_dispatcher)

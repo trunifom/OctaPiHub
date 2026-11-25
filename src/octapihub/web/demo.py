@@ -27,6 +27,7 @@ from octapihub.application.sense_hat import SenseHatMetric, SenseHatReading
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.sense_hat_worker import SenseHatSample, correct_temperature
 from octapihub.application.settings import SettingsManager
+from octapihub.application.smarthome import SmartHomeService, secret_key
 from octapihub.composition import build_matrix_service
 from octapihub.core.config import (
     AppConfig,
@@ -154,7 +155,7 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
     directory = Path(tempfile.mkdtemp(prefix="octapihub-demo-"))
     base: AppConfig = parse_config(
         {
-            "schema_version": 6,
+            "schema_version": 7,
             "hue": {"enabled": True, "host": "192.168.1.20"},
             "bluetooth": {"adapter": "hci0"},
             "debounce_ms": 300,
@@ -179,6 +180,17 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
                     "cube": "Musik",
                     "face": 0,
                     "actions": [{"kind": "music", "action": "stop.all", "parameters": {}}],
+                },
+                {
+                    "cube": "Extra",
+                    "face": 1,
+                    "actions": [
+                        {
+                            "kind": "smarthome",
+                            "action": "trigger",
+                            "parameters": {"id": "lampe-an"},
+                        }
+                    ],
                 },
                 {
                     "cube": "Licht",
@@ -234,6 +246,48 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
                     },
                 ],
             },
+            "smarthome": {
+                "connections": [
+                    {
+                        "id": "ha",
+                        "name": "Home Assistant",
+                        "kind": "homeassistant",
+                        "address": "http://192.168.1.20:8123",
+                    },
+                    {
+                        "id": "broker",
+                        "name": "Mosquitto",
+                        "kind": "mqtt",
+                        "address": "192.168.1.20:1883",
+                        "username": "hub",
+                    },
+                ],
+                "actions": [
+                    {
+                        "id": "lampe-an",
+                        "name": "Schreibtischlampe an",
+                        "kind": "mqtt",
+                        "connection": "broker",
+                        "topic": "zigbee2mqtt/schreibtisch/set",
+                        "payload": '{"state":"ON"}',
+                    },
+                    {
+                        "id": "wohnzimmer-szene",
+                        "name": "Szene Kino (Home Assistant)",
+                        "kind": "homeassistant",
+                        "connection": "ha",
+                        "service": "scene.turn_on",
+                        "entity_id": "scene.kino",
+                    },
+                    {
+                        "id": "tor",
+                        "name": "Garagentor (Webhook)",
+                        "kind": "http",
+                        "url": "http://192.168.1.31/relay/0?turn=on",
+                        "method": "GET",
+                    },
+                ],
+            },
             "cubes": [
                 {"name": "Licht", "address": "AA:BB:CC:DD:EE:01", "role": "light"},
                 {"name": "Musik", "address": "AA:BB:CC:DD:EE:02", "role": "music"},
@@ -265,9 +319,14 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
     )
     hue = _demo_hue(base.hue)
     music = MusicService(base.music, FakePlayerFactory(), FakeResolver())
-    cubes = _demo_cubes(base, directory, hue, music)
+    home_secrets = _DemoSecrets()
+    home_secrets.set(secret_key("ha"), "demo-token")
+    smarthome = SmartHomeService(base.smarthome, home_secrets, http=_demo_http, mqtt=_demo_mqtt)
+    cubes = _demo_cubes(base, directory, hue, music, smarthome)
     matrix = build_matrix_service(base, service, cubes, hue, lambda: "ok", music)
-    settings = SettingsManager(config_path, base, service, hue, cubes, matrix, music)
+    settings = SettingsManager(
+        config_path, base, service, hue, cubes, matrix, music, smarthome, home_secrets
+    )
 
     async def discover() -> list[str]:
         return ["Küche (Nest Mini)", "Schlafzimmer (Nest Hub)"]
@@ -283,6 +342,7 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
         hue,
         matrix=matrix,
         music=music,
+        smarthome=smarthome,
         scanner=FakeScanner(
             [
                 FoundDevice("Timeular Tracker", "AA:BB:CC:DD:EE:77", -52),
@@ -292,6 +352,15 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
         discover_cast=discover,
         list_audio_devices=audio_devices,
     )
+
+
+async def _demo_http(*_args: object, **_kwargs: object) -> int:
+    """Pretends every web request succeeded; nothing leaves the computer in the demo."""
+    return 200
+
+
+async def _demo_mqtt(*_args: object, **_kwargs: object) -> None:
+    """Pretends every MQTT message was published."""
 
 
 class _DemoHue:
@@ -375,6 +444,7 @@ def _demo_cubes(
     directory: Path,
     hue: HueService | None = None,
     music: MusicService | None = None,
+    smarthome: SmartHomeService | None = None,
 ) -> CubeService:
     """Two simulated cubes that connect instantly; no Bluetooth is used."""
     profile = DeviceProfile(
@@ -405,6 +475,8 @@ def _demo_cubes(
         plugins.register(hue if hue is not None else _DemoHue())
         if music is not None:
             plugins.register(music)
+        if smarthome is not None:
+            plugins.register(smarthome)
         return OutboxDispatcher(
             RuleEngine(settings), SQLiteOutbox(directory / "state.sqlite3"), plugins
         )

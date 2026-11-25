@@ -141,6 +141,11 @@
             {% for value, label in items %}<option value="{{ value }}"{% if value == map_form.get(tile.field) %} selected{% endif %}>{{ label }}</option>{% endfor %}
             </optgroup>
             {% endfor %}
+            {% for group_label, items in home_groups %}
+            <optgroup label="{{ group_label }}">
+            {% for value, label in items %}<option value="{{ value }}"{% if value == map_form.get(tile.field) %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </optgroup>
+            {% endfor %}
             {% for group_label, items in music_groups %}
             <optgroup label="{{ group_label }}">
             {% for value, label in items %}<option value="{{ value }}"{% if value == map_form.get(tile.field) %} selected{% endif %}>{{ label }}</option>{% endfor %}

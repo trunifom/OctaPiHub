@@ -471,6 +471,32 @@ def common_music_target(config: AppConfig, source: str) -> str:
     return targets.pop() if len(targets) == 1 else ""
 
 
+HOME_PREFIX = "home:"
+
+
+def home_choice_of(mapping: RuleMappingConfig | None) -> str | None:
+    """Catalog value (``home:<id>``) if the mapping is exactly one smart-home trigger."""
+    if mapping is None or len(mapping.actions) != 1:
+        return None
+    action = mapping.actions[0]
+    action_id = action.parameters.get("id")
+    if (
+        action.kind == "smarthome"
+        and action.action == "trigger"
+        and set(action.parameters) == {"id"}
+        and isinstance(action_id, str)
+    ):
+        return f"{HOME_PREFIX}{action_id}"
+    return None
+
+
+def home_choice_options(actions: Mapping[str, str]) -> list[tuple[str, list[tuple[str, str]]]]:
+    """Option group for the user's smart-home actions."""
+    if not actions:
+        return []
+    return [("Smart Home", [(f"{HOME_PREFIX}{aid}", name) for aid, name in actions.items()])]
+
+
 HUE_PREFIX = "hue:"
 # catalog name -> (action, fixed parameters, German label)
 LIGHT_CONTROLS: dict[str, tuple[str, dict[str, object], str]] = {
@@ -537,7 +563,12 @@ def hue_choice_options() -> list[tuple[str, list[tuple[str, str]]]]:
 
 def choice_of(mapping: RuleMappingConfig | None) -> str | None:
     """The editable choice of a mapping (a Hue scene ID, ``hue:`` or ``music:`` value)."""
-    return scene_of(mapping) or hue_choice_of(mapping) or music_choice_of(mapping)
+    return (
+        scene_of(mapping)
+        or hue_choice_of(mapping)
+        or music_choice_of(mapping)
+        or home_choice_of(mapping)
+    )
 
 
 def music_choice_action(choice: str) -> dict[str, object] | None:
@@ -581,6 +612,8 @@ def music_choice_options(playlists: Mapping[str, str]) -> list[tuple[str, list[t
 
 def choice_label(choice: str, scenes: Mapping[str, str], playlists: Mapping[str, str]) -> str:
     """Readable name of a choice for the editor."""
+    if choice.startswith(HOME_PREFIX):
+        return f"Smart Home: {choice.removeprefix(HOME_PREFIX)}"
     if choice.startswith(HUE_PREFIX):
         entry = LIGHT_CONTROLS.get(choice.removeprefix(HUE_PREFIX))
         return f"Licht: {entry[2]}" if entry else choice
@@ -640,6 +673,7 @@ def parse_mapping_form(
     known_playlist_ids: Collection[str] = (),
     known_target_ids: Collection[str] = (),
     known_group_ids: Collection[str] = (),
+    known_home_ids: Collection[str] = (),
 ) -> MappingResult:
     """Build the new mapping list from the submitted scene choices.
 
@@ -652,6 +686,7 @@ def parse_mapping_form(
     playlists = set(known_playlist_ids)
     targets = set(known_target_ids)
     groups = set(known_group_ids)
+    home_ids = set(known_home_ids)
     errors: dict[str, str] = {}
     result: list[dict[str, object]] = []
     raw_labels = _labels_from_form(form, config, errors)
@@ -671,6 +706,30 @@ def parse_mapping_form(
                 continue
             if len(chosen) > MAX_SCENE_ID_LENGTH or any(ord(c) < 32 for c in chosen):
                 errors[field] = "Diese Auswahl ist ungültig."
+                continue
+            if chosen.startswith(HOME_PREFIX):
+                home_id = chosen.removeprefix(HOME_PREFIX)
+                if home_id != (home_choice_of(existing) or "").removeprefix(HOME_PREFIX) and (
+                    home_id not in home_ids
+                ):
+                    errors[field] = (
+                        "Diese Smart-Home-Aktion gibt es nicht. Legen Sie sie auf der Seite "
+                        "Smart Home an."
+                    )
+                    continue
+                result.append(
+                    {
+                        "cube": name,
+                        "face": face,
+                        "actions": [
+                            {
+                                "kind": "smarthome",
+                                "action": "trigger",
+                                "parameters": {"id": home_id},
+                            }
+                        ],
+                    }
+                )
                 continue
             if chosen.startswith(HUE_PREFIX):
                 group = form.get(f"{field}.group", "").strip()
