@@ -12,11 +12,14 @@ from octapihub.core.config import (
     DEFAULT_SENSOR_INTERVAL_SECONDS,
     AppConfig,
     CubeRole,
+    HueConfig,
     SenseHatVersion,
     SensorPresentation,
+    hue_table,
     load_config,
     parse_config,
     save_config,
+    with_hue_table,
 )
 from octapihub.core.errors import ConfigurationError, ValidationError
 
@@ -36,7 +39,7 @@ def test_parse_config_applies_defaults_and_normalizes_addresses() -> None:
     config = parse_config(valid_config())
 
     assert isinstance(config, AppConfig)
-    assert config.schema_version == 3
+    assert config.schema_version == 4
     assert config.bluetooth.adapter == "hci0"
     assert config.debounce_ms == DEFAULT_DEBOUNCE_MS
     assert config.cubes[0].address == "AA:BB:CC:DD:EE:01"
@@ -60,17 +63,17 @@ def test_parse_config_applies_defaults_and_normalizes_addresses() -> None:
 def test_schema_v1_is_loaded_as_current_config_version() -> None:
     config = parse_config(valid_config())
 
-    assert config.schema_version == 3
+    assert config.schema_version == 4
     assert config.mappings == ()
 
 
-def test_saving_schema_v1_upgrades_it_to_schema_v3(tmp_path: Path) -> None:
+def test_saving_schema_v1_upgrades_it_to_current_schema(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
     save_config(config_path, parse_config(valid_config()))
 
     saved = config_path.read_text(encoding="utf-8")
-    assert load_config(config_path).schema_version == 3
-    assert saved.startswith("schema_version = 3\n")
+    assert load_config(config_path).schema_version == 4
+    assert saved.startswith("schema_version = 4\n")
     assert "[sense_hat.sensors.temperature]" in saved
 
 
@@ -105,7 +108,7 @@ def test_schema_v2_parses_and_freezes_action_mapping_parameters() -> None:
 
     config = parse_config(data)
 
-    assert config.schema_version == 3
+    assert config.schema_version == 4
     assert config.mappings[0].cube == "Licht"
     assert config.mappings[0].face == 3
     assert config.mappings[0].actions[0].parameters["scene_id"] == "id-with-\\-slash"
@@ -230,7 +233,7 @@ def test_save_config_atomically_round_trips_validated_config(tmp_path: Path) -> 
 
     assert load_config(config_path) == config
     assert config_path.read_text(encoding="utf-8").startswith(
-        "schema_version = 3\ndebounce_ms = 300\n"
+        "schema_version = 4\ndebounce_ms = 300\n"
     )
     assert list(tmp_path.glob(".config.toml.*.tmp")) == []
 
@@ -341,7 +344,7 @@ def test_rejects_invalid_cube_and_adapter_settings(change: str, expected_message
 
 def test_rejects_unsupported_schema_and_unknown_root_keys() -> None:
     data = valid_config()
-    data["schema_version"] = 4
+    data["schema_version"] = 5
     with pytest.raises(ConfigurationError, match="Unsupported configuration schema"):
         parse_config(data)
 
@@ -433,7 +436,7 @@ def test_schema_v2_migrates_mappings_and_defaults_sense_hat_settings() -> None:
 
     config = parse_config(data)
 
-    assert config.schema_version == 3
+    assert config.schema_version == 4
     assert config.mappings == ()
     assert config.sense_hat.sensors["temperature"].enabled
     assert not config.sense_hat.sensors["color"].enabled
@@ -450,3 +453,77 @@ def test_load_config_translates_file_and_toml_errors(tmp_path: Path) -> None:
     with pytest.raises(ConfigurationError, match="not valid TOML") as invalid:
         load_config(invalid_toml)
     assert invalid.value.__cause__ is not None
+
+
+def test_hue_defaults_to_disabled_and_older_schemas_migrate() -> None:
+    for version in (1, 2, 3):
+        data = valid_config()
+        data["schema_version"] = version
+        config = parse_config(data)
+        assert config.hue == HueConfig()
+        assert not config.hue.enabled
+
+
+def test_schema_v4_hue_round_trips_through_toml(tmp_path: Path) -> None:
+    data = valid_config()
+    data["schema_version"] = 4
+    data["hue"] = {
+        "enabled": True,
+        "host": "192.168.1.20",
+        "port": 8443,
+        "ca_file": "/etc/octapihub/hue-ca.pem",
+        "tls_server_name": "ecb5fafffe123456",
+    }
+    config = parse_config(data)
+    path = tmp_path / "config.toml"
+    save_config(path, config)
+    assert load_config(path) == config
+    assert config.hue.host == "192.168.1.20"
+    assert hue_table(config.hue)["tls_server_name"] == "ecb5fafffe123456"
+
+
+def test_hue_table_replaces_only_hue_settings() -> None:
+    config = parse_config(valid_config())
+    updated = with_hue_table(
+        config,
+        {"enabled": True, "host": "hue.local", "port": 443, "ca_file": "", "tls_server_name": ""},
+    )
+    assert updated.hue.host == "hue.local"
+    assert updated.cubes == config.cubes
+    assert updated.sense_hat == config.sense_hat
+
+
+@pytest.mark.parametrize(
+    ("table", "field"),
+    [
+        ({"enabled": True}, "hue.host"),
+        ({"enabled": True, "host": " "}, "hue.host"),
+        ({"host": "bad host"}, "hue.host"),
+        ({"host": "http://192.168.1.2"}, "hue.host"),
+        ({"host": "192.168.1.2", "port": 0}, "hue.port"),
+        ({"host": "192.168.1.2", "port": 70000}, "hue.port"),
+        ({"host": "192.168.1.2", "port": True}, "hue.port"),
+        ({"host": "192.168.1.2", "port": "443"}, "hue.port"),
+        ({"enabled": "yes", "host": "192.168.1.2"}, "hue.enabled"),
+        ({"host": "192.168.1.2", "tls_server_name": "no spaces"}, "hue.tls_server_name"),
+        ({"host": "192.168.1.2", "ca_file": "a\nb"}, "hue.ca_file"),
+        ({"host": "192.168.1.2", "ca_file": 5}, "hue.ca_file"),
+        ({"host": 5}, "hue.host"),
+        ({"host": "192.168.1.2", "application_key": "secret"}, "hue"),
+    ],
+)
+def test_invalid_hue_settings_are_rejected_with_field(table: dict[str, object], field: str) -> None:
+    data = valid_config()
+    data["schema_version"] = 4
+    data["hue"] = table
+    with pytest.raises(ValidationError) as error:
+        parse_config(data)
+    assert error.value.details["field"] == field
+
+
+def test_application_key_is_never_accepted_in_the_config_file() -> None:
+    data = valid_config()
+    data["schema_version"] = 4
+    data["hue"] = {"host": "192.168.1.2", "application_key": "abc"}
+    with pytest.raises(ValidationError, match="unsupported fields"):
+        parse_config(data)

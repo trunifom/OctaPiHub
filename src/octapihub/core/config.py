@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import math
@@ -19,7 +20,7 @@ from octapihub.core.errors import ConfigurationError, ValidationError
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 3
+SUPPORTED_SCHEMA_VERSION = 4
 LEGACY_SCHEMA_VERSION = 1
 DEFAULT_DEBOUNCE_MS = 300
 MAX_DEBOUNCE_MS = 999
@@ -28,6 +29,8 @@ DEFAULT_HISTORY_RETENTION_DAYS = 30
 MAX_SENSOR_INTERVAL_SECONDS = 3600
 MAX_HISTORY_RETENTION_DAYS = 3650
 _ADAPTER_PATTERN = re.compile(r"^hci[0-9]+$")
+_HOST_LABEL_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+DEFAULT_HUE_PORT = 443
 _ADDRESS_PATTERN = re.compile(r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 _ACTION_IDENTIFIER_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 _SENSE_HAT_SENSOR_IDS = (
@@ -180,6 +183,22 @@ class SenseHatConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class HueConfig:
+    """Philips Hue bridge connection settings (the application key lives in secrets.env).
+
+    ``ca_file`` and ``tls_server_name`` are optional: the bridge certificate is always
+    verified, and bridges often present a certificate for their bridge ID rather than
+    their IP address, which ``tls_server_name`` accounts for.
+    """
+
+    enabled: bool = False
+    host: str = ""
+    port: int = DEFAULT_HUE_PORT
+    ca_file: str = ""
+    tls_server_name: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class CubeConfig:
     """Validated configuration for one cube."""
 
@@ -223,6 +242,7 @@ class AppConfig:
     cubes: tuple[CubeConfig, CubeConfig]
     mappings: tuple[RuleMappingConfig, ...] = ()
     sense_hat: SenseHatConfig = field(default_factory=SenseHatConfig)
+    hue: HueConfig = field(default_factory=HueConfig)
 
 
 def load_config(path: str | Path) -> AppConfig:
@@ -321,6 +341,26 @@ def sense_hat_table(sense_hat: SenseHatConfig) -> dict[str, object]:
     return data
 
 
+def hue_table(hue: HueConfig) -> dict[str, object]:
+    """Return the Hue settings as a plain TOML-shaped table for editing."""
+    return {
+        "enabled": hue.enabled,
+        "host": hue.host,
+        "port": hue.port,
+        "ca_file": hue.ca_file,
+        "tls_server_name": hue.tls_server_name,
+    }
+
+
+def with_hue_table(config: AppConfig, table: Mapping[str, object]) -> AppConfig:
+    """Return ``config`` with a replaced, fully validated Hue table.
+
+    Raises:
+        ValidationError: If any Hue value violates the schema.
+    """
+    return replace(config, hue=_parse_hue(table))
+
+
 def with_sense_hat_table(config: AppConfig, table: Mapping[str, object]) -> AppConfig:
     """Return ``config`` with a replaced, fully validated Sense HAT table.
 
@@ -356,6 +396,7 @@ def _serialize_config(config: AppConfig) -> str:
             for mapping in config.mappings
         ],
         "sense_hat": sense_hat_data,
+        "hue": hue_table(config.hue),
     }
     validated = parse_config(data)
     lines = [
@@ -420,6 +461,18 @@ def _serialize_config(config: AppConfig) -> str:
             "",
             "[sense_hat.joystick]",
             f"enabled = {_toml_value(sense_hat.joystick_enabled)}",
+        ]
+    )
+    hue = validated.hue
+    lines.extend(
+        [
+            "",
+            "[hue]",
+            f"enabled = {_toml_value(hue.enabled)}",
+            f"host = {_toml_string(hue.host)}",
+            f"port = {hue.port}",
+            f"ca_file = {_toml_string(hue.ca_file)}",
+            f"tls_server_name = {_toml_string(hue.tls_server_name)}",
         ]
     )
     for sensor_id in _SENSE_HAT_SENSOR_IDS:
@@ -511,7 +564,7 @@ def parse_config(data: object) -> AppConfig:
         raise ValidationError(
             "schema_version must be an integer", details={"field": "schema_version"}
         )
-    if schema_version not in {LEGACY_SCHEMA_VERSION, 2, SUPPORTED_SCHEMA_VERSION}:
+    if schema_version not in {LEGACY_SCHEMA_VERSION, 2, 3, SUPPORTED_SCHEMA_VERSION}:
         raise ConfigurationError(
             "Unsupported configuration schema version",
             details={
@@ -524,6 +577,8 @@ def parse_config(data: object) -> AppConfig:
         allowed_root_keys.add("mappings")
     if schema_version >= 3:
         allowed_root_keys.add("sense_hat")
+    if schema_version >= 4:
+        allowed_root_keys.add("hue")
     _check_keys(root, allowed_root_keys, "root")
 
     bluetooth_table = _require_table(root.get("bluetooth"), "bluetooth")
@@ -585,6 +640,8 @@ def parse_config(data: object) -> AppConfig:
         _parse_sense_hat(root.get("sense_hat", {})) if schema_version >= 3 else SenseHatConfig()
     )
 
+    hue = _parse_hue(root.get("hue", {})) if schema_version >= 4 else HueConfig()
+
     return AppConfig(
         schema_version=SUPPORTED_SCHEMA_VERSION,
         bluetooth=BluetoothConfig(adapter=adapter),
@@ -592,6 +649,58 @@ def parse_config(data: object) -> AppConfig:
         cubes=(cubes[0], cubes[1]),
         mappings=mappings,
         sense_hat=sense_hat,
+        hue=hue,
+    )
+
+
+def _valid_host(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+    labels = host.rstrip(".").split(".")
+    return len(host) <= 253 and all(_HOST_LABEL_PATTERN.fullmatch(label) for label in labels)
+
+
+def _optional_string(value: object, field: str) -> str:
+    if not isinstance(value, str) or "\x00" in value or "\n" in value or "\r" in value:
+        raise ValidationError("Expected a single-line string", details={"field": field})
+    return value.strip()
+
+
+def _parse_hue(value: object) -> HueConfig:
+    table = _require_table(value, "hue")
+    _check_keys(table, {"enabled", "host", "port", "ca_file", "tls_server_name"}, "hue")
+    defaults = HueConfig()
+    enabled = _require_bool(table.get("enabled", defaults.enabled), "hue.enabled")
+    host = _optional_string(table.get("host", defaults.host), "hue.host")
+    if host and not _valid_host(host):
+        raise ValidationError(
+            "hue.host must be a hostname or IP address", details={"field": "hue.host"}
+        )
+    if enabled and not host:
+        raise ValidationError(
+            "hue.host is required when Hue is enabled", details={"field": "hue.host"}
+        )
+    port = table.get("port", defaults.port)
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise ValidationError(
+            "hue.port must be an integer from 1 to 65535", details={"field": "hue.port"}
+        )
+    server_name = _optional_string(
+        table.get("tls_server_name", defaults.tls_server_name), "hue.tls_server_name"
+    )
+    if server_name and not _valid_host(server_name):
+        raise ValidationError(
+            "hue.tls_server_name must be a hostname", details={"field": "hue.tls_server_name"}
+        )
+    return HueConfig(
+        enabled=enabled,
+        host=host,
+        port=port,
+        ca_file=_optional_string(table.get("ca_file", defaults.ca_file), "hue.ca_file"),
+        tls_server_name=server_name,
     )
 
 
