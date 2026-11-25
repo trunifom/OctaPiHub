@@ -235,6 +235,7 @@ Nachweis für einen Hardwaretest. Commits werden nach erfolgreicher Prüfung ers
 | 2026-11-25 13:57:50 +01:00 | `580a40f7bfb6a1ab449d2642456fb10e4019eb4f` | Versioniertes TOML-Konfigurationsladen und Validierung für zwei Würfelrollen, BLE-Adapter, Adressen und Entprellzeit; insgesamt 22 lokale Unit-Tests, Ruff, mypy strict und Pylance-Diagnose bestanden. Keine Hardwareprüfung. |
 | 2026-11-25 14:20:19 +01:00 | `5c363a32ebf53b071aa373d85d270401d6e06c97` | Typisierter Plugin-Vertrag, Python-Entry-Point-Discovery und atomare Registrierung; 34 lokale Unit-Tests, Ruff und mypy strict bestanden. Keine Hardwareprüfung. |
 | 2026-11-25 14:27:05 +01:00 | `09cd3ca762ad8e33f75f1f1922bc8e01492ac5fb` | Read-only BLE-Transportvertrag, Prüfung der Orientation-Notify-/Indicate-Fähigkeit und Fake für Ereignisse, Verbindungsabbruch und Fehler; 42 lokale Unit-Tests, Ruff und mypy strict bestanden. Keine Hardwareprüfung. |
+| 2026-11-25 14:47:03 +01:00 | `ab28a39ae6de23a42e7bc13446b85c1c152b98b8` | Bleak/BlueZ-Adapter und BLE-Laufzeit mit serialisiertem Verbindungsaufbau, zwei Würfel-Workern, Entprellung, Status und begrenztem Reconnect; 56 lokale Unit-Tests, Ruff, Python-Formatprüfung und mypy strict bestanden. Keine Raspberry-Pi- oder Hardwareprüfung. |
 
 Die Einträge verweisen jeweils auf den Commit mit der Funktion. Änderungen an diesem
 Nachweis erfolgen in einem nachfolgenden Dokumentations-Commit, damit der tatsächliche
