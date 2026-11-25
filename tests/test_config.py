@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+import octapihub.core.config as config_module
 from octapihub.core.config import (
     DEFAULT_DEBOUNCE_MS,
     AppConfig,
     CubeRole,
     load_config,
     parse_config,
+    save_config,
 )
 from octapihub.core.errors import ConfigurationError, ValidationError
 
@@ -64,6 +67,62 @@ role = "music"
 
     assert config.debounce_ms == 999
     assert config.bluetooth.adapter == "hci1"
+
+
+def test_save_config_atomically_round_trips_validated_config(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    parsed = parse_config(valid_config())
+    config = replace(
+        parsed,
+        cubes=(replace(parsed.cubes[0], name='Licht "Küche" \\ Ost'), parsed.cubes[1]),
+    )
+    config_path.write_text("outdated configuration", encoding="utf-8")
+
+    save_config(config_path, config)
+
+    assert load_config(config_path) == config
+    assert config_path.read_text(encoding="utf-8").startswith(
+        "schema_version = 1\ndebounce_ms = 300\n"
+    )
+    assert list(tmp_path.glob(".config.toml.*.tmp")) == []
+
+
+def test_save_config_rejects_invalid_config_without_changing_existing_file(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("existing configuration", encoding="utf-8")
+    config = parse_config(valid_config())
+    invalid_config = replace(
+        config,
+        cubes=(replace(config.cubes[0], role=CubeRole.MUSIC), config.cubes[1]),
+    )
+
+    with pytest.raises(ValidationError, match="exactly one light cube"):
+        save_config(config_path, invalid_config)
+
+    assert config_path.read_text(encoding="utf-8") == "existing configuration"
+
+
+def test_save_config_replace_failure_preserves_existing_file_and_cleans_temp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("existing configuration", encoding="utf-8")
+
+    def fail_replace(source: str | Path, destination: str | Path) -> None:
+        assert Path(source).parent == Path(destination).parent
+        raise OSError("replacement denied")
+
+    monkeypatch.setattr(config_module.os, "replace", fail_replace)
+
+    with pytest.raises(ConfigurationError, match="atomically write") as error:
+        save_config(config_path, parse_config(valid_config()))
+
+    assert isinstance(error.value.__cause__, OSError)
+    assert config_path.read_text(encoding="utf-8") == "existing configuration"
+    assert list(tmp_path.glob(".config.toml.*.tmp")) == []
 
 
 @pytest.mark.parametrize(

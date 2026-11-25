@@ -10,7 +10,7 @@ der Pi-Dienst bereits existieren.
 Aktuell implementiert sind:
 
 - `domain`: Würfel-Orientierungsereignisse, Baseline, Entprellung und Reconnect-Backoff.
-- `core`: Fehlerklassen sowie versioniertes TOML-Laden und dessen Validierung.
+- `core`: Fehlerklassen sowie versioniertes TOML-Laden, Validierung und atomare Speicherung.
 - `application.plugins`: Plugin-Vertrag, Registry und Discovery über Python-Entry-Points.
 - `application.ble`: hardwareunabhängiger BLE-Transportvertrag und GATT-Profile.
 - `application.ble_runtime`: serialisierte Verbindungseinrichtung und je ein überwachter
@@ -19,9 +19,8 @@ Aktuell implementiert sind:
 
 Der BLE-Transport und die Laufzeit sind implementiert und lokal mit Fakes getestet.
 Ein startbarer Systemdienst/Composition Root, Regeln/Aktionen, Hue, Audio/Cast,
-Sense HAT, Weboberfläche und dauerhafte Konfigurationsspeicherung sind noch nicht
-implementiert. Die BLE-Laufzeit wurde nicht auf Raspberry Pi oder echter Hardware
-verifiziert.
+Sense HAT und Weboberfläche sind noch nicht implementiert. Die BLE-Laufzeit wurde
+nicht auf Raspberry Pi oder echter Hardware verifiziert.
 
 ## Abhängigkeitsrichtung
 
@@ -44,7 +43,7 @@ domain  <-  application  <-  infrastructure adapters
   Erkennung, Abonnement und Freigabe; nur der Besitzer orchestriert mehrere Cubes.
   Detaillierte Wiederverbindung und die globale Serialisierung folgen in der BLE-Runtime.
 - `core` stellt querschnittliche, stabile Grundtypen bereit, etwa Fehler und
-  Konfigurationsvalidierung; es hängt nicht von den anderen Schichten ab.
+  Konfigurationsvalidierung und -speicherung; es hängt nicht von den anderen Schichten ab.
 - Der Composition Root (noch nicht implementiert) lädt Konfiguration und Plugins,
   erstellt Adapter und verbindet die Abhängigkeiten. Module erzeugen keine globalen
   Einzelinstanzen und greifen nicht selbst auf Hardware zu.
@@ -76,6 +75,17 @@ Rechten des OctaPiHub-Dienstes und dürfen daher nur aus vertrauenswürdigen Pak
 installiert werden. Die Plugin-API ist ein Erweiterungspunkt, keine Sicherheitsgrenze.
 Ein Plugin darf nicht selbst den BLE-Adapter oder einen konkurrierenden Würfel-Worker
 besitzen.
+
+## Konfigurationsspeicherung
+
+`core.config.save_config` nimmt das typisierte Konfigurationsmodell entgegen und
+validiert es vor der Serialisierung erneut gegen das unterstützte Schema. Die
+TOML-Datei wird als UTF-8 in eine temporäre Datei im Zielverzeichnis geschrieben,
+geflusht und synchronisiert; anschließend ersetzt `os.replace` die Zieldatei atomar.
+Fehler vor dem Ersetzen werden als `ConfigurationError` mit erhaltener Ursache
+gemeldet, und die vorhandene Konfiguration bleibt unangetastet. Temporäre Dateien
+werden nach Schreib- oder Ersetzungsfehlern entfernt; wenn das nicht gelingt, wird
+der Bereinigungsfehler protokolliert.
 
 ## Regeln für neue Module
 

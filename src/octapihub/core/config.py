@@ -1,8 +1,12 @@
-"""Versioned TOML configuration loading and validation."""
+"""Versioned TOML configuration loading, validation, and atomic persistence."""
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 import re
+import tempfile
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -10,6 +14,8 @@ from enum import StrEnum
 from pathlib import Path
 
 from octapihub.core.errors import ConfigurationError, ValidationError
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_SCHEMA_VERSION = 1
 DEFAULT_DEBOUNCE_MS = 300
@@ -73,6 +79,86 @@ def load_config(path: str | Path) -> AppConfig:
             details={"reason": str(exc)},
         ) from exc
     return parse_config(data)
+
+
+def save_config(path: str | Path, config: AppConfig) -> None:
+    """Validate and atomically persist configuration as UTF-8 TOML.
+
+    The temporary file is created beside the destination, flushed to disk, and then
+    atomically replaces it. A failure before replacement leaves the current file intact.
+    """
+    contents = _serialize_config(config)
+    target = Path(path)
+    temporary_path: Path | None = None
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+            dir=target.parent,
+        )
+        temporary_path = Path(temporary_name)
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as config_file:
+            config_file.write(contents)
+            config_file.flush()
+            os.fsync(config_file.fileno())
+        os.replace(temporary_path, target)
+    except OSError as exc:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError as cleanup_error:
+                logger.error(
+                    "Could not remove temporary configuration file (%s)",
+                    type(cleanup_error).__name__,
+                )
+        raise ConfigurationError(
+            "Could not atomically write the configuration file",
+            user_message="Die Einstellungen konnten nicht sicher gespeichert werden.",
+            details={"reason": exc.strerror or type(exc).__name__},
+        ) from exc
+
+
+def _serialize_config(config: AppConfig) -> str:
+    data: dict[str, object] = {
+        "schema_version": config.schema_version,
+        "bluetooth": {"adapter": config.bluetooth.adapter},
+        "debounce_ms": config.debounce_ms,
+        "cubes": [
+            {"name": cube.name, "address": cube.address, "role": cube.role.value}
+            for cube in config.cubes
+        ],
+    }
+    validated = parse_config(data)
+    lines = [
+        f"schema_version = {validated.schema_version}",
+        f"debounce_ms = {validated.debounce_ms}",
+        "",
+        "[bluetooth]",
+        f"adapter = {_toml_string(validated.bluetooth.adapter)}",
+    ]
+    for cube in validated.cubes:
+        lines.extend(
+            [
+                "",
+                "[[cubes]]",
+                f"name = {_toml_string(cube.name)}",
+                f"address = {_toml_string(cube.address)}",
+                f"role = {_toml_string(cube.role.value)}",
+            ]
+        )
+    contents = "\n".join(lines) + "\n"
+    try:
+        tomllib.loads(contents)
+    except tomllib.TOMLDecodeError as exc:
+        raise ValidationError(
+            "Configuration values cannot be represented as valid TOML",
+            details={"reason": str(exc)},
+        ) from exc
+    return contents
+
+
+def _toml_string(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
 
 
 def parse_config(data: object) -> AppConfig:

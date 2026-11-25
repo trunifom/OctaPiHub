@@ -7,8 +7,8 @@ von OctaLedger und Timeular.
 ## Stand
 
 Die Umsetzung hat begonnen. Es gibt ein schlankes Python-Projektgerüst,
-hardwareunabhängige Würfelprotokoll- und Entprellungslogik sowie einen streng
-validierten Loader für die erste versionierte TOML-Konfiguration. Es gibt außerdem
+hardwareunabhängige Würfelprotokoll- und Entprellungslogik sowie Laden, Validierung
+und atomare Speicherung der ersten versionierten TOML-Konfiguration. Es gibt außerdem
 einen typisierten Plugin-Vertrag und Discovery für vertrauenswürdige Python-Plugins.
 Der BLE-Transportvertrag und ein hardwarefreier Fake sind vorhanden; der produktive
 Bleak-Adapter und eine hardwarefrei getestete Laufzeit für beide Würfel sind ergänzt.
@@ -20,7 +20,7 @@ nicht mit echten Würfeln oder einem Raspberry Pi geprüft.
 | Projektgerüst / Qualitätswerkzeuge | vorhanden |
 | Würfel-Protokolldecoder | erster Stand, nur Unit-getestet |
 | Entprellung / Reconnect-Backoff | erster Stand, nur Unit-getestet |
-| Versioniertes TOML-Konfigurationsladen | erster Stand, nur lokal getestet |
+| Versionierte TOML-Konfiguration | Laden, Validieren und atomisches Speichern implementiert |
 | Plugin-Vertrag und Entry-Point-Registry | erster Stand, nur Unit-getestet |
 | BLE-Transportvertrag und Fake | implementiert, hardwarefrei getestet |
 | BLE-Laufzeit und Bleak/BlueZ-Adapter | implementiert, mit Fakes getestet |
