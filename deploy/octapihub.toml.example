@@ -1,7 +1,7 @@
-# Beispielkonfiguration für OctaPiHub (Schema v5).
+# Beispielkonfiguration für OctaPiHub (Schema v6).
 # Kopieren nach /etc/octapihub/octapihub.toml und anpassen.
 # Zugangsdaten (Hue-Schlüssel) gehören NICHT hierher, sondern in secrets.env.
-schema_version = 5
+schema_version = 6
 debounce_ms = 300
 
 [bluetooth]
@@ -20,6 +20,37 @@ address = "AA:BB:CC:DD:EE:02"
 role = "music"
 
 # Die Zuordnung Würfelseite -> Aktion lässt sich auf der Seite "Würfel" bearbeiten.
+
+# Musik (alles hier lässt sich auch auf der Seite "Musik" einstellen).
+# Ausgeschaltet, bis Sie sie dort einschalten. Der Musikordner muss für den Benutzer
+# "octapihub" lesbar sein und NICHT unter /home liegen (der Dienst darf /home nicht lesen).
+[music]
+enabled = false
+library_dir = "/srv/music"
+media_host = ""
+
+# Beispiel: ein Google-Lautsprecher und der Audioausgang des Raspberry Pi.
+# [[music.targets]]
+# id = "wohnzimmer"
+# name = "Wohnzimmer"
+# kind = "cast"            # cast | local | bluetooth
+# device = "Wohnzimmer"    # Name in der Google-Home-App
+# volume = 35
+#
+# [[music.targets]]
+# id = "pi"
+# name = "Raspberry Pi"
+# kind = "local"
+# device = ""              # leer = Standardausgang; Namen zeigt die Seite "Musik"
+# volume = 60
+#
+# [[music.playlists]]
+# id = "morgens"
+# name = "Morgenmusik"
+# source = "Morgens"       # Ordner im Musikordner, Radio-Adresse oder YouTube-Link
+# target = "wohnzimmer"
+# shuffle = true
+# repeat = "all"           # off | all | one
 
 [hue]
 enabled = false

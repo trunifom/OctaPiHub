@@ -17,6 +17,7 @@ from octapihub.application.ble import CharacteristicInfo, DeviceProfile
 from octapihub.application.ble_runtime import BleRuntime
 from octapihub.application.cube_service import CubeService
 from octapihub.application.hue_service import HueGateway, HueService, SceneInfo
+from octapihub.application.music.service import MusicService
 from octapihub.application.outbox import OutboxDispatcher
 from octapihub.application.plugins import PluginRegistry
 from octapihub.application.rules import RuleEngine
@@ -43,6 +44,7 @@ from octapihub.infrastructure.ble.protocol import (
     supports_orientation_notifications,
 )
 from octapihub.infrastructure.fake_sense_hat import FakeSenseHat
+from octapihub.infrastructure.music.fake import FakePlayerFactory, FakeResolver
 from octapihub.infrastructure.sense_hat import SenseHatAdapter
 from octapihub.infrastructure.sqlite_outbox import SQLiteOutbox
 from octapihub.infrastructure.sqlite_sense_hat_history import SQLiteSenseHatHistory
@@ -149,11 +151,32 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
     directory = Path(tempfile.mkdtemp(prefix="octapihub-demo-"))
     base: AppConfig = parse_config(
         {
-            "schema_version": 5,
+            "schema_version": 6,
             "hue": {"enabled": True, "host": "192.168.1.20"},
             "bluetooth": {"adapter": "hci0"},
             "debounce_ms": 300,
             "mappings": [
+                {
+                    "cube": "Musik",
+                    "face": 1,
+                    "actions": [
+                        {
+                            "kind": "music",
+                            "action": "play",
+                            "parameters": {"playlist": "morgens"},
+                        }
+                    ],
+                },
+                {
+                    "cube": "Musik",
+                    "face": 2,
+                    "actions": [{"kind": "music", "action": "toggle", "parameters": {}}],
+                },
+                {
+                    "cube": "Musik",
+                    "face": 0,
+                    "actions": [{"kind": "music", "action": "stop.all", "parameters": {}}],
+                },
                 {
                     "cube": "Licht",
                     "face": 3,
@@ -178,6 +201,36 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
                     ],
                 },
             ],
+            "music": {
+                "enabled": True,
+                "library_dir": "/home/pi/Music",
+                "targets": [
+                    {
+                        "id": "wohnzimmer",
+                        "name": "Wohnzimmer",
+                        "kind": "cast",
+                        "device": "Wohnzimmer",
+                        "volume": 35,
+                    },
+                    {"id": "pi", "name": "Raspberry Pi", "kind": "local", "volume": 60},
+                ],
+                "playlists": [
+                    {
+                        "id": "morgens",
+                        "name": "Morgenmusik",
+                        "source": "Morgens",
+                        "target": "wohnzimmer",
+                        "shuffle": True,
+                        "repeat": "all",
+                    },
+                    {
+                        "id": "radio",
+                        "name": "Radio Beispiel",
+                        "source": "https://radio.example.org/live.mp3",
+                        "target": "pi",
+                    },
+                ],
+            },
             "cubes": [
                 {"name": "Licht", "address": "AA:BB:CC:DD:EE:01", "role": "light"},
                 {"name": "Musik", "address": "AA:BB:CC:DD:EE:02", "role": "music"},
@@ -208,10 +261,28 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
         lambda settings: SQLiteSenseHatHistory(settings.history.database_path),
     )
     hue = _demo_hue(base.hue)
-    cubes = _demo_cubes(base, directory, hue)
-    matrix = build_matrix_service(base, service, cubes, hue, lambda: "ok")
-    settings = SettingsManager(config_path, base, service, hue, cubes, matrix)
-    return WebBackend(settings, service, token, cubes, hue, matrix=matrix)
+    music = MusicService(base.music, FakePlayerFactory(), FakeResolver())
+    cubes = _demo_cubes(base, directory, hue, music)
+    matrix = build_matrix_service(base, service, cubes, hue, lambda: "ok", music)
+    settings = SettingsManager(config_path, base, service, hue, cubes, matrix, music)
+
+    async def discover() -> list[str]:
+        return ["Küche (Nest Mini)", "Schlafzimmer (Nest Hub)"]
+
+    async def audio_devices() -> list[tuple[str, str]]:
+        return [("auto", "Automatisch"), ("alsa/default", "Standard (Kopfhörerbuchse)")]
+
+    return WebBackend(
+        settings,
+        service,
+        token,
+        cubes,
+        hue,
+        matrix=matrix,
+        music=music,
+        discover_cast=discover,
+        list_audio_devices=audio_devices,
+    )
 
 
 class _DemoHue:
@@ -276,7 +347,12 @@ def _demo_hue(config: HueConfig) -> HueService:
     return HueService(config, _DemoSecrets(), make_gateway, pair)
 
 
-def _demo_cubes(config: AppConfig, directory: Path, hue: HueService | None = None) -> CubeService:
+def _demo_cubes(
+    config: AppConfig,
+    directory: Path,
+    hue: HueService | None = None,
+    music: MusicService | None = None,
+) -> CubeService:
     """Two simulated cubes that connect instantly; no Bluetooth is used."""
     profile = DeviceProfile(
         (
@@ -304,6 +380,8 @@ def _demo_cubes(config: AppConfig, directory: Path, hue: HueService | None = Non
     def make_dispatcher(settings: AppConfig) -> OutboxDispatcher:
         plugins = PluginRegistry()
         plugins.register(hue if hue is not None else _DemoHue())
+        if music is not None:
+            plugins.register(music)
         return OutboxDispatcher(
             RuleEngine(settings), SQLiteOutbox(directory / "state.sqlite3"), plugins
         )

@@ -12,8 +12,8 @@ StartLimitBurst=5
 Type=simple
 User=octapihub
 Group=octapihub
-# Zugriff auf Bluetooth (BlueZ), I2C (Sense HAT) und den Joystick (input).
-SupplementaryGroups=bluetooth i2c input
+# Zugriff auf Bluetooth (BlueZ), I2C (Sense HAT), den Joystick (input) und die Tonausgabe (audio).
+SupplementaryGroups=bluetooth i2c input audio
 WorkingDirectory=/var/lib/octapihub
 
 # Standardwerte; octapihub.env (optional, Rechte 0600) darf sie überschreiben und
@@ -27,9 +27,10 @@ Restart=on-failure
 RestartSec=5
 TimeoutStopSec=20
 
-# Ressourcen schonen (Raspberry Pi mit wenig Arbeitsspeicher).
-MemoryHigh=250M
-MemoryMax=350M
+# Ressourcen schonen (Raspberry Pi mit wenig Arbeitsspeicher). Der Musikplayer mpv läuft
+# als Kindprozess in dieser Gruppe und zählt mit.
+MemoryHigh=350M
+MemoryMax=500M
 TasksMax=128
 
 # Absicherung: kein Root, kaum Schreibrechte, keine neuen Rechte.

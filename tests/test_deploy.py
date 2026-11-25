@@ -218,3 +218,26 @@ def test_main_reports_a_missing_config_with_code(
 
     assert main(["--config", str(tmp_path / "missing.toml")]) == 2
     assert "CH-CFG-001" in capsys.readouterr().err
+
+
+def test_example_config_music_section_is_off_and_its_commented_examples_are_valid() -> None:
+    from octapihub.core.config import MusicTargetKind, parse_config
+
+    path = DEPLOY / "octapihub.toml.example"
+    config = load_config(path)
+    assert config.music.enabled is False and config.music.library_dir == "/srv/music"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start = lines.index("# [[music.targets]]")
+    end = next(i for i, line in enumerate(lines) if line == "[hue]")
+    block = [line[2:] if line.startswith("# ") else line.lstrip("#") for line in lines[start:end]]
+    uncommented = "\n".join(line for line in lines[:start] if not line.startswith("#"))
+    data = tomllib.loads(uncommented + "\n" + "\n".join(block))
+    parsed = parse_config(data)
+    assert [t.kind for t in parsed.music.targets] == [MusicTargetKind.CAST, MusicTargetKind.LOCAL]
+    assert parsed.music.playlists[0].target == "wohnzimmer"
+
+
+def test_unit_gives_the_service_audio_access_and_room_for_the_player() -> None:
+    service = _unit()["Service"]
+    assert "audio" in service["SupplementaryGroups"].split()
+    assert service["MemoryMax"].endswith("M") and int(service["MemoryMax"][:-1]) >= 500
