@@ -361,4 +361,22 @@
   }
   markActiveFaces();
   document.addEventListener("octapihub:live", markActiveFaces);
+  /* ---------- help buttons at input fields ---------- */
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest ? event.target.closest(".info-btn") : null;
+    if (!button) { return; }
+    var pop = document.getElementById(button.getAttribute("data-info"));
+    if (!pop) { return; }
+    var open = pop.hasAttribute("hidden");
+    if (open) { pop.removeAttribute("hidden"); } else { pop.setAttribute("hidden", ""); }
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Escape") { return; }
+    $$(".info-pop:not([hidden])").forEach(function (pop) {
+      pop.setAttribute("hidden", "");
+      var button = document.querySelector('[data-info="' + pop.id + '"]');
+      if (button) { button.setAttribute("aria-expanded", "false"); }
+    });
+  });
 })();

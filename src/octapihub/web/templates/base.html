@@ -30,6 +30,7 @@
         <a href="/settings" {% if active == 'settings' %}aria-current="page"{% endif %}>{{ m.icon('settings') }}<span>Einstellungen</span></a>
       </nav>
       <div class="prefs">
+        <a class="pref" href="/help" title="Hilfe und Handbuch" aria-label="Hilfe und Handbuch">{{ m.icon('info') }}<span>Hilfe</span></a>
         <button type="button" class="pref" data-pref="theme" title="Darstellung wechseln: Automatisch, Hell, Dunkel">
           {{ m.icon('theme') }}<span data-pref-label="theme">Automatisch</span>
         </button>
@@ -39,6 +40,11 @@
       </div>
     </div>
   </header>
+  {% if startup_warnings %}
+  <div class="startup-warnings" role="alert">
+    {% for text in startup_warnings %}<p>⚠ {{ text }}</p>{% endfor %}
+  </div>
+  {% endif %}
   <main id="main" class="page">
     {% block content %}{% endblock %}
   </main>

@@ -281,7 +281,7 @@ class HueService:
         try:
             self._groups = tuple(await gateway.list_groups())
         except Exception:  # noqa: BLE001 - scenes were read successfully; groups can be retried
-            logger.warning("Hue groups could not be read", exc_info=False)
+            logger.warning("Hue groups could not be read")
 
     async def execute(self, action: str, parameters: Mapping[str, object]) -> None:
         """Run one configured action (plugin contract)."""

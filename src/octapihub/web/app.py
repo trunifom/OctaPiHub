@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import logging
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, tzinfo
@@ -17,7 +18,14 @@ from urllib.parse import parse_qsl
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -46,6 +54,8 @@ from octapihub.infrastructure.system_info import SystemInfoReader
 from octapihub.web import forms
 from octapihub.web.backup_routes import register_backup_routes
 from octapihub.web.diagnostics import build_zip, collect_diagnostics
+from octapihub.web.field_help import add_info_buttons
+from octapihub.web.help_routes import register_help_routes
 from octapihub.web.music_routes import register_music_routes
 from octapihub.web.presenter import (
     CHARTABLE_GROUPS,
@@ -122,6 +132,7 @@ class WebBackend:
     media: MediaRegistry | None = None
     scanner: DeviceScanner | None = None
     smarthome: SmartHomeService | None = None
+    startup_warnings: list[str] = field(default_factory=list)
     discover_cast: Callable[[], Awaitable[list[str]]] | None = None
     list_audio_devices: Callable[[], Awaitable[list[tuple[str, str]]]] | None = None
     logs: LogRing | None = None
@@ -209,6 +220,21 @@ async def display_stream(
             yield ": keep-alive\n\n"
         await asyncio.sleep(interval)
         idle += interval
+
+
+async def _guarded_start(
+    backend: WebBackend, name: str, start: Callable[[], Awaitable[None]]
+) -> None:
+    """Start one service; a failure is logged and shown as a warning, never raised."""
+    try:
+        await start()
+    except Exception as exc:
+        code = exc.error_code if isinstance(exc, OctaPiHubError) else "CH-GENERIC-000"
+        logger.exception("%s could not be started (%s)", name, code)
+        backend.startup_warnings.append(
+            f"„{name}“ konnte nicht gestartet werden ({code}). "
+            "Die übrigen Funktionen laufen weiter."
+        )
 
 
 MUSIC_POLL_SECONDS = 5.0
@@ -359,13 +385,14 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         music_task: asyncio.Task[None] | None = None
         if manage_service:
-            await backend.sense_hat.start()
+            # One failing part must never stop the others or the web interface itself.
+            await _guarded_start(backend, "Sense HAT", backend.sense_hat.start)
             if backend.hue is not None:
-                await backend.hue.start()
+                await _guarded_start(backend, "Hue", backend.hue.start)
             if backend.matrix is not None:
-                await backend.matrix.start()
+                await _guarded_start(backend, "LED-Anzeige", backend.matrix.start)
             if backend.cubes is not None:
-                await backend.cubes.start()
+                await _guarded_start(backend, "Würfel", backend.cubes.start)
             if backend.music is not None:
                 music_task = asyncio.get_running_loop().create_task(
                     _watch_music(backend.music), name="music-status"
@@ -413,10 +440,12 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "active": active,
             "now_text": local_time_text(backend.clock(), backend.tz),
             "live": True,
+            "startup_warnings": backend.startup_warnings,
             **live.context(),
             **extra,
         }
-        return templates.TemplateResponse(request, name, context, status_code=status)
+        rendered = templates.get_template(name).render({**context, "request": request})
+        return HTMLResponse(add_info_buttons(rendered), status_code=status)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException) -> Response:
@@ -425,6 +454,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
         known = {
             404: ("CH-WEB-001", "Diese Seite gibt es nicht."),
             405: ("CH-WEB-002", "Diese Aktion ist hier nicht erlaubt."),
+            413: ("CH-WEB-020", "Die gesendeten Daten sind zu groß."),
         }
         code, message = known.get(exc.status_code, ("CH-WEB-000", "Die Anfrage war nicht gültig."))
         return page(
@@ -436,6 +466,56 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             error_message=message,
             live=False,
         )
+
+    @app.exception_handler(OctaPiHubError)
+    async def project_error(request: Request, exc: OctaPiHubError) -> Response:
+        """A deliberate failure nobody caught: explain it with its own code."""
+        reference = uuid.uuid4().hex[:8]
+        logger.error(
+            "Unhandled project error %s [ref %s]: %s", exc.error_code, reference, exc.message
+        )
+        return _error_response(request, 500, exc.error_code, exc.user_message, reference)
+
+    @app.exception_handler(Exception)
+    async def unexpected_error(request: Request, exc: Exception) -> Response:
+        """Anything else: log it with a short reference, show a calm page, keep running."""
+        reference = uuid.uuid4().hex[:8]
+        logger.error(
+            "Unexpected error %s on %s %s [ref %s]",
+            type(exc).__name__,
+            request.method,
+            request.url.path,
+            reference,
+        )
+        return _error_response(
+            request,
+            500,
+            "CH-WEB-500",
+            "Es ist ein unerwarteter Fehler aufgetreten. Die Software läuft weiter.",
+            reference,
+        )
+
+    def _error_response(
+        request: Request, status: int, code: str, message: str, reference: str
+    ) -> Response:
+        if request.url.path.startswith("/api/") or request.url.path.startswith("/events"):
+            return JSONResponse(
+                {"error": message, "code": code, "reference": reference}, status_code=status
+            )
+        try:
+            return page(
+                request,
+                "error.html",
+                "",
+                status,
+                error_code=code,
+                error_message=message,
+                error_reference=reference,
+                live=False,
+            )
+        except Exception:
+            logger.exception("Could not render the error page")
+            return PlainTextResponse(f"{message} ({code}, {reference})", status_code=status)
 
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request) -> Response:
@@ -918,6 +998,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "Sie gilt sofort, die Würfel müssen nicht neu verbunden werden.",
         )
 
+    register_help_routes(app, page)
     register_music_routes(app, backend, page, _read_form, _access_problem)
     register_smarthome_routes(app, backend, page, _read_form, _access_problem)
 
@@ -1238,10 +1319,48 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
 
     @app.get("/healthz")
     def healthz() -> dict[str, object]:
+        """Machine-readable health: overall status plus the state of every part."""
+        parts: dict[str, dict[str, object]] = {}
+        sense = backend.sense_hat
+        parts["sense_hat"] = {
+            "ok": sense.hardware_error_code is None and sense.history_error is None,
+            "running": sense.running,
+            "error_code": sense.hardware_error_code,
+        }
+        if backend.cubes is not None:
+            parts["cubes"] = {
+                "ok": backend.cubes.error is None and backend.cubes.running,
+                "running": backend.cubes.running,
+                "error_code": backend.cubes.error_code,
+                "connected": sum(1 for s in backend.cubes.statuses if s.connected),
+                "configured": len(backend.settings.config.cubes),
+            }
+        if backend.hue is not None:
+            status = backend.hue.status
+            parts["hue"] = {
+                "ok": status.last_error is None,
+                "state": backend.hue.state.value,
+                "error_code": status.last_error_code,
+            }
+        if backend.music is not None:
+            failing = [t for t in backend.music.status.targets if t.error]
+            parts["music"] = {
+                "ok": not failing,
+                "enabled": backend.music.status.enabled,
+                "error_codes": sorted({t.error_code for t in failing if t.error_code}),
+            }
+        if backend.smarthome is not None:
+            failed = [r for r in backend.smarthome.results.values() if not r.ok]
+            parts["smarthome"] = {"ok": not failed, "error_codes": sorted({r.code for r in failed})}
+        degraded = [name for name, info in parts.items() if not info["ok"]]
         return {
-            "status": "ok",
-            "sense_hat_running": backend.sense_hat.running,
-            "sense_hat_error": backend.sense_hat.hardware_error_code,
+            "status": "degraded" if degraded or backend.startup_warnings else "ok",
+            "degraded": degraded,
+            "warnings": len(backend.startup_warnings),
+            "parts": parts,
+            # kept for older monitoring scripts
+            "sense_hat_running": sense.running,
+            "sense_hat_error": sense.hardware_error_code,
             "hue_state": backend.hue.state.value if backend.hue is not None else None,
             "cubes_running": backend.cubes.running if backend.cubes is not None else None,
         }

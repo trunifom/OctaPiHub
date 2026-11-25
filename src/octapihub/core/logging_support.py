@@ -65,10 +65,10 @@ class RedactingFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.msg = self._redactor.redact(record.getMessage())
         record.args = None
-        if record.exc_info is not None:
+        if isinstance(record.exc_info, tuple):
             # Keep the exception type for diagnosis but never log the (possibly secret) text.
             record.exc_text = f"{record.exc_info[0].__name__ if record.exc_info[0] else ''}"
-            record.exc_info = None
+        record.exc_info = None
         return True
 
 

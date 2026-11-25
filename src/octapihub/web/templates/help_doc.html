@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<p class="muted"><a href="/help">← Hilfe</a></p>
+<div class="help-layout">
+  <nav class="help-toc" aria-label="Inhalt dieser Seite">
+    <strong>Inhalt</strong>
+    <ul>
+      {% for h in toc %}<li class="lvl{{ h.level }}"><a href="#{{ h.anchor }}">{{ h.text }}</a></li>{% endfor %}
+    </ul>
+    <hr>
+    <strong>Weitere Hilfe</strong>
+    <ul>
+      {% for d in docs %}<li><a href="/help/{{ d.slug }}"{% if d.slug == doc.slug %} aria-current="page"{% endif %}>{{ d.title }}</a></li>{% endfor %}
+      <li><a href="/help/errors">Fehlercodes</a></li>
+    </ul>
+  </nav>
+  <article class="help-doc">{{ body | safe }}</article>
+</div>
+{% endblock %}

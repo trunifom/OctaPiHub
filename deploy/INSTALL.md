@@ -135,7 +135,10 @@ sudo systemctl enable --now octapihub
 sudo systemctl status octapihub
 ```
 **Kontrolle:** `status` zeigt `active (running)`; `journalctl -u octapihub -n 30` zeigt keine
-Zeile mit `ERROR`. Der Dienst startet künftig nach jedem Neustart von selbst.
+Zeile mit `ERROR`. Vor dem ersten Start prüft `/opt/octapihub/venv/bin/octapihub --check --config
+/etc/octapihub/octapihub.toml --secrets /etc/octapihub/secrets.env` Einstellungen, Zugangsdatei und Token
+(0 = in Ordnung, 1 = Warnungen, 2 = unbrauchbar). Nach dem Start zeigt
+`curl http://127.0.0.1:8080/healthz` den Zustand aller Teile als JSON. Der Dienst startet künftig nach jedem Neustart von selbst.
 
 ## 8. Weboberfläche öffnen
 Standardmäßig lauscht der Dienst nur auf dem Gerät selbst (`127.0.0.1`). Für den Zugriff im
@@ -147,7 +150,7 @@ Token ist alles nur lesbar. Die Oberfläche läuft ohne Anmeldung und ohne Versc
 Heimnetz: Wer im Netz ist, kann ansehen, aber ohne Token nichts ändern.
 
 Eine Bedienungsanleitung für die Oberfläche finden Sie im
-[Benutzerhandbuch](../docs/BENUTZERHANDBUCH.md).
+[Benutzerhandbuch](../src/octapihub/web/help/handbuch.md).
 
 **Kontrolle:** Die Seite **Übersicht** erscheint; **Würfel** zeigt Ihre Würfel (Status
 „Verbindet …“ oder „Bereit“).
@@ -252,6 +255,7 @@ einmal ab und notieren Sie, was abweicht:
 **Wo sehe ich Meldungen?**
 - `journalctl -u octapihub -f` (Zugangsdaten sind unkenntlich gemacht).
 - Seite **System** (Zustand, letzte Meldungen, Diagnose-Paket) und **Sichern** (Logdatei laden).
+- In der Oberfläche unter **Hilfe → Fehlercodes**: Bedeutung und Abhilfe jedes `CH-…`-Codes.
 - Logdatei: `/var/lib/octapihub/logs/octapihub.log` (rotierend, höchstens etwa 6 MB).
 - Ausführlichere Meldungen: in `octapihub.env` `OCTAPIHUB_LOG_LEVEL=DEBUG`, Dienst neu starten.
 

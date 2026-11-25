@@ -32,7 +32,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-"octapihub.web" = ["templates/*.html", "static/*"]
+"octapihub.web" = ["templates/*.html", "static/*", "help/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

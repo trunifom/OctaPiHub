@@ -22,7 +22,6 @@ from octapihub.composition import (
     build_sense_hat_service,
     build_smarthome_service,
 )
-from octapihub.core.config import load_config
 from octapihub.core.errors import OctaPiHubError, SecretsError
 from octapihub.core.logging_support import (
     LOG_FORMAT,
@@ -30,6 +29,11 @@ from octapihub.core.logging_support import (
     RedactingFilter,
     Redactor,
     create_file_handler,
+)
+from octapihub.core.resilience import (
+    describe_fallback,
+    install_exception_hooks,
+    load_with_fallback,
 )
 from octapihub.infrastructure.ble.bleak_transport import BleakDeviceScanner
 from octapihub.infrastructure.music.cast_player import PyChromecastBackend
@@ -154,11 +158,49 @@ def build_parser(environ: Mapping[str, str] | None = None) -> argparse.ArgumentP
         help="Ausführlichkeit: DEBUG, INFO, WARNING oder ERROR (Standard: INFO)",
     )
     parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Konfiguration und Zugangsdatei prüfen und beenden (0 = in Ordnung)",
+    )
+    parser.add_argument(
         "--demo",
         action="store_true",
         help="Simuliertes Sense HAT mit Beispieldaten (Token: demo), ohne Hardware",
     )
     return parser
+
+
+def run_check(config_path: str, secrets_path: str) -> int:
+    """Check the setup without starting anything; returns 0 (fine), 1 (warnings) or 2 (unusable)."""
+    out = sys.stdout.write
+    try:
+        loaded = load_with_fallback(config_path)
+    except OctaPiHubError as exc:
+        sys.stderr.write(f"{exc.error_code}: {exc.user_message}\n")
+        return 2
+    config = loaded.config
+    status = 0
+    if loaded.fallback_from is not None:
+        out(f"WARNUNG: {describe_fallback(loaded)}\n")
+        status = 1
+    out(
+        f"Einstellungen: in Ordnung (Version {config.schema_version}, "
+        f"{len(config.cubes)} Würfel, {len(config.music.targets)} Wiedergabegeräte, "
+        f"{len(config.smarthome.actions)} Smart-Home-Aktionen)\n"
+    )
+    try:
+        SecretsFile(secrets_path).read()
+        out("Zugangsdaten: in Ordnung\n")
+    except SecretsError as exc:
+        out(f"WARNUNG: {exc.error_code}: {exc.user_message}\n")
+        status = max(status, 1)
+    problem = token_problem(os.environ.get(TOKEN_VARIABLE) or None)
+    if problem is not None:
+        out(f"WARNUNG: CH-WEB-008: {problem}\n")
+        status = max(status, 1)
+    elif not os.environ.get(TOKEN_VARIABLE):
+        out("Hinweis: Kein Zugriffs-Token gesetzt, die Oberfläche ist nur lesend.\n")
+    return status
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -168,6 +210,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     log_dir = None if args.log_dir == "-" else (args.log_dir or str(Path(args.data_dir) / "logs"))
     logs = install_logging(redactor, args.log_level, None if args.demo else log_dir)
 
+    install_exception_hooks()
+    fallback_warning = ""
+    if args.check:
+        return run_check(args.config, args.secrets)
     if args.demo:
         from octapihub.web.demo import build_demo_backend, demo_system_reader
 
@@ -175,10 +221,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         backend.system = demo_system_reader()
     else:
         try:
-            config = load_config(args.config)
+            loaded = load_with_fallback(args.config)
         except OctaPiHubError as exc:
             print(f"{exc.error_code}: {exc.user_message}", file=sys.stderr)  # noqa: T201
             return 2
+        config = loaded.config
+        fallback_warning = describe_fallback(loaded)
         service = build_sense_hat_service(config)
         hue = build_hue_service(config, args.secrets)
         music, media = build_music_service(config, args.port)
@@ -211,6 +259,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             discover_cast=discover_cast,
             list_audio_devices=list_audio_devices,
         )
+    if not args.demo and fallback_warning:
+        backend.startup_warnings.append(fallback_warning)
     problem = token_problem(backend.token) if not args.demo else None
     if problem is not None:
         print(f"CH-WEB-008: {problem}", file=sys.stderr)  # noqa: T201

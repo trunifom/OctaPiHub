@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Hilfe</h1>
+    <p class="lead">Handbuch, Installationsanleitung, Fehlersuche und Fehlercodes zum Nachschlagen. Bei jedem Eingabefeld finden Sie außerdem ein kleines <strong>ⓘ</strong> mit einer Erklärung.</p>
+  </div>
+</div>
+
+<form class="help-search" method="get" action="/help" role="search">
+  <label class="visually-hidden" for="f-help-q">Hilfe durchsuchen</label>
+  <input type="text" name="q" id="f-help-q" value="{{ query }}" placeholder="Suchen, z. B. „Token“, „Bluetooth“, „CH-MUS-002“" maxlength="80" autocomplete="off">
+  <button type="submit" class="btn btn-primary">Suchen</button>
+</form>
+
+{% if hits is not none %}
+<section class="panel">
+  <h2>Ergebnisse für „{{ query }}“</h2>
+  {% if hits %}
+    {% for hit in hits %}
+    <div class="help-hit">
+      <h3><a href="{{ hit.href }}">{{ hit.title }}</a></h3>
+      <ul>{% for s in hit.snippets %}<li>{{ s | safe }}</li>{% endfor %}</ul>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Dazu wurde nichts gefunden (mindestens zwei Zeichen eingeben). Versuchen Sie ein anderes Wort oder öffnen Sie unten ein Dokument.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<div class="help-cards">
+  {% for doc in docs %}
+  <a class="help-card" href="/help/{{ doc.slug }}"><h2>{{ doc.title }}</h2><p class="muted">{{ doc.summary }}</p></a>
+  {% endfor %}
+  <a class="help-card" href="/help/errors"><h2>Fehlercodes</h2><p class="muted">Was jeder Fehlercode (CH-…) bedeutet und was Sie tun können.</p></a>
+</div>
+{% endblock %}

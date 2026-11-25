@@ -4,7 +4,8 @@
 <div class="empty empty-page">
   <span class="empty-ico">{{ m.icon('info') }}</span>
   <h1>{{ error_message }}</h1>
-  <p>Fehlercode <code>{{ error_code }}</code></p>
+  <p>Fehlercode <code>{{ error_code }}</code>{% if error_reference %} · Kennung <code>{{ error_reference }}</code>{% endif %}</p>
+  <p class="muted"><a href="/help/errors#{{ error_code }}">Was bedeutet dieser Fehler und was kann ich tun?</a></p>
   <p><a class="btn" href="/">Zur Übersicht</a></p>
 </div>
 {% endblock %}

@@ -261,3 +261,16 @@ def test_ring_never_raises_into_the_caller() -> None:
 def test_ring_capacity_must_be_positive() -> None:
     with pytest.raises(ValueError):
         LogRing(Redactor(), 0)
+
+
+def test_the_redacting_filter_survives_odd_exc_info_values() -> None:
+    import logging
+
+    from octapihub.core.logging_support import RedactingFilter, Redactor
+
+    log_filter = RedactingFilter(Redactor())
+    for exc_info in (False, None, (ValueError, ValueError("geheim123456"), None)):
+        record = logging.LogRecord("x", logging.WARNING, "f", 1, "text %s", ("a",), None)
+        record.exc_info = exc_info  # type: ignore[assignment]
+        assert log_filter.filter(record) is True
+        assert record.exc_info is None and "geheim123456" not in str(record.exc_text)

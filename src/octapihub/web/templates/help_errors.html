@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<p class="muted"><a href="/help">← Hilfe</a></p>
+<div class="page-head">
+  <div>
+    <h1>Fehlercodes</h1>
+    <p class="lead">Jede Fehlermeldung der Software trägt einen Code wie <code>CH-MUS-002</code>. Hier steht, was er bedeutet und was Sie tun können. „Wird wiederholt“ heißt: Die Aktionswarteschlange versucht es nach kurzer Pause selbst noch einmal.</p>
+  </div>
+</div>
+{% for area, entries in areas.items() %}
+<section class="panel">
+  <h2>{{ area }}</h2>
+  {% for e in entries %}
+  <div class="err-entry" id="{{ e.code }}">
+    <h3><code>{{ e.code }}</code> {{ e.title }}{% if e.retried %} <span class="pill pill-role">wird wiederholt</span>{% endif %}</h3>
+    <p><strong>Bedeutung:</strong> {{ e.meaning }}</p>
+    <p><strong>Was tun?</strong> {{ e.action }}</p>
+  </div>
+  {% endfor %}
+</section>
+{% endfor %}
+{% endblock %}
