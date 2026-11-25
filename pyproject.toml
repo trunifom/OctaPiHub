@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "octapihub"
+version = "0.1.0.dev0"
+description = "Local-first smart-home and music hub for Timeular / ZEI cubes"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<10",
+  "ruff>=0.9,<1",
+  "mypy>=1.14,<2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "BLE", "T20", "C4", "PIE", "SIM", "S", "RUF100"]
+ignore = ["S101", "SIM102", "SIM117"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "T20", "B008", "BLE", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/octapihub"]

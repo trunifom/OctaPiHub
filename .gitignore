@@ -1,0 +1,26 @@
+# Python environments and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local configuration, credentials and operational data
+.env
+.env.*
+!.env.example
+secrets.env
+secrets.json
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.log
+logs/
