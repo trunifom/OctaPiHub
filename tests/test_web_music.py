@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -389,3 +390,102 @@ def test_a_removed_playlist_stays_visible_in_an_existing_mapping(tmp_path: Path)
         rig.post(client, "save", {"p.0.remove": "on"})
         page = client.get("/cubes").text
     assert "nicht mehr vorhanden" in page
+
+
+# ---------- per-face music options: device, shuffle, repeat ----------
+
+
+def test_options_per_face_are_saved_loaded_and_used(tmp_path: Path) -> None:
+    rig = Rig(tmp_path)
+    fields = {
+        "map.0.1": "music:play:morgen",
+        "map.0.1.target": "pi",
+        "map.0.1.shuffle": "yes",
+        "map.0.1.repeat": "one",
+        "map.0.2": "music:toggle",
+        "map.0.2.target": "wz",
+    }
+    with rig.client() as client:
+        response = post_mapping(rig, client, fields)
+        assert response.status_code == 200, response.text[:300]
+        page = client.get("/cubes").text
+    saved = {
+        (m.cube, m.face): dict(m.actions[0].parameters) for m in load_config(rig.path).mappings
+    }
+    assert saved[("Musik", 1)] == {
+        "playlist": "morgen",
+        "target": "pi",
+        "shuffle": True,
+        "repeat": "one",
+    }
+    assert saved[("Musik", 2)] == {"target": "wz"}
+    assert 'value="pi" selected' in page and 'value="yes" selected' in page
+    assert 'value="one" selected' in page
+    # the service gets exactly these parameters
+    import asyncio
+
+    asyncio.run(rig.music.execute("play", saved[("Musik", 1)]))
+    play = [c for c in rig.factory.players["pi"].calls if c[0] == "play"][0][1]
+    assert play.shuffle is True and play.repeat.value == "one"
+
+
+def test_a_cube_wide_device_applies_to_all_music_faces(tmp_path: Path) -> None:
+    rig = Rig(tmp_path)
+    fields = {
+        "map.0.1": "music:play:morgen",
+        "map.0.2": "music:next",
+        "map.0.3": "music:volume.up",
+        "cubetarget.0": "pi",
+    }
+    with rig.client() as client:
+        assert post_mapping(rig, client, fields).status_code == 200
+        page = client.get("/cubes").text
+    saved = {
+        m.face: dict(m.actions[0].parameters)
+        for m in load_config(rig.path).mappings
+        if m.cube == "Musik"
+    }
+    assert saved[1]["target"] == saved[2]["target"] == saved[3]["target"] == "pi"
+    assert 'name="cubetarget.0"' in page
+    assert re.search(r'<option value="pi" selected>', page)
+    # changing a single face afterwards keeps the other faces and the cube default
+    with rig.client() as client:
+        post_mapping(rig, client, {"map.0.2.target": "wz", "cubetarget.0": "pi"})
+    again = {
+        m.face: dict(m.actions[0].parameters)
+        for m in load_config(rig.path).mappings
+        if m.cube == "Musik"
+    }
+    assert again[2]["target"] == "wz" and again[1]["target"] == "pi"
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        {"map.0.1.target": "gibtsnicht"},
+        {"map.0.1.shuffle": "vielleicht"},
+        {"map.0.1.repeat": "ewig"},
+    ],
+)
+def test_invalid_options_are_refused(tmp_path: Path, field: dict[str, str]) -> None:
+    rig = Rig(tmp_path)
+    with rig.client() as client:
+        response = post_mapping(rig, client, {"map.0.1": "music:play:morgen", **field})
+    assert response.status_code == 422
+    assert load_config(rig.path).mappings == ()
+
+
+def test_the_holder_can_stop_the_music_and_light_cubes_can_ignore_it(tmp_path: Path) -> None:
+    rig = Rig(tmp_path)
+    with rig.client() as client:
+        post_mapping(rig, client, {"map.0.0": "music:stop.all"})
+    config = load_config(rig.path)
+    holder = [m for m in config.mappings if m.face == 0]
+    assert len(holder) == 1 and holder[0].actions[0].action == "stop.all"
+    import asyncio
+
+    asyncio.run(rig.music.execute("play", {"playlist": "morgen"}))
+    asyncio.run(
+        rig.music.execute(holder[0].actions[0].action, dict(holder[0].actions[0].parameters))
+    )
+    assert all(t.state.value == "idle" for t in rig.music.status.targets)

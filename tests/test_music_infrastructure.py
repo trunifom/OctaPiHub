@@ -476,3 +476,21 @@ async def test_ipc_times_out_when_mpv_is_silent(monkeypatch: pytest.MonkeyPatch)
     with pytest.raises(MusicTargetError):
         await ipc.command("stop")
     await ipc.close()
+
+
+@aio
+async def test_mpv_shuffles_online_playlists_through_ytdl() -> None:
+    backend = FakeBackend()
+    player = MpvPlayer(target(), backend)
+    video = (
+        Track("https://www.youtube.com/playlist?list=PLabcdefghijklmnop", "YT", TrackKind.YOUTUBE),
+    )
+    await player.play(PlayRequest(video, parse_source("Jazz"), "YT", shuffle=True))
+    calls = backend.channels[0].calls
+    assert ("set_property", "ytdl-raw-options", "playlist-random=") in calls
+    await player.play(PlayRequest(video, parse_source("Jazz"), "YT", shuffle=False))
+    assert ("set_property", "ytdl-raw-options", "") in backend.channels[0].calls
+    # local files never touch the option
+    other = FakeBackend()
+    await MpvPlayer(target(), other).play(request(shuffle=True))
+    assert not any(c[:2] == ("set_property", "ytdl-raw-options") for c in other.channels[0].calls)

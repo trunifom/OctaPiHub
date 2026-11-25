@@ -448,6 +448,14 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "scene_options": [{"id": sid, "name": name} for sid, name in scenes.items()],
             "music_groups": forms.music_choice_options(playlists) if backend.music else [],
             "music_enabled": backend.settings.config.music.enabled,
+            "music_targets": {t.id: t.name for t in backend.settings.config.music.targets},
+            "option_shuffle": {"": "Wie die Playlist", "yes": "Zufällig", "no": "In Reihenfolge"},
+            "option_repeat": {
+                "": "Wie die Playlist",
+                "off": "Nicht wiederholen",
+                "all": "Alles wiederholen",
+                "one": "Titel wiederholen",
+            },
             "scenes_known": bool(scenes),
             **joystick_readiness(),
         }
@@ -729,8 +737,12 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             status, title, detail, code = problem
             return respond(status, "error", title, detail, code)
         known = {scene.id for scene in backend.hue.scenes} if backend.hue else set()
-        playlist_ids = {p.id for p in backend.settings.config.music.playlists}
-        result = forms.parse_mapping_form(submitted, backend.settings.config, known, playlist_ids)
+        music_config = backend.settings.config.music
+        playlist_ids = {p.id for p in music_config.playlists}
+        target_ids = {t.id for t in music_config.targets}
+        result = forms.parse_mapping_form(
+            submitted, backend.settings.config, known, playlist_ids, target_ids
+        )
         if result.mappings is None:
             errors.update(result.errors)
             return respond(

@@ -94,6 +94,10 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 | F-M11 | M | Würfelseiten, Halterung (Seite 0) und Joystick-Richtungen können Playlists starten/pausieren und Wiedergabe steuern (Pause, Weiter, Stopp, Alles stoppen, Nächster/Vorheriger Titel, Lauter, Leiser); in der Weboberfläche als Aktionskatalog wählbar. |
 | F-M12 | M | Playlists mit Quelle (Ordner, Datei, m3u/pls, Radio-Adresse, YouTube), Zufall, Wiederholen, Lautstärke und Ziel; Dateien nur aus dem Musikordner; Playlists exportier- und importierbar. |
 | F-M13 | S | Ansicht „Musik“ auf der LED-Matrix (Zustand, Lautstärke, Titel per Laufschrift). |
+| F-M14 | M | Je Playlist **und je Würfelseite** einstellbar: Zufall (an/aus), Wiederholen (aus / ganze Playlist / einzelner Titel) und Wiedergabegerät; zusätzlich ein Standardgerät je Würfel. Gilt für lokale Quellen und YouTube/YouTube Music über mpv; auf Cast-Geräten nicht für YouTube-Playlists (Gerät spielt sie selbst). Spotify nicht möglich. |
+| F-M15 | S | Halterung (Würfel senkrecht, Seite 0): empfohlene Belegung „Wiedergabe stoppen“ für Musik, keine Aktion für Licht. |
+
+**Geplant (nicht implementiert):** weitere Lichtsteuerung (Ein/Aus, heller/dunkler, Farbwechsel, nächste Szene; erfordert Erweiterung der Hue-Anbindung um Lichtgruppen), weitere Smart-Home-Plugins, Bilder oder Dashboards auf Nest-Hub-Displays (Cast-Empfänger), Zuordnung ganzer Räume/Gerätegruppen.
 
 **Stand F-M:** F-M1, F-M2, F-M3 (inkl. Bluetooth-Box), F-M4, F-M5, F-M7, F-M8 (Fehlerisolation, klare Meldung, kein Absturz; kein „Wecken“ eines schlafenden Geräts), F-M10 bis F-M13 sind **implementiert und mit Fakes getestet**; **keine** Prüfung mit echtem mpv, Google-Lautsprecher, Nest Hub oder Bluetooth-Box. F-M6 (Spotify) ist **nicht** umgesetzt: Spotify-Links werden erkannt und mit `CH-MUS-003` abgelehnt. F-M9 ist durch mehrere wählbare Ziele teilweise erfüllt (keine Gruppen, nicht mehrere gleichzeitig). Verzögerte Schritte (F-R3) gibt es nicht.
 

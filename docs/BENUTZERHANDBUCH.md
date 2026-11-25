@@ -145,6 +145,27 @@ fünf Joystick-Richtungen). Im Auswahlfeld wählen Sie **eine Aktion**:
   7 Lauter, Halterung „Alle Wiedergaben stoppen“.
 - *Dritter Würfel:* was Ihnen einfällt, z. B. Hue-Szenen für das Schlafzimmer.
 
+**Zufall, Wiederholen und Gerät je Seite.** Unter jeder Seite gibt es „Musik-Optionen“:
+- **Gerät:** auf welchem Lautsprecher/Display diese Seite spielt. Leer = das Gerät des Würfels bzw. der Playlist.
+- **Reihenfolge:** *Wie die Playlist*, *Zufällig* oder *In Reihenfolge*.
+- **Wiederholen:** *Wie die Playlist*, *Nicht wiederholen*, *Alles wiederholen* (ganze Playlist) oder *Titel wiederholen*
+  (einen Song unendlich).
+Dieselben Einstellungen (Zufall, Wiederholen, Gerät) haben auch die Playlists selbst; eine Seite kann sie überschreiben.
+So kann eine Seite „Jazz, zufällig, Küche“ und eine andere „denselben Jazz, in Reihenfolge, Wohnzimmer“ spielen.
+
+**Welches Gerät für welchen Würfel?** Am einfachsten: Oben bei jedem Würfel ein **Wiedergabegerät für alle Musik-Seiten**
+wählen (z. B. Würfel „Küche“ → Nest Mini Küche, Würfel „Wohnzimmer“ → Nest Hub Wohnzimmer). Einzelne Seiten dürfen
+davon abweichen (Musik-Optionen → Gerät). So ist immer klar, welche Seite *was* *wo* auslöst.
+
+**Zufall bei Online-Quellen.** Lokal (Musikordner, Playlist-Dateien) und auf YouTube/YouTube Music über den Raspberry Pi
+(mpv) funktioniert Zufall. Für YouTube-Playlists auf einem **Google-Gerät** lässt sich die Reihenfolge nicht mischen
+(das Gerät spielt die Playlist selbst); dort läuft sie in ihrer Reihenfolge. **Spotify** lässt sich nicht abspielen:
+Spotify erlaubt das nur über seine eigenen Apps und Geräte (Spotify Connect). Für YouTube Music funktionieren
+`music.youtube.com`-Links.
+
+**Halterung (Würfel senkrecht):** Für einen Musik-Würfel empfiehlt sich „Alle Wiedergaben stoppen“ (oder „Pause“). Bei einem
+Licht-Würfel am besten **keine Aktion**: Dann bleibt das Licht, wie es ist, wenn der Würfel in die Halterung gestellt wird.
+
 **Gut zu wissen**
 - Eine Aktion wird **nicht nachgeholt**, wenn sie zu spät käme. Musik, die länger als etwa eine
   Minute nicht gestartet werden konnte (Gerät aus), wird verworfen, damit sie nicht plötzlich später spielt.

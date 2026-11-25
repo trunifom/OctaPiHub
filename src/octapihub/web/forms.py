@@ -393,6 +393,16 @@ MUSIC_CONTROLS = {
 }
 
 
+MUSIC_OPTION_KEYS = ("target", "shuffle", "repeat")
+OPTION_YES_NO = {"yes": True, "no": False}
+OPTION_REPEAT = ("off", "all", "one")
+
+
+def _core_params(params: Mapping[str, object]) -> dict[str, object]:
+    """The parameters without the optional per-face playback options."""
+    return {k: v for k, v in params.items() if k not in MUSIC_OPTION_KEYS}
+
+
 def music_choice_of(mapping: RuleMappingConfig | None) -> str | None:
     """Catalog value (``music:...``) if the mapping is exactly one editable music action."""
     if mapping is None or len(mapping.actions) != 1:
@@ -400,7 +410,7 @@ def music_choice_of(mapping: RuleMappingConfig | None) -> str | None:
     action = mapping.actions[0]
     if action.kind != MUSIC_KIND:
         return None
-    params = dict(action.parameters)
+    params = _core_params(action.parameters)
     if action.action in MUSIC_CONTROLS and not params:
         return f"{MUSIC_PREFIX}{action.action}"
     playlist = params.get("playlist")
@@ -411,6 +421,34 @@ def music_choice_of(mapping: RuleMappingConfig | None) -> str | None:
     ):
         return f"{MUSIC_PREFIX}{action.action}:{playlist}"
     return None
+
+
+def music_options_of(mapping: RuleMappingConfig | None) -> dict[str, str]:
+    """Per-face playback options as form values (empty text = use the playlist's setting)."""
+    options = {"target": "", "shuffle": "", "repeat": ""}
+    if mapping is None or len(mapping.actions) != 1 or mapping.actions[0].kind != MUSIC_KIND:
+        return options
+    params = mapping.actions[0].parameters
+    target = params.get("target")
+    if isinstance(target, str):
+        options["target"] = target
+    shuffle = params.get("shuffle")
+    if isinstance(shuffle, bool):
+        options["shuffle"] = "yes" if shuffle else "no"
+    repeat = params.get("repeat")
+    if isinstance(repeat, str) and repeat in OPTION_REPEAT:
+        options["repeat"] = repeat
+    return options
+
+
+def common_music_target(config: AppConfig, source: str) -> str:
+    """The device all music faces of ``source`` share, or empty if they differ or none is set."""
+    targets = {
+        music_options_of(m)["target"]
+        for m in config.mappings
+        if m.cube.casefold() == source.casefold() and music_choice_of(m) is not None
+    }
+    return targets.pop() if len(targets) == 1 else ""
 
 
 def choice_of(mapping: RuleMappingConfig | None) -> str | None:
@@ -477,12 +515,16 @@ def mapping_config_to_form(config: AppConfig) -> dict[str, str]:
     lookup = _mapping_lookup(config)
     values: dict[str, str] = {}
     for index, (name, faces) in enumerate(mapping_sources(config)):
+        values[f"cubetarget.{index}"] = common_music_target(config, name)
         for face in faces:
             mapping = lookup.get((name.casefold(), face))
             if mapping is None:
                 values[mapping_field(index, face)] = ""
             elif (choice := choice_of(mapping)) is not None:
                 values[mapping_field(index, face)] = choice
+                if choice.startswith(MUSIC_PREFIX):
+                    for key, value in music_options_of(mapping).items():
+                        values[f"{mapping_field(index, face)}.{key}"] = value
     return values
 
 
@@ -499,6 +541,7 @@ def parse_mapping_form(
     config: AppConfig,
     known_scene_ids: Collection[str],
     known_playlist_ids: Collection[str] = (),
+    known_target_ids: Collection[str] = (),
 ) -> MappingResult:
     """Build the new mapping list from the submitted scene choices.
 
@@ -509,9 +552,14 @@ def parse_mapping_form(
     lookup = _mapping_lookup(config)
     known = set(known_scene_ids)
     playlists = set(known_playlist_ids)
+    targets = set(known_target_ids)
     errors: dict[str, str] = {}
     result: list[dict[str, object]] = []
     for index, (name, faces) in enumerate(mapping_sources(config)):
+        cube_default = form.get(f"cubetarget.{index}", "").strip()
+        apply_cube_default = bool(cube_default) and cube_default != common_music_target(
+            config, name
+        )
         for face in faces:
             existing = lookup.get((name.casefold(), face))
             if existing is not None and choice_of(existing) is None:
@@ -540,6 +588,20 @@ def parse_mapping_form(
                         "Diese Playlist gibt es nicht. Legen Sie sie auf der Seite Musik an."
                     )
                     continue
+                options = _music_options_from_form(
+                    form,
+                    field,
+                    existing,
+                    targets,
+                    errors,
+                    cube_default if apply_cube_default else "",
+                )
+                if options is None:
+                    continue
+                if options:
+                    params = action["parameters"]
+                    assert isinstance(params, dict)
+                    params.update(options)
                 result.append({"cube": name, "face": face, "actions": [action]})
                 continue
             if chosen != scene_of(existing):
@@ -566,6 +628,40 @@ def parse_mapping_form(
                 }
             )
     return MappingResult(None if errors else result, errors)
+
+
+def _music_options_from_form(
+    form: Mapping[str, str],
+    field: str,
+    existing: RuleMappingConfig | None,
+    known_targets: set[str],
+    errors: dict[str, str],
+    cube_default: str,
+) -> dict[str, object] | None:
+    """Optional device, shuffle and repeat of one face; ``None`` if a value is invalid."""
+    options: dict[str, object] = {}
+    previous = music_options_of(existing)
+    target = cube_default or form.get(f"{field}.target", "").strip()
+    if target:
+        if target != previous["target"] and target not in known_targets:
+            errors[f"{field}.target"] = (
+                "Dieses Wiedergabegerät gibt es nicht. Legen Sie es auf der Seite Musik an."
+            )
+            return None
+        options["target"] = target
+    shuffle = form.get(f"{field}.shuffle", "").strip()
+    if shuffle:
+        if shuffle not in OPTION_YES_NO:
+            errors[f"{field}.shuffle"] = "Diese Auswahl ist ungültig."
+            return None
+        options["shuffle"] = OPTION_YES_NO[shuffle]
+    repeat = form.get(f"{field}.repeat", "").strip()
+    if repeat:
+        if repeat not in OPTION_REPEAT:
+            errors[f"{field}.repeat"] = "Diese Auswahl ist ungültig."
+            return None
+        options["repeat"] = repeat
+    return options
 
 
 def _raw_mapping(mapping: RuleMappingConfig) -> dict[str, object]:

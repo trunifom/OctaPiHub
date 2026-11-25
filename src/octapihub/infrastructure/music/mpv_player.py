@@ -21,7 +21,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
-from octapihub.application.music.models import PlayerState, PlayerStatus, PlayRequest
+from octapihub.application.music.models import (
+    PlayerState,
+    PlayerStatus,
+    PlayRequest,
+    TrackKind,
+)
 from octapihub.application.music.queue import play_order
 from octapihub.core.config import MusicTargetConfig, RepeatMode
 from octapihub.core.errors import MusicNotConfiguredError, MusicTargetError
@@ -334,10 +339,27 @@ class MpvPlayer:
             "set_property", "loop-file", "inf" if request.repeat is RepeatMode.ONE else "no"
         )
         await channel.command("set_property", "pause", False)
+        await self._shuffle_online_playlists(channel, request)
         for count, index in enumerate(order):
             await channel.command(
                 "loadfile", request.tracks[index].location, "replace" if count == 0 else "append"
             )
+
+    async def _shuffle_online_playlists(self, channel: MpvChannel, request: PlayRequest) -> None:
+        """A YouTube playlist is one entry for us; yt-dlp mixes its videos when asked to.
+
+        Without this, "shuffle" would not change anything for such a link. If this mpv does not
+        accept the option, playback still works, just in the playlist's own order.
+        """
+        online = any(track.kind is TrackKind.YOUTUBE for track in request.tracks)
+        if not online:
+            return
+        try:
+            await channel.command(
+                "set_property", "ytdl-raw-options", "playlist-random=" if request.shuffle else ""
+            )
+        except MusicTargetError:
+            logger.warning("mpv did not accept the shuffle option for online playlists")
 
     async def pause(self) -> None:
         await (await self._ready()).command("set_property", "pause", True)

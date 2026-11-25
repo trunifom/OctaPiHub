@@ -41,6 +41,16 @@
     {% for cube in tiles %}{% set cube_index = loop.index0 %}
     <div class="mapping-cube">
       <h3 class="subhead">{{ cube.name }} <span class="pill pill-role">{{ cube.role }}</span></h3>
+      {% if music_groups and music_targets %}
+      <div class="field field-inline">
+        <label for="f-cubetarget.{{ cube.index }}">Wiedergabegerät für die Musik-Aktionen dieses Würfels</label>
+        <select name="cubetarget.{{ cube.index }}" id="f-cubetarget.{{ cube.index }}">
+          <option value="">Je Seite einzeln (sonst Gerät der Playlist)</option>
+          {% for tid, tname in music_targets.items() %}<option value="{{ tid }}"{% if tid == map_form.get('cubetarget.' ~ cube.index, '') %} selected{% endif %}>{{ tname }}</option>{% endfor %}
+        </select>
+        <small class="help">Wählen Sie hier ein Gerät, gilt es für alle Musik-Seiten dieses Würfels. Einzelne Seiten können unter „Musik-Optionen“ davon abweichen.</small>
+      </div>
+      {% endif %}
       {% if cube.role == 'Sense HAT' %}
       <p class="muted">Der Joystick löst diese Aktionen in der LED-Ansicht „Steuerung“ aus: kurz drücken führt die Aktion aus, <strong>links/rechts lang halten</strong> wechselt die Ansicht.{% if not joystick_ready %} <strong>Noch nicht bereit:</strong> {{ joystick_hint }}{% endif %}</p>
       {% endif %}
@@ -70,6 +80,26 @@
             {% endfor %}
           </select>
           {{ m.field_error(map_errors, tile.field) }}
+          {% if music_groups %}
+          <details class="more tile-options"{% if tile.target or tile.shuffle or tile.repeat or map_errors.get(tile.field ~ '.target') %} open{% endif %}>
+            <summary>Musik-Optionen</summary>
+            <label for="f-{{ tile.field }}.target">Gerät</label>
+            <select name="{{ tile.field }}.target" id="f-{{ tile.field }}.target"{% if map_errors.get(tile.field ~ '.target') %} aria-invalid="true"{% endif %}>
+              <option value="">Wie Würfel / Playlist</option>
+              {% for tid, tname in music_targets.items() %}<option value="{{ tid }}"{% if tid == tile.target %} selected{% endif %}>{{ tname }}</option>{% endfor %}
+            </select>
+            {{ m.field_error(map_errors, tile.field ~ '.target') }}
+            <label for="f-{{ tile.field }}.shuffle">Reihenfolge</label>
+            <select name="{{ tile.field }}.shuffle" id="f-{{ tile.field }}.shuffle">
+              {% for key, label in option_shuffle.items() %}<option value="{{ key }}"{% if key == tile.shuffle %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+            <label for="f-{{ tile.field }}.repeat">Wiederholen</label>
+            <select name="{{ tile.field }}.repeat" id="f-{{ tile.field }}.repeat">
+              {% for key, label in option_repeat.items() %}<option value="{{ key }}"{% if key == tile.repeat %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+            <small class="help">Gilt nur für Musik-Aktionen „Playlist abspielen“ und „starten oder pausieren“.</small>
+          </details>
+          {% endif %}
           {% endif %}
           {% if tile.saved %}<button type="submit" formaction="/cubes/trigger" name="trigger" value="{{ cube_index }}.{{ tile.face }}" data-source="{{ cube.name }}" class="btn btn-small btn-run"{% if not writable %} disabled{% endif %}>Jetzt auslösen</button>{% endif %}
         </div>

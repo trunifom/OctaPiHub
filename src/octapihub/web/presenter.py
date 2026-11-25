@@ -681,6 +681,9 @@ class FaceTile:
     label: str = ""
     chip: str = ""
     saved: bool = False
+    target: str = ""
+    shuffle: str = ""
+    repeat: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -690,6 +693,8 @@ class CubeTiles:
     name: str
     role: str
     tiles: tuple[FaceTile, ...]
+    index: int = 0
+    music_target: str = ""
 
 
 _JOYSTICK_CHIPS = ("▲", "▶", "▼", "◀", "●")
@@ -735,6 +740,9 @@ def build_cube_tiles(
                         else ("⏏" if face == 0 else str(face))
                     ),
                     saved=existing is not None,
+                    target=form.get(f"{field}.target", ""),
+                    shuffle=form.get(f"{field}.shuffle", ""),
+                    repeat=form.get(f"{field}.repeat", ""),
                 )
             )
         if is_joystick:
@@ -742,7 +750,9 @@ def build_cube_tiles(
         else:
             cube_role = config.cubes[index].role.value
             role = _ROLE_TEXT.get(cube_role, cube_role)
-        result.append(CubeTiles(name, role, tuple(tiles)))
+        result.append(
+            CubeTiles(name, role, tuple(tiles), index, form.get(f"cubetarget.{index}", ""))
+        )
     return tuple(result)
 
 
