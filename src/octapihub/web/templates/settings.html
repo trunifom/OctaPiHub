@@ -40,6 +40,27 @@
 </div>
 <p class="muted"><a href="/backup">Einstellungen sichern, wiederherstellen und Daten exportieren →</a></p>
 
+<form method="post" action="/settings/time" id="time-form" novalidate>
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Uhrzeit und Zeitzone</h2>
+      <p class="muted">Die Uhr des Raspberry Pi stellt sich über das Internet (NTP) automatisch. Hier legen Sie nur fest, <strong>in welcher Zeitzone</strong> Uhrzeiten gezeigt werden: in der Oberfläche, auf der LED-Uhr und beim Nachtmodus.</p>
+    </div>
+    <p>Jetzt: <strong>{{ time_now_text }}</strong> · Zeitzone: <strong>{{ time_zone_name }}</strong>
+      <span class="pill pill-role">{{ {'auto': 'automatisch vom Gerät', 'setting': 'eingestellt', 'fallback': 'unbekannt (UTC)'}[time_zone_source] }}</span></p>
+    <div class="field field-wide">
+      <label for="f-timezone">Zeitzone (leer = automatisch vom Gerät)</label>
+      <input type="text" name="timezone" id="f-timezone" list="zone-list" autocomplete="off" placeholder="automatisch, z. B. Europe/Zurich" value="{{ time_zone_setting }}">
+      <datalist id="zone-list">{% for name in time_zone_names %}<option value="{{ name }}">{% endfor %}</datalist>
+    </div>
+    <div class="field field-token">
+      <label for="f-token-time">Zugriffs-Token</label>
+      <input type="password" name="token" id="f-token-time" autocomplete="current-password" placeholder="{{ 'Token eingeben' if writable else 'Nicht eingerichtet' }}"{% if not writable %} disabled{% endif %}>
+    </div>
+    <div><button type="submit" class="btn btn-primary"{% if not writable %} disabled{% endif %}>Zeitzone speichern</button></div>
+  </section>
+</form>
+
 {% if banner %}
 <div class="notice notice-{{ banner.level }}" role="{{ 'alert' if banner.level == 'error' else 'status' }}">
   <span class="notice-ico">{{ m.icon(banner.level) }}</span>

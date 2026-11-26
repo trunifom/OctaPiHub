@@ -3,6 +3,8 @@
 # Zugangsdaten (Hue-Schlüssel) gehören NICHT hierher, sondern in secrets.env.
 schema_version = 7
 debounce_ms = 300
+# Zeitzone der Anzeige. Leer lassen = die Zeitzone des Geräts (automatisch, empfohlen).
+# timezone = "Europe/Zurich"
 
 [bluetooth]
 adapter = "hci0"

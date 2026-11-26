@@ -15,7 +15,6 @@ from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import (
@@ -49,6 +48,8 @@ from octapihub.core.errors import (
     ValidationError,
 )
 from octapihub.core.logging_support import LogRing, Redactor
+from octapihub.core.timezone import LiveTimeZone, TimeSettings
+from octapihub.core.timezone import known_names as timezone_names
 from octapihub.core.watchdog import Watchdog
 from octapihub.infrastructure.music.media import MediaRegistry, content_type_for
 from octapihub.infrastructure.system_info import SystemInfoReader
@@ -91,7 +92,6 @@ logger = logging.getLogger(__name__)
 _PACKAGE_DIR = Path(__file__).parent
 MAX_FORM_BYTES = 64 * 1024
 BACKUP_FORM_BYTES = 640 * 1024  # an export file pasted into the import form
-DISPLAY_TIMEZONE = "Europe/Zurich"
 
 # range name -> (label, window, bucket seconds); ~120-180 points per chart.
 SERIES_RANGES: Mapping[str, tuple[str, timedelta, int]] = {
@@ -107,15 +107,6 @@ _CHART_HINTS: Mapping[str, dict[str, Any]] = {
     "pressure": {"min_span": 4.0, "fixed": None},
     "compass": {"min_span": 360.0, "fixed": [0, 360]},
 }
-
-
-def display_timezone() -> tzinfo:
-    """Europe/Zurich for display, falling back to UTC when tz data is missing."""
-    try:
-        return ZoneInfo(DISPLAY_TIMEZONE)
-    except ZoneInfoNotFoundError:
-        logger.warning("Time zone data for %s not found; showing UTC", DISPLAY_TIMEZONE)
-        return UTC
 
 
 @dataclass(slots=True)
@@ -140,8 +131,18 @@ class WebBackend:
     logs: LogRing | None = None
     log_dir: str | None = None
     redactor: Redactor | None = None
-    tz: tzinfo = field(default_factory=display_timezone)
+    time: TimeSettings = field(default_factory=TimeSettings)
+    tz_override: tzinfo | None = None
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    live_tz: tzinfo = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.live_tz = LiveTimeZone(self.time)  # follows the setting, also after a change
+
+    @property
+    def tz(self) -> tzinfo:
+        """The zone used to show times (the setting, unless a test fixes one)."""
+        return self.tz_override or self.live_tz
 
 
 def _token_matches(expected: str | None, supplied: str) -> bool:
@@ -605,7 +606,11 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
         levels = {"INFO": logging.INFO, "WARNING": logging.WARNING, "ERROR": logging.ERROR}
         if level not in levels:
             raise HTTPException(status_code=422, detail="Unknown log level")
-        items = build_system_items(backend.system.read(), backend.tz) if backend.system else ()
+        items = (
+            build_system_items(backend.system.read(), backend.tz, backend.time.name)
+            if backend.system
+            else ()
+        )
         rows = build_log_rows(backend.logs.lines(levels[level]), backend.tz) if backend.logs else ()
         return {
             "live": False,
@@ -1057,6 +1062,11 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
                 for view in VIEWS.values()
             ],
             "history_path": config.history.database_path,
+            "time_zone_name": backend.time.name,
+            "time_zone_source": backend.time.source,
+            "time_zone_setting": backend.settings.config.timezone,
+            "time_zone_names": timezone_names(),
+            "time_now_text": local_time_text(backend.clock(), backend.tz),
             "live": False,
         }
 
@@ -1064,6 +1074,52 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
     def settings_page(request: Request) -> Response:
         values = forms.config_to_form(backend.settings.config.sense_hat)
         return page(request, "settings.html", "settings", **settings_context(values, {}, None))
+
+    @app.post("/settings/time", response_class=HTMLResponse)
+    async def save_time(request: Request) -> Response:
+        submitted, supplied = await _read_form(request)
+        name = submitted.get("timezone", "").strip()
+
+        def respond(
+            status: int, level: str, title: str, detail: str = "", code: str = ""
+        ) -> Response:
+            banner = {"level": level, "title": title, "detail": detail, "code": code}
+            form = forms.config_to_form(backend.settings.config.sense_hat)
+            return page(
+                request, "settings.html", "settings", status, **settings_context(form, {}, banner)
+            )
+
+        problem = _access_problem(backend.token, supplied)
+        if problem is not None:
+            status, title, detail, code = problem
+            return respond(status, "error", title, detail, code)
+        try:
+            await backend.settings.apply_timezone(name)
+        except ValidationError:
+            return respond(
+                422,
+                "error",
+                "Diese Zeitzone gibt es nicht",
+                "Wählen Sie einen Eintrag aus der Liste (z. B. Europe/Zurich) oder lassen Sie "
+                "das Feld leer, um die Zeitzone des Geräts zu verwenden. "
+                "Es wurde nichts gespeichert.",
+                "CH-CFG-002",
+            )
+        except (ConfigurationError, OctaPiHubError) as exc:
+            logger.error("Could not save the time zone: %s", exc)
+            return respond(
+                500, "error", "Speichern fehlgeschlagen", exc.user_message, exc.error_code
+            )
+        shown = backend.time.name
+        if backend.time.source == "fallback":
+            return respond(
+                200,
+                "warn",
+                "Zeitzone des Geräts unbekannt",
+                "Es wird UTC angezeigt. Stellen Sie die Zeitzone am Gerät ein "
+                "(`sudo timedatectl set-timezone Europe/Zurich`) oder wählen Sie sie hier aus.",
+            )
+        return respond(200, "ok", "Zeitzone gespeichert", f"Angezeigt wird die Zeit in {shown}.")
 
     @app.post("/settings/sense-hat", response_class=HTMLResponse)
     async def save_sense_hat(request: Request) -> Response:

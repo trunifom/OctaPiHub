@@ -87,6 +87,14 @@ Rückgabewert **0** = in Ordnung, **1** = Warnungen (z. B. Sicherung verwendet, 
 ### Smart Home
 Siehe [Smart Home](smarthome.md), Abschnitt „Testen und Fehler“.
 
+### Uhrzeit
+| Beobachtung | Ursache und Lösung |
+|---|---|
+| Uhrzeit falsch nach Stromausfall | Keine Batterie-Uhr: wartet, bis das Netz die Zeit abgleicht. `timedatectl status` zeigt „System clock synchronized“. |
+| Seite System: „noch nicht abgeglichen“ | NTP aus oder kein Internet: `sudo timedatectl set-ntp true`, Netzwerk prüfen. |
+| Eine Stunde daneben | Zeitzone: *Einstellungen → Uhrzeit und Zeitzone* oder `sudo timedatectl set-timezone Europe/Zurich`. |
+| LED-Uhr oder Nachtmodus zur falschen Zeit | Dieselbe Zeitzone-Einstellung; die LED-Uhr zeigt die Zeit der gewählten Zeitzone. |
+
 ### Sense HAT
 | Beobachtung | Ursache und Lösung |
 |---|---|

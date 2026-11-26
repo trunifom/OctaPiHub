@@ -35,6 +35,7 @@ from octapihub.core.resilience import (
     install_exception_hooks,
     load_with_fallback,
 )
+from octapihub.core.timezone import TimeSettings
 from octapihub.core.watchdog import Watchdog
 from octapihub.infrastructure.ble.bleak_transport import BleakDeviceScanner
 from octapihub.infrastructure.music.cast_player import PyChromecastBackend
@@ -234,7 +235,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         smarthome = build_smarthome_service(config, args.secrets)
         cubes = build_cube_service(config, args.data_dir, plugins=(hue, music, smarthome))
         system = SystemInfoReader(args.data_dir)
-        matrix = build_matrix_service(config, service, cubes, hue, host_level_from(system), music)
+        time_settings = TimeSettings(config.timezone)
+        matrix = build_matrix_service(
+            config, service, cubes, hue, host_level_from(system), music, time_settings.now
+        )
         backend = WebBackend(
             SettingsManager(
                 args.config,
@@ -246,6 +250,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 music,
                 smarthome,
                 SecretsFile(args.secrets),
+                time_settings,
             ),
             service,
             os.environ.get(TOKEN_VARIABLE) or None,
@@ -255,6 +260,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             matrix=matrix,
             music=music,
             smarthome=smarthome,
+            time=time_settings,
             media=media,
             scanner=BleakDeviceScanner(),
             discover_cast=discover_cast,

@@ -18,6 +18,7 @@ from types import MappingProxyType
 from urllib.parse import urlsplit
 
 from octapihub.core.errors import ConfigurationError, ValidationError
+from octapihub.core.timezone import is_valid_name as is_valid_zone_name
 
 logger = logging.getLogger(__name__)
 
@@ -439,6 +440,7 @@ class AppConfig:
     music: MusicConfig = field(default_factory=MusicConfig)
     face_labels: tuple[FaceLabelConfig, ...] = ()
     smarthome: SmartHomeConfig = field(default_factory=SmartHomeConfig)
+    timezone: str = ""  # "" = use the system's time zone
 
 
 def load_config(path: str | Path) -> AppConfig:
@@ -737,6 +739,26 @@ def with_music_table(config: AppConfig, table: Mapping[str, object]) -> AppConfi
     return replace(config, music=_parse_music(table))
 
 
+def with_timezone(config: AppConfig, name: object) -> AppConfig:
+    """Return ``config`` with a validated time zone (``""`` = the system's zone).
+
+    Raises:
+        ValidationError: If the name is not a known time zone.
+    """
+    return replace(config, timezone=_parse_timezone(name))
+
+
+def _parse_timezone(value: object) -> str:
+    if not isinstance(value, str) or "\n" in value or "\x00" in value:
+        raise ValidationError("timezone must be a text", details={"field": "timezone"})
+    name = value.strip()
+    if name and not is_valid_zone_name(name):
+        raise ValidationError(
+            "timezone must be a known zone such as Europe/Zurich", details={"field": "timezone"}
+        )
+    return name
+
+
 def with_hue_table(config: AppConfig, table: Mapping[str, object]) -> AppConfig:
     """Return ``config`` with a replaced, fully validated Hue table.
 
@@ -790,11 +812,13 @@ def _serialize_config(config: AppConfig) -> str:
         "music": music_table(config.music),
         "face_labels": face_labels_table(config),
         "smarthome": smarthome_table(config.smarthome),
+        "timezone": config.timezone,
     }
     validated = parse_config(data)
     lines = [
         f"schema_version = {validated.schema_version}",
         f"debounce_ms = {validated.debounce_ms}",
+        *([f"timezone = {_toml_string(validated.timezone)}"] if validated.timezone else []),
         "",
         "[bluetooth]",
         f"adapter = {_toml_string(validated.bluetooth.adapter)}",
@@ -1046,7 +1070,7 @@ def parse_config(data: object) -> AppConfig:
     if schema_version >= 6:
         allowed_root_keys.add("music")
     if schema_version >= 7:
-        allowed_root_keys.update({"face_labels", "smarthome"})
+        allowed_root_keys.update({"face_labels", "smarthome", "timezone"})
     _check_keys(root, allowed_root_keys, "root")
 
     bluetooth_table = _require_table(root.get("bluetooth"), "bluetooth")
@@ -1100,6 +1124,9 @@ def parse_config(data: object) -> AppConfig:
     hue = _parse_hue(root.get("hue", {})) if schema_version >= 4 else HueConfig()
     music = _parse_music(root.get("music", {})) if schema_version >= 6 else MusicConfig()
 
+    timezone = ""
+    if schema_version >= 7:
+        timezone = _parse_timezone(root.get("timezone", ""))
     face_labels: tuple[FaceLabelConfig, ...] = ()
     if schema_version >= 7:
         raw_labels = root.get("face_labels", [])
@@ -1122,6 +1149,7 @@ def parse_config(data: object) -> AppConfig:
         music=music,
         face_labels=face_labels,
         smarthome=smarthome,
+        timezone=timezone,
     )
 
 

@@ -80,6 +80,7 @@ class SystemSnapshot:
     disk_free_bytes: int | None
     python_version: str
     platform: str
+    time_synced: bool | None = None  # NTP: is the clock set from the network?
 
     @property
     def memory_used_percent(self) -> float | None:
@@ -148,6 +149,7 @@ class SystemInfoReader:
             throttle=self._throttle(),
             disk_total_bytes=disk_total,
             disk_free_bytes=disk_free,
+            time_synced=self._time_synced(),
             python_version=sys.version.split()[0],
             platform=platform.platform(),
         )
@@ -200,6 +202,18 @@ class SystemInfoReader:
             return None
         celsius = millidegrees / 1000.0
         return celsius if -40.0 <= celsius <= _MAX_REASONABLE_TEMP_C else None
+
+    def _time_synced(self) -> bool | None:
+        """Whether the system clock is synchronised (``timedatectl``); ``None`` if unknown."""
+        try:
+            answer = (
+                self._runner(["timedatectl", "show", "--property=NTPSynchronized", "--value"])
+                .strip()
+                .lower()
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return {"yes": True, "no": False}.get(answer)
 
     def _throttle(self) -> ThrottleStatus | None:
         try:

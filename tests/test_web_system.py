@@ -12,6 +12,7 @@ from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.settings import SettingsManager
 from octapihub.core.config import SenseHatConfig, parse_config, save_config
 from octapihub.core.logging_support import LogRing, Redactor
+from octapihub.core.timezone import TimeSettings
 from octapihub.infrastructure.fake_sense_hat import FakeSenseHat
 from octapihub.infrastructure.secrets import SecretsFile
 from octapihub.infrastructure.sense_hat import SenseHatAdapter
@@ -79,6 +80,7 @@ def _backend(tmp_path: Path, reader: SystemInfoReader | None, ring: LogRing | No
         system=reader,
         logs=ring,
         clock=lambda: NOW,
+        time=TimeSettings("Europe/Zurich"),
     )
 
 

@@ -118,6 +118,7 @@ Eine versionierte TOML-Datei (`octapihub.toml`, **Schema v7**; ältere Versionen
 | `[music]`, `[[music.targets]]`, `[[music.playlists]]` | Musikordner, Geräte, Playlists |
 | `[smarthome]` | Verbindungen und Aktionen (MQTT, Home Assistant, Webhook) |
 | `[sense_hat]` | Sensoren, Verlauf, LED-Anzeige, Joystick |
+| `timezone` | Zeitzone der Anzeige (leer = die des Geräts, automatisch) |
 
 **Geheimnisse** (Hue-Schlüssel, MQTT-Passwörter, Home-Assistant-Token) stehen **nie** in dieser Datei, sondern in `secrets.env` (Rechte 0600). Das Zugriffs-Token der Oberfläche steht in `octapihub.env`.
 
@@ -137,6 +138,7 @@ Eine versionierte TOML-Datei (`octapihub.toml`, **Schema v7**; ältere Versionen
 - **Fallbacks:** Unbrauchbare Konfiguration beim Start → neueste gültige Sicherung; ein unerwarteter Web-Fehler → ruhige Seite mit Kennung (`CH-WEB-500`) statt Absturz; Hardware fehlt → degradierter Betrieb.
 - **Logging:** Konsole/journald, die letzten 500 Meldungen in der Oberfläche, **rotierende Logdatei** (`<Datenordner>/logs/octapihub.log`, ca. 6 MB). Zugangsdaten sind unkenntlich, Bluetooth-Adressen gekürzt, Ausnahmetexte werden nicht protokolliert. Nicht abgefangene Fehler in Threads und Hintergrundaufgaben werden protokolliert.
 - **Watchdog:** systemd startet den Dienst neu, wenn er hängt (`Type=notify`, `WatchdogSec=60`); Teilprobleme lösen keinen Neustart aus.
+- **Zeit:** Die Uhr stellt das Betriebssystem über NTP; OctaPiHub zeigt Zeiten in der **Zeitzone des Geräts** (oder einer gewählten), auch auf der LED-Uhr und im Nachtmodus. Die Seite *System* zeigt, ob die Uhr abgeglichen ist.
 - **Gesundheit:** `/healthz` (ohne Token, ohne Geheimnisse) meldet je Teil `ok` oder `degraded` – für Überwachung.
 - **Diagnose-Paket:** ZIP ohne Geheimnisse (Seite *System*).
 

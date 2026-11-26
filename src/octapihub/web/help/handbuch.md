@@ -182,6 +182,9 @@ Hier stellen Sie das Sense HAT ein. Jedes Feld hat ein ⓘ; hier die Übersicht.
 
 Änderungen werden **ohne Neustart** angewendet. Ungültige Werte werden direkt am Feld erklärt, und es wird dann nichts gespeichert. Ganz oben führt ein Link zu **Sichern & Wiederherstellen**.
 
+### Uhrzeit und Zeitzone
+Oben auf der Seite *Einstellungen* steht **„Uhrzeit und Zeitzone“**. Die **Uhr selbst** stellt der Raspberry Pi über das Internet (NTP) automatisch; die Seite *System* zeigt, ob sie abgeglichen ist. Hier wählen Sie nur die **Zeitzone der Anzeige**: leer = die Zeitzone, die am Gerät eingestellt ist (automatisch), sonst ein Eintrag wie `Europe/Zurich`. Sie gilt sofort für die Oberfläche, die **LED-Uhr** und den **Nachtmodus**. Ein Raspberry Pi hat keine Batterie-Uhr: nach einem Stromausfall geht die Uhr falsch, bis das Netz wieder da ist.
+
 ## 11. Sichern & Wiederherstellen
 Unter *Einstellungen → Sichern & Wiederherstellen*.
 

@@ -27,8 +27,10 @@ from octapihub.core.config import (
     with_music_table,
     with_sense_hat_table,
     with_smarthome_table,
+    with_timezone,
 )
 from octapihub.core.errors import ConfigurationError, ValidationError
+from octapihub.core.timezone import TimeSettings
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,7 @@ class SettingsManager:
         music: MusicService | None = None,
         smarthome: SmartHomeService | None = None,
         secrets: SecretWriter | None = None,
+        time_settings: TimeSettings | None = None,
     ) -> None:
         self._path = Path(path)
         self._config = config
@@ -72,6 +75,7 @@ class SettingsManager:
         self._music = music
         self._smarthome = smarthome
         self._secrets = secrets
+        self._time = time_settings
         self._lock = asyncio.Lock()
 
     @property
@@ -306,4 +310,20 @@ class SettingsManager:
             if self._smarthome is not None:
                 self._smarthome.reconfigure(candidate.smarthome)
             logger.info("Smart-home settings saved and applied")
+            return candidate
+
+    async def apply_timezone(self, name: str) -> AppConfig:
+        """Validate, save, and apply the time zone (``""`` = follow the system).
+
+        Raises:
+            ValidationError: If the name is not a known time zone (nothing is saved).
+            ConfigurationError: If the file cannot be written (the zone stays as it was).
+        """
+        async with self._lock:
+            candidate = with_timezone(self._config, name)
+            await asyncio.to_thread(save_config, self._path, candidate)
+            self._config = candidate
+            if self._time is not None:
+                self._time.apply(candidate.timezone)
+            logger.info("Time zone set to %s", candidate.timezone or "automatic")
             return candidate

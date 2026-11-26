@@ -127,6 +127,19 @@ offenen Rechten werden aus Sicherheitsgründen abgelehnt.
 **Kontrolle:** `sudo -u octapihub /opt/octapihub/venv/bin/python -c "from octapihub.core.config import load_config; print(load_config('/etc/octapihub/octapihub.toml').cubes)"`
 gibt Ihre Würfel aus. Bei einem Fehler nennt die Meldung Feld und Grund.
 
+## Uhrzeit und Zeitzone
+OctaPiHub **stellt die Uhr nicht selbst**: Das macht das Betriebssystem über das Internet (NTP). Prüfen Sie es einmal:
+```bash
+timedatectl status            # "System clock synchronized: yes" und "NTP service: active"
+sudo timedatectl set-ntp true # falls NTP aus ist
+sudo timedatectl set-timezone Europe/Zurich   # Zeitzone des Geräts (Liste: timedatectl list-timezones)
+```
+**Wichtig:** Ein Raspberry Pi hat **keine Batterie-Uhr**. Nach einem Stromausfall geht die Uhr falsch, bis das Netzwerk
+wieder da ist und die Zeit abgeglichen wurde. Die Seite *System* zeigt, ob die Uhr abgeglichen ist; bis dahin können
+Uhrzeiten in Verlauf und Protokoll abweichen. OctaPiHub zeigt Uhrzeiten standardmäßig in der **Zeitzone des Geräts**;
+unter *Einstellungen → Uhrzeit und Zeitzone* können Sie eine andere wählen. Das gilt für die Oberfläche, die LED-Uhr und den
+Nachtmodus. Gespeicherte Messwerte liegen intern immer in UTC und werden nur beim Anzeigen umgerechnet.
+
 ## 7. Dienst einrichten und starten
 ```bash
 sudo cp /opt/octapihub/deploy/octapihub.service /etc/systemd/system/octapihub.service

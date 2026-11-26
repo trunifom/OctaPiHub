@@ -10,6 +10,8 @@ from __future__ import annotations
 TEXTS: dict[str, str] = {
     # ----- allgemein
     "token": "Das Zugriffs-Token schützt alle Änderungen. Sie finden es in der Datei /etc/octapihub/octapihub.env hinter OCTAPIHUB_WEB_TOKEN=. Ohne gültiges Token wird nichts gespeichert oder ausgelöst. Der Browser merkt es sich nur, solange dieser Tab offen ist.",
+    "timezone": "In welcher Zeitzone Uhrzeiten gezeigt werden (Oberfläche, LED-Uhr, Nachtmodus), zum Beispiel Europe/Zurich. Leer lassen = die Zeitzone, die am Raspberry Pi eingestellt ist (automatisch). Die Uhr selbst stellt sich über das Internet (NTP); das ändert diese Einstellung nicht.",
+    "token-time": "Dasselbe Zugriffs-Token wie überall: Es steht in /etc/octapihub/octapihub.env hinter OCTAPIHUB_WEB_TOKEN=.",
     "token-manage": "Dasselbe Zugriffs-Token wie überall: Es steht in /etc/octapihub/octapihub.env hinter OCTAPIHUB_WEB_TOKEN=. Ohne Token ändert sich nichts.",
     # ----- Würfel / Zuordnung
     "map.*.*": "Was soll passieren, wenn diese Seite des Würfels nach oben zeigt? „Keine Aktion“ lässt die Seite leer. Sie können Licht schalten (Szene, Ein/Aus, heller/dunkler, Farbe), Musik abspielen und steuern oder eine Smart-Home-Aktion auslösen. Änderungen gelten nach dem Speichern sofort.",

@@ -142,6 +142,7 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 | F-U6 | S | CLI `octapihubctl`: `status`, `logs`, `scenes`, `pair-hue`, `test-cube`, `restart`, `export-config`. |
 | F-U7 | S | Knöpfe „Dienst neu starten“, „Bluetooth zurücksetzen“, „Pi neu starten“ (mit Bestätigung). |
 | F-U8 | S | Diagnose-Export (ZIP, ohne Geheimnisse und volle Adressen). |
+| F-K11 | M | Zeit: Die Uhr stellt das Betriebssystem über NTP; OctaPiHub zeigt Zeiten standardmäßig in der Zeitzone des Geräts, einstellbar und ohne Neustart wirksam (Oberfläche, LED-Uhr, Nachtmodus); die Seite System zeigt den NTP-Abgleich. Zeitstempel intern UTC. Mit Fakes getestet. |
 | F-U9 | M | Es gibt **keinen Desktop**-Zwang; vollständige Bedienbarkeit ohne Monitor. |
 
 ### 4.8 Konfiguration, Daten, Sicherung (F-K)

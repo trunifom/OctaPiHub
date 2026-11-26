@@ -833,17 +833,26 @@ UNAVAILABLE = "Nicht verfügbar"
 _PI_ONLY = "Nur auf einem Raspberry Pi verfügbar."
 
 
-def build_system_items(snapshot: SystemSnapshot, tz: tzinfo) -> tuple[SystemItem, ...]:
-    """Turn a snapshot into labelled items; unavailable values are explained, not hidden."""
-    items: list[SystemItem] = [
-        SystemItem(
-            "time",
-            "Uhrzeit",
-            local_time_text(snapshot.taken_at, tz),
-            "Zeitzone Europe/Zurich. Falsche Zeit? Prüfen Sie die Netzwerkzeit (NTP) des Geräts.",
-            "ok",
+def _time_item(snapshot: SystemSnapshot, tz: tzinfo, zone_name: str) -> SystemItem:
+    zone = f"Zeitzone {zone_name}. " if zone_name else ""
+    if snapshot.time_synced is True:
+        detail, level = f"{zone}Die Uhr wird über das Internet (NTP) automatisch gestellt.", "ok"
+    elif snapshot.time_synced is False:
+        detail = (
+            f"{zone}Die Uhr ist noch nicht mit dem Internet abgeglichen. Ohne Netz kann sie "
+            "abweichen; mit `timedatectl` prüfen, ob NTP eingeschaltet ist."
         )
-    ]
+        level = "warn"
+    else:
+        detail, level = f"{zone}Falsche Zeit? Prüfen Sie die Netzwerkzeit (NTP) des Geräts.", "ok"
+    return SystemItem("time", "Uhrzeit", local_time_text(snapshot.taken_at, tz), detail, level)
+
+
+def build_system_items(
+    snapshot: SystemSnapshot, tz: tzinfo, zone_name: str = ""
+) -> tuple[SystemItem, ...]:
+    """Turn a snapshot into labelled items; unavailable values are explained, not hidden."""
+    items: list[SystemItem] = [_time_item(snapshot, tz, zone_name)]
     items.append(
         SystemItem(
             "uptime",

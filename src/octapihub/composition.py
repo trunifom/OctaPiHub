@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from datetime import UTC, datetime
 from pathlib import Path
 
 from octapihub.application.ble_runtime import BleRuntime
@@ -156,6 +157,7 @@ def build_matrix_service(
     hue: HueService | None = None,
     host_level: Callable[[], str] | None = None,
     music: MusicService | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> MatrixDisplayService:
     """Create the LED matrix display and connect cube feedback to it.
 
@@ -169,7 +171,14 @@ def build_matrix_service(
         return tuple(m.face for m in current.mappings if m.cube == JOYSTICK_SOURCE)
 
     builder = DisplayStateBuilder(
-        lambda: config.cubes, sense, cubes, hue, host_level, joystick_faces, music
+        lambda: config.cubes,
+        sense,
+        cubes,
+        hue,
+        host_level,
+        joystick_faces,
+        music,
+        clock=clock or (lambda: datetime.now(UTC)),
     )
     service = MatrixDisplayService(
         config.sense_hat.matrix,

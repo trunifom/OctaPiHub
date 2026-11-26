@@ -48,6 +48,13 @@
 
 **Wo sind meine Messdaten?** In der Datenbank unter `/var/lib/octapihub/` (SQLite). Als Tabelle: *Sichern & Wiederherstellen → Messdaten (CSV)*.
 
+## Uhrzeit
+**Woher hat der Hub die Uhrzeit?** Vom Betriebssystem, das sie über das Internet (NTP) abgleicht. OctaPiHub stellt die Uhr nicht selbst.
+
+**Die Zeit stimmt nicht.** Seite *System* → „Uhrzeit“: Steht dort „noch nicht abgeglichen“? Dann ist das Netz (noch) nicht da oder NTP aus (`timedatectl status`, `sudo timedatectl set-ntp true`). Stimmt nur die Stunde nicht, fehlt die Zeitzone: *Einstellungen → Uhrzeit und Zeitzone* oder `sudo timedatectl set-timezone Europe/Zurich`.
+
+**Warum geht die Uhr nach einem Stromausfall falsch?** Der Raspberry Pi hat keine Batterie-Uhr. Sobald das Netzwerk wieder da ist, stellt er sich selbst.
+
 ## Betrieb
 **Startet der Hub nach einem Stromausfall von selbst?** Ja, wenn der Dienst mit `systemctl enable` eingerichtet wurde (Installation, Abschnitt 7).
 

@@ -37,6 +37,7 @@ from octapihub.core.config import (
     save_config,
 )
 from octapihub.core.errors import HueLinkButtonError
+from octapihub.core.timezone import TimeSettings
 from octapihub.infrastructure.ble.fake import FakeTransportFactory
 from octapihub.infrastructure.ble.fake_scanner import FakeScanner
 from octapihub.infrastructure.ble.protocol import (
@@ -323,9 +324,19 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
     home_secrets.set(secret_key("ha"), "demo-token")
     smarthome = SmartHomeService(base.smarthome, home_secrets, http=_demo_http, mqtt=_demo_mqtt)
     cubes = _demo_cubes(base, directory, hue, music, smarthome)
-    matrix = build_matrix_service(base, service, cubes, hue, lambda: "ok", music)
+    time_settings = TimeSettings(base.timezone)
+    matrix = build_matrix_service(base, service, cubes, hue, lambda: "ok", music, time_settings.now)
     settings = SettingsManager(
-        config_path, base, service, hue, cubes, matrix, music, smarthome, home_secrets
+        config_path,
+        base,
+        service,
+        hue,
+        cubes,
+        matrix,
+        music,
+        smarthome,
+        home_secrets,
+        time_settings,
     )
 
     async def discover() -> list[str]:
@@ -343,6 +354,7 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
         matrix=matrix,
         music=music,
         smarthome=smarthome,
+        time=time_settings,
         scanner=FakeScanner(
             [
                 FoundDevice("Timeular Tracker", "AA:BB:CC:DD:EE:77", -52),
