@@ -6,7 +6,7 @@ Wenn etwas nicht klappt, gehen Sie in dieser Reihenfolge vor: **Meldung lesen �
 1. **Seite System:** Sind Temperatur, Speicher und Stromversorgung in Ordnung? Welche Meldungen stehen unten?
 2. **Übersicht:** Welche Karte ist gelb oder rot?
 3. **Fehlercode** der Meldung unter **Hilfe → Fehlercodes** nachschlagen. Dort steht, was er bedeutet und was zu tun ist.
-4. Am Raspberry Pi: `octapihub --check` prüft die Einstellungen und Zugangsdaten (siehe unten).
+4. Am Raspberry Pi: `octapihub --selftest` prüft Bluetooth, I2C, Audio, Netz und Geräte und nennt zu jedem Problem den nächsten Schritt; `octapihub --check` prüft nur die Einstellungen und Zugangsdaten (siehe unten).
 
 ## 2. Wie OctaPiHub mit Fehlern umgeht
 | Mechanismus | Was er bewirkt |

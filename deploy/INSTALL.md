@@ -252,6 +252,11 @@ Programm (`/opt/octapihub`), Einstellungen (`/etc/octapihub`) und Daten (`/var/l
 löschen Sie nur, wenn Sie sie nicht mehr brauchen; sie bleiben sonst erhalten.
 
 ## 11. Hardware prüfen
+**Zuerst der Selbsttest:** `sudo -u octapihub /opt/octapihub/venv/bin/octapihub --selftest --config /etc/octapihub/octapihub.toml --secrets /etc/octapihub/secrets.env --data-dir /var/lib/octapihub`
+prüft in einem Durchgang Python, Gruppen des Benutzers, Einstellungen, Token, Datenordner, Port, Bluetooth-Adapter, I2C, Sense HAT und Joystick,
+`mpv`, `yt-dlp`, Tonkarte, `pychromecast`, Musikordner, Erreichbarkeit von Hue Bridge, MQTT und Home Assistant sowie den Zeitabgleich. Zu jedem Hinweis
+steht der nächste Schritt (`[WARN]` Hinweis, `[FEHL]` fehlt etwas Wichtiges, `[ -- ]` übersprungen). Rückgabewert 0 = alles bereit, 1 = Hinweise, 2 = Fehler.
+Der Selbsttest prüft die **Voraussetzungen**; ob die Würfel und Geräte wirklich funktionieren, zeigt die folgende Tabelle.
 Diese Prüfungen wurden von den Entwicklern **noch nicht** durchgeführt. Bitte arbeiten Sie sie
 einmal ab und notieren Sie, was abweicht:
 | Prüfung | So gehen Sie vor | Erwartung |

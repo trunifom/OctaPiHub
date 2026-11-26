@@ -143,6 +143,7 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 | F-U7 | S | Knöpfe „Dienst neu starten“, „Bluetooth zurücksetzen“, „Pi neu starten“ (mit Bestätigung). |
 | F-U8 | S | Diagnose-Export (ZIP, ohne Geheimnisse und volle Adressen). |
 | F-K11 | M | Zeit: Die Uhr stellt das Betriebssystem über NTP; OctaPiHub zeigt Zeiten standardmäßig in der Zeitzone des Geräts, einstellbar und ohne Neustart wirksam (Oberfläche, LED-Uhr, Nachtmodus); die Seite System zeigt den NTP-Abgleich. Zeitstempel intern UTC. Mit Fakes getestet. |
+| F-K12 | M | Selbsttest `--selftest`: prüft Voraussetzungen des Geräts (Python, Gruppen, Einstellungen, Token, Datenordner, Port, Bluetooth, I2C, Sense HAT, Joystick, mpv, yt-dlp, Tonkarte, pychromecast, Musikordner, Hue/MQTT/Home Assistant erreichbar, Zeitabgleich) und nennt zu jedem Problem den nächsten Schritt; Rückgabewert 0/1/2. Mit Fake-Prüfquelle getestet, nicht auf einem Raspberry Pi. |
 | F-U9 | M | Es gibt **keinen Desktop**-Zwang; vollständige Bedienbarkeit ohne Monitor. |
 
 ### 4.8 Konfiguration, Daten, Sicherung (F-K)

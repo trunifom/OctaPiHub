@@ -35,6 +35,7 @@ from octapihub.core.resilience import (
     install_exception_hooks,
     load_with_fallback,
 )
+from octapihub.core.selftest import Context, Probe, exit_code, format_report, run_checks
 from octapihub.core.timezone import TimeSettings
 from octapihub.core.watchdog import Watchdog
 from octapihub.infrastructure.ble.bleak_transport import BleakDeviceScanner
@@ -165,6 +166,11 @@ def build_parser(environ: Mapping[str, str] | None = None) -> argparse.ArgumentP
         help="Konfiguration und Zugangsdatei prüfen und beenden (0 = in Ordnung)",
     )
     parser.add_argument(
+        "--selftest",
+        action="store_true",
+        help="Prüft Bluetooth, I2C, Audio, Netz und Geräte und sagt, was fehlt (0/1/2)",
+    )
+    parser.add_argument(
         "--demo",
         action="store_true",
         help="Simuliertes Sense HAT mit Beispieldaten (Token: demo), ohne Hardware",
@@ -205,6 +211,28 @@ def run_check(config_path: str, secrets_path: str) -> int:
     return status
 
 
+def run_selftest(args: argparse.Namespace, probe: Probe | None = None) -> int:
+    """Check that this device is ready; prints a report and returns 0, 1 or 2."""
+    try:
+        loaded = load_with_fallback(args.config)
+    except OctaPiHubError as exc:
+        sys.stderr.write(f"{exc.error_code}: {exc.user_message}" + chr(10))
+        return 2
+    context = Context(
+        config=loaded.config,
+        config_note=describe_fallback(loaded),
+        secrets_path=args.secrets,
+        data_dir=args.data_dir,
+        host=args.host,
+        port=args.port,
+        token=os.environ.get(TOKEN_VARIABLE) or None,
+        probe=probe or Probe(),
+    )
+    results = run_checks(context)
+    sys.stdout.write(format_report(results))
+    return exit_code(results)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Start the interface; returns a process exit code."""
     args = build_parser().parse_args(argv)
@@ -216,6 +244,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     fallback_warning = ""
     if args.check:
         return run_check(args.config, args.secrets)
+    if args.selftest:
+        return run_selftest(args)
     if args.demo:
         from octapihub.web.demo import build_demo_backend, demo_system_reader
 

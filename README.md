@@ -129,6 +129,7 @@ Eine versionierte TOML-Datei (`octapihub.toml`, **Schema v7**; ältere Versionen
 | `--host`, `--port` | Bindeadresse (Standard nur `127.0.0.1`) und Port (8080); auch `OCTAPIHUB_HOST`, `OCTAPIHUB_PORT` |
 | `--log-level`, `--log-dir` | Ausführlichkeit (auch `OCTAPIHUB_LOG_LEVEL`) und Logordner |
 | `--check` | Einstellungen und Zugangsdaten prüfen und beenden (0 in Ordnung, 1 Warnungen, 2 unbrauchbar) |
+| `--selftest` | Gerät prüfen (Bluetooth, I2C, Sense HAT, Audio, Netz, Hue/MQTT/Home Assistant, Uhr) und zu jedem Problem den nächsten Schritt nennen (0/1/2) |
 | `--demo` | Simulation ohne Hardware, Token `demo` |
 
 ## Fehlerbehandlung und Protokolle
