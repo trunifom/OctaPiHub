@@ -29,6 +29,8 @@ TEXTS: dict[str, str] = {
     "template-cube": "Welcher Würfel die Vorlage bekommt. Seine bisherigen Zuordnungen, Namen und Farben werden ersetzt; vorher wird eine Sicherung angelegt.",
     "confirm_template": "Sicherheitsabfrage: Ohne Häkchen wird nichts ersetzt. Die bisherige Konfiguration wird vor dem Ersetzen gesichert.",
     "token-template": "Dasselbe Zugriffs-Token wie überall: Es steht in /etc/octapihub/octapihub.env hinter OCTAPIHUB_WEB_TOKEN=. Ohne Token ändert sich nichts.",
+    "confirm_restore": "Sicherheitsabfrage: Ohne Häkchen wird nichts zurückgesetzt. Die jetzigen Einstellungen werden vor dem Zurückgehen als weitere Sicherungskopie abgelegt.",
+    "token-restore": "Dasselbe Zugriffs-Token wie überall: Es steht in /etc/octapihub/octapihub.env hinter OCTAPIHUB_WEB_TOKEN=. Ohne Token ändert sich nichts.",
     "manual-address": "Die Bluetooth-Adresse des Würfels, sechs Paare aus Ziffern und Buchstaben, zum Beispiel 12:34:56:78:9A:BC. Sie finden sie über „Nach Würfeln suchen“ oder mit `bluetoothctl`. Eine falsche Adresse führt dazu, dass der Würfel „Verbindet …“ bleibt.",
     "manual-name": "Ein Name für den Würfel, zum Beispiel „Küche“ oder „Büro“ (höchstens 40 Zeichen, jeder Name nur einmal). „Joystick“ ist reserviert.",
     "manual-role": "Wofür der Würfel gedacht ist: Licht, Musik oder Universal. Das ist nur eine Beschriftung, jeder Würfel kann alles.",

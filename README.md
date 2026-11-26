@@ -140,6 +140,7 @@ Eine versionierte TOML-Datei (`octapihub.toml`, **Schema v7**; ältere Versionen
 - **Logging:** Konsole/journald, die letzten 500 Meldungen in der Oberfläche, **rotierende Logdatei** (`<Datenordner>/logs/octapihub.log`, ca. 6 MB). Zugangsdaten sind unkenntlich, Bluetooth-Adressen gekürzt, Ausnahmetexte werden nicht protokolliert. Nicht abgefangene Fehler in Threads und Hintergrundaufgaben werden protokolliert.
 - **Watchdog:** systemd startet den Dienst neu, wenn er hängt (`Type=notify`, `WatchdogSec=60`); Teilprobleme lösen keinen Neustart aus.
 - **Zeit:** Die Uhr stellt das Betriebssystem über NTP; OctaPiHub zeigt Zeiten in der **Zeitzone des Geräts** (oder einer gewählten), auch auf der LED-Uhr und im Nachtmodus. Die Seite *System* zeigt, ob die Uhr abgeglichen ist.
+- **Sicherheit:** optional HTTPS (`OCTAPIHUB_SSL_CERT`/`OCTAPIHUB_SSL_KEY`), Sperre nach Fehlversuchen, Änderungsprotokoll (Seite System) und `/metrics` für Prometheus (mit Token).
 - **Gesundheit:** `/healthz` (ohne Token, ohne Geheimnisse) meldet je Teil `ok` oder `degraded` – für Überwachung.
 - **Diagnose-Paket:** ZIP ohne Geheimnisse (Seite *System*).
 

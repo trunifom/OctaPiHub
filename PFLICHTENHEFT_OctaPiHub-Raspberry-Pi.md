@@ -185,6 +185,9 @@ echter Hardware geprüft.
 | NF-7 | M | Logging | Python-`logging` → journald; Stufen DEBUG–CRITICAL; Redaktion von Tokens/Schlüsseln/Passwörtern und gekürzten Geräteadressen; Größenlimit (z. B. 100 MB). | Stichprobe Logs. |
 | NF-8 | M | Fehlercodes | Eigene Ausnahmehierarchie mit stabilen Codes (`CH-<BEREICH>-NNN`) und deutscher Benutzermeldung; Fremdfehler an der Grenze übersetzt (`raise … from`). | Code-Review, Tests. |
 | NF-9 | M | Sicherheit | Dienst ohne Root, SSH nur mit Schlüssel, Weboberfläche nur LAN, keine offenen Router-Ports, Geheimnisse 0600. | Checkliste Handbuch Kap. 14. |
+| NF-9a | S | Zugriffsschutz | Sperre nach Fehlversuchen, Änderungsprotokoll, Prometheus-Kennzahlen mit Token. Umgesetzt, mit Fakes/Testclient geprüft. | `tests/test_security.py`. |
+| NF-9b | S | Verschlüsselung und Betrieb | Optional HTTPS im Dienst (Zertifikat/Schlüssel, `CH-WEB-022` bei Fehlern), CI-Workflow (ruff, mypy, pytest) und ein ungeprüftes Dockerfile (`docs/DOCKER.md`). Kein .deb-Paket, kein Update-Knopf. | `tests/test_security.py`; Dockerfile und CI **nicht ausgeführt**. |
+| NF-13 | S | Bedienkomfort | Warnung vor ungespeicherten Änderungen, Handy-Menü „Mehr“, Ablage als App (Manifest mit Symbolen, kein Offline-Betrieb), frühere Versionen der Einstellungen mit „Wiederherstellen“ auf der Seite Sicherung. Umgesetzt, mit Testclient geprüft; **keine** Prüfung auf echten Handys oder in einem Browser-Test. | `tests/test_web_gui_extras.py`. |
 | NF-10 | M | Zeit | Intern UTC (timezone-aware), Anzeige in `Europe/Zurich`; NTP aktiv. | Test Sommer-/Winterzeit. |
 | NF-11 | M | Datenschutz | Keine Daten verlassen das Heimnetz außer Streaming-/Hue-Cloud-Funktionen, die ausdrücklich aktiviert wurden. | Netzwerkprüfung. |
 | NF-12 | S | SD-Karten-Schonung | Schreibrate niedrig (Verlaufs-Aggregation, WAL, Log-Limit). | Schreibmenge/Tag messen. |

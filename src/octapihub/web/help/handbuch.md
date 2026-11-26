@@ -77,12 +77,15 @@ Jede Karte hat einen Bereich **„Name, Farbe, Optionen und Details“**:
   - Außerhalb der Bedingung passiert beim Drehen **nichts** (auch kein Fehler). „Jetzt auslösen“ ignoriert die Bedingung, damit Sie testen können. Die Uhrzeit folgt der eingestellten Zeitzone.
 - **Was passiert, wenn diese Seite oben liegt?** In Klartext: bei einer Playlist Quelle, Ordner, Gerät, Zufall und Wiederholen und Lautstärke; bei Licht Aktion und Raum; bei einer Szene deren Name; bei Smart Home Art und Ziel (Web-Adressen werden gekürzt, weil sie Geheimnisse enthalten können).
 
+#### Ungespeicherte Änderungen
+Haben Sie auf einer Seite mit „Speichern“ etwas geändert und wollen die Seite verlassen, warnt der Browser. Unten neben dem Speichern-Knopf steht dann „● Ungespeicherte Änderungen“. Das Token zählt nicht als Änderung.
+
 #### Vorlagen: ein Würfel mit einem Klick belegen
 Unter **Vorlagen** (Seite Würfel) gibt es zwei fertige Belegungen, die ohne eigene Szenen oder Playlists funktionieren:
 - **Licht-Würfel** (braucht Hue): Seite 1 Ein/Aus, 2 heller, 3 dunkler, 4 Farbe wechseln, 5 Warmweiß, 6 alles aus.
 - **Musik-Würfel** (braucht Musik): Seite 1 Pause/Weiter, 2 nächster Titel, 3 vorheriger Titel, 4 lauter, 5 leiser, 6 Stopp.
 
-Wählen Sie die Vorlage und den Würfel, setzen Sie das Häkchen „Ja, ersetzen“ und geben Sie das Token ein. **Die bisherige Zuordnung, Namen und Farben dieses Würfels werden ersetzt**; vorher wird die Konfiguration gesichert (Seite Sicherung → Zurückspielen). Danach lässt sich jede Seite wie gewohnt anpassen. Den Joystick gibt es als Ziel nicht.
+Wählen Sie die Vorlage und den Würfel, setzen Sie das Häkchen „Ja, ersetzen“ und geben Sie das Token ein. **Die bisherige Zuordnung, Namen und Farben dieses Würfels werden ersetzt**; vorher wird die Konfiguration gesichert (Seite Sicherung → Frühere Versionen). Danach lässt sich jede Seite wie gewohnt anpassen. Den Joystick gibt es als Ziel nicht.
 
 #### Ein Gerät für den ganzen Würfel
 Über jedem Würfel steht **„Wiedergabegerät für die Musik-Aktionen dieses Würfels“**. Wählen Sie dort z. B. „Nest Mini Küche“, gilt es für alle Musik-Seiten dieses Würfels. Einzelne Seiten dürfen abweichen. So ist immer klar, welche Seite *was* *wo* auslöst.
@@ -98,6 +101,10 @@ Zuordnungen mit **mehreren Aktionen hintereinander** (nur in der Konfigurationsd
 - Fehler, die Sie beheben müssen (Gerät gelöscht, Musik aus, Quelle fehlt), werden nicht ständig wiederholt. Verbindungsfehler werden kurz und mit Pausen wiederholt.
 - „Pause“ und „Stopp“ ohne Gerät wirken auf **alles, was gerade läuft**.
 - Lauter/Leiser ändern die Lautstärke in Schritten von 10 Prozentpunkten.
+
+## 3a. Handy und App
+- **Menü unten:** Auf dem Handy zeigt die Leiste unten Übersicht, Würfel, Licht und Musik. Alles Weitere (Smart Home, Sense HAT, Anzeige, System, Einstellungen) steckt hinter **Mehr**. Ein Tippen daneben oder die Taste Esc schließt das Menü.
+- **Als App ablegen:** Im Browser des Handys „Zum Startbildschirm hinzufügen“ (Android: Menü ⋮, iPhone: Teilen-Symbol) wählen. OctaPiHub erscheint dann mit eigenem Symbol und öffnet sich ohne Adressleiste. Das ist nur eine Verknüpfung auf dieselbe Seite; es gibt keinen Offline-Betrieb.
 
 ## 4. Licht (Philips Hue)
 1. **Bridge eintragen:** „Hue verwenden“ einschalten und die **Adresse der Bridge** eintragen (Hue-App → Einstellungen → Bridges). *Erweiterte Verbindungseinstellungen* (Port, Zertifikat, Name im Zertifikat) brauchen Sie normalerweise nicht.

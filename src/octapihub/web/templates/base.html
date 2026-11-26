@@ -7,6 +7,9 @@
   <meta name="color-scheme" content="light dark">
   <title>{% block title %}{{ page_title | default('Übersicht') }}{% endblock %} · OctaPiHub</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <meta name="theme-color" content="#0e8a74">
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/theme.js"></script>
 </head>
@@ -18,16 +21,20 @@
         <svg viewBox="0 0 32 32" class="logo" aria-hidden="true"><rect width="32" height="32" rx="9" class="logo-bg"/><path d="M16 6l8.7 5v10L16 26l-8.7-5V11z" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"/><circle cx="16" cy="16" r="2.6" fill="#fff"/></svg>
         <span>OctaPiHub</span>
       </a>
+      {% set nav_main = [('overview', '/', 'Übersicht', 'overview'), ('cubes', '/cubes', 'Würfel', 'cube'), ('light', '/light', 'Licht', 'bulb'), ('music', '/music', 'Musik', 'music')] %}
+      {% set nav_more = [('smarthome', '/smarthome', 'Smart Home', 'home'), ('sense-hat', '/sense-hat', 'Sense HAT', 'sense-hat'), ('display', '/display', 'Anzeige', 'display'), ('system', '/system', 'System', 'system'), ('settings', '/settings', 'Einstellungen', 'settings')] %}
       <nav class="nav" aria-label="Hauptnavigation">
-        <a href="/" {% if active == 'overview' %}aria-current="page"{% endif %}>{{ m.icon('overview') }}<span>Übersicht</span></a>
-        <a href="/cubes" {% if active == 'cubes' %}aria-current="page"{% endif %}>{{ m.icon('cube') }}<span>Würfel</span></a>
-        <a href="/light" {% if active == 'light' %}aria-current="page"{% endif %}>{{ m.icon('bulb') }}<span>Licht</span></a>
-        <a href="/music" {% if active == 'music' %}aria-current="page"{% endif %}>{{ m.icon('music') }}<span>Musik</span></a>
-        <a href="/smarthome" {% if active == 'smarthome' %}aria-current="page"{% endif %}>{{ m.icon('home') }}<span>Smart Home</span></a>
-        <a href="/sense-hat" {% if active == 'sense-hat' %}aria-current="page"{% endif %}>{{ m.icon('sense-hat') }}<span>Sense HAT</span></a>
-        <a href="/display" {% if active == 'display' %}aria-current="page"{% endif %}>{{ m.icon('display') }}<span>Anzeige</span></a>
-        <a href="/system" {% if active == 'system' %}aria-current="page"{% endif %}>{{ m.icon('system') }}<span>System</span></a>
-        <a href="/settings" {% if active == 'settings' %}aria-current="page"{% endif %}>{{ m.icon('settings') }}<span>Einstellungen</span></a>
+        {% for key, href, label, icon in nav_main %}<a href="{{ href }}" {% if active == key %}aria-current="page"{% endif %}>{{ m.icon(icon) }}<span>{{ label }}</span></a>
+        {% endfor %}
+        {% for key, href, label, icon in nav_more %}<a class="nav-extra" href="{{ href }}" {% if active == key %}aria-current="page"{% endif %}>{{ m.icon(icon) }}<span>{{ label }}</span></a>
+        {% endfor %}
+        <details class="nav-more{% if active in ['smarthome', 'sense-hat', 'display', 'system', 'settings'] %} is-active{% endif %}">
+          <summary>{{ m.icon('menu') }}<span>Mehr</span></summary>
+          <div class="nav-more-list">
+            {% for key, href, label, icon in nav_more %}<a href="{{ href }}" {% if active == key %}aria-current="page"{% endif %}>{{ m.icon(icon) }}<span>{{ label }}</span></a>
+            {% endfor %}
+          </div>
+        </details>
       </nav>
       <div class="prefs">
         <a class="pref" href="/help" title="Hilfe und Handbuch" aria-label="Hilfe und Handbuch">{{ m.icon('info') }}<span>Hilfe</span></a>

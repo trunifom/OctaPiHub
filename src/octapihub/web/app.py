@@ -89,6 +89,7 @@ from octapihub.web.presenter import (
     local_time_text,
     overall_level,
 )
+from octapihub.web.pwa import register_pwa
 from octapihub.web.security import Stats, register_security, token_problem_for_client
 from octapihub.web.smarthome_routes import register_smarthome_routes
 
@@ -437,6 +438,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(_PACKAGE_DIR / "static")), name="static")
 
     register_security(app, backend, _token_matches, Stats())
+    register_pwa(app)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next: Callable[..., Awaitable[Response]]):  # type: ignore[no-untyped-def]

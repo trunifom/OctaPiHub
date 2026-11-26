@@ -102,6 +102,38 @@
 
 </form>
 
+<form method="post" action="/backup" id="versions-form" novalidate>
+  <section class="panel" aria-labelledby="versions-title">
+    <div class="panel-head">
+      <h2 id="versions-title">Frühere Versionen</h2>
+      <p class="muted">Vor jeder größeren Änderung (Import, Würfel-Vorlage, neue Würfel) legt der Hub eine Kopie Ihrer Einstellungen an; die neuesten fünf bleiben erhalten. Wenn etwas schiefgegangen ist, gehen Sie mit einem Klick zurück.</p>
+    </div>
+    {% if not versions %}
+    <p class="empty-inline">Noch keine früheren Versionen vorhanden.</p>
+    {% else %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th scope="col">Gespeichert am</th><th scope="col">Größe</th><th scope="col"><span class="visually-hidden">Aktion</span></th></tr></thead>
+        <tbody>
+          {% for v in versions %}
+          <tr>
+            <td class="nowrap">{{ v.time }}</td>
+            <td class="muted">{{ v.size_kb }} KB</td>
+            <td><button type="submit" name="action" value="restore:{{ v.name }}" class="btn btn-small"{% if not writable %} disabled{% endif %}>Diese Version wiederherstellen</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <label class="check"><input type="checkbox" name="confirm_restore" value="1"> <span>Ja, zurückgehen (die jetzigen Einstellungen werden vorher gesichert)</span></label>
+    <div class="field field-token">
+      <label for="f-token-restore">Zugriffs-Token</label>
+      <input type="password" name="token" id="f-token-restore" autocomplete="current-password" placeholder="{{ 'Token eingeben' if writable else 'Nicht eingerichtet' }}"{% if not writable %} disabled{% endif %}>
+    </div>
+    {% endif %}
+  </section>
+</form>
+
 <section class="panel">
   <div class="panel-head">
     <h2><span class="step-no">3</span> Messdaten herunterladen (CSV)</h2>

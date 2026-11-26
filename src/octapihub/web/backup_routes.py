@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from octapihub.application import backup
 from octapihub.core.errors import ConfigurationError, OctaPiHubError, ValidationError
 from octapihub.core.logging_support import Redactor, read_log_file
+from octapihub.web.presenter import local_time_text
 
 if TYPE_CHECKING:
     from octapihub.web.app import WebBackend
@@ -63,6 +64,14 @@ def register_backup_routes(
             "ranges": {k: v[0] for k, v in ranges.items()},
             "history_on": config.sense_hat.history.enabled,
             "log_file": bool(backend.log_dir),
+            "versions": [
+                {
+                    "name": v.name,
+                    "time": local_time_text(v.created, backend.tz),
+                    "size_kb": max(1, round(v.size / 1024)),
+                }
+                for v in backend.settings.list_backups()
+            ],
             "live": False,
         }
 
@@ -159,6 +168,22 @@ def register_backup_routes(
                     "Einstellungen übernommen",
                     "Die bisherigen Einstellungen wurden als Sicherungskopie neben der "
                     "Konfigurationsdatei abgelegt.",
+                )
+            if action.startswith("restore:"):
+                if not submitted.get("confirm_restore"):
+                    return respond(
+                        422,
+                        "warn",
+                        "Bitte bestätigen Sie das Zurückgehen",
+                        "Setzen Sie das Häkchen bei „Ja, zurückgehen“.",
+                    )
+                notes.extend(await backend.settings.restore_backup(action.removeprefix("restore:")))
+                return respond(
+                    200,
+                    "ok",
+                    "Frühere Version wiederhergestellt",
+                    "Die davor gültigen Einstellungen wurden vorher als Sicherungskopie abgelegt, "
+                    "Sie können also auch wieder zurück.",
                 )
             return respond(422, "error", "Unbekannte Aktion", "", "CH-WEB-006")
         except ValidationError as exc:

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import shutil
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
@@ -19,6 +21,7 @@ from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.smarthome import SmartHomeService, secret_key
 from octapihub.core.config import (
     AppConfig,
+    load_config,
     save_config,
     with_cubes_table,
     with_face_labels_table,
@@ -35,6 +38,16 @@ from octapihub.core.timezone import TimeSettings
 logger = logging.getLogger(__name__)
 
 KEEP_BACKUPS = 5
+_STAMP = re.compile(r"^\d{8}-\d{6}$")
+
+
+@dataclass(frozen=True, slots=True)
+class BackupInfo:
+    """One earlier version of the configuration file (a ``.bak-<time>`` copy)."""
+
+    name: str  # the stamp, e.g. 20261126-153012
+    created: datetime  # UTC
+    size: int
 
 
 class SecretWriter(Protocol):
@@ -199,6 +212,87 @@ class SettingsManager:
     async def _live_music(self, candidate: AppConfig) -> None:
         if self._music is not None:
             await self._music.reconfigure(candidate.music)
+
+    # ----- earlier versions -----
+
+    def list_backups(self) -> list[BackupInfo]:
+        """The saved earlier versions of the configuration file, newest first."""
+        found: list[BackupInfo] = []
+        prefix = f"{self._path.name}.bak-"
+        try:
+            candidates = list(self._path.parent.glob(f"{self._path.name}.bak-*"))
+        except OSError:
+            return []
+        for candidate in candidates:
+            stamp = candidate.name.removeprefix(prefix)
+            if not _STAMP.fullmatch(stamp):
+                continue
+            try:
+                created = datetime.strptime(stamp, "%Y%m%d-%H%M%S").replace(tzinfo=UTC)
+                size = candidate.stat().st_size
+            except (ValueError, OSError):
+                continue
+            found.append(BackupInfo(stamp, created, size))
+        return sorted(found, key=lambda info: info.name, reverse=True)
+
+    async def restore_backup(self, name: str) -> list[str]:
+        """Go back to an earlier version; the current one is saved first.
+
+        The old file is read and validated completely before anything changes, and the
+        running services are switched over like after an import.
+
+        Raises:
+            ValidationError: Unknown version, or its content is no longer valid (nothing changes).
+            ConfigurationError: The version cannot be read or the file cannot be written.
+        """
+        if not _STAMP.fullmatch(name):
+            raise ValidationError(
+                "Invalid backup name", user_message="Diese frühere Version gibt es nicht."
+            )
+        source = self._path.with_name(f"{self._path.name}.bak-{name}")
+        if not source.is_file():
+            raise ValidationError(
+                "Unknown backup", user_message="Diese frühere Version gibt es nicht (mehr)."
+            )
+        async with self._lock:
+            candidate = await asyncio.to_thread(load_config, source)
+            previous = self._config
+            await asyncio.to_thread(self._backup_file)
+            if self._cubes is not None:
+                await self._cubes.reconfigure(candidate)
+            try:
+                await asyncio.to_thread(save_config, self._path, candidate)
+            except Exception:
+                if self._cubes is not None:
+                    await self._cubes.reconfigure(previous)
+                raise
+            self._config = candidate
+            failed: list[str] = []
+            for key, live in (
+                ("sense_hat", self._live_sense_hat),
+                ("hue", self._live_hue),
+                ("music", self._live_music),
+            ):
+                try:
+                    await live(candidate)
+                except Exception:
+                    logger.exception("Restored %s settings could not be applied live", key)
+                    failed.append(key)
+            if self._smarthome is not None:
+                self._smarthome.reconfigure(candidate.smarthome)
+            if self._time is not None:
+                self._time.apply(candidate.timezone)
+            notes = [
+                "Zugangsdaten (Token, Hue-Schlüssel, Smart-Home-Passwörter) werden nicht "
+                "zurückgesetzt; sie bleiben, wie sie sind."
+            ]
+            if failed:
+                notes.append(
+                    "Gespeichert, aber nicht alles ließ sich sofort anwenden. "
+                    "Bitte starten Sie den Dienst neu."
+                )
+            logger.info("Configuration restored from backup %s", name)
+            return notes
 
     # ----- import -----
 

@@ -380,3 +380,57 @@
     });
   });
 })();
+
+// Mobile navigation: the "Mehr" menu closes on a click outside and on Escape.
+(function () {
+  "use strict";
+  var more = document.querySelector(".nav-more");
+  if (!more) return;
+  document.addEventListener("click", function (event) {
+    if (more.open && !more.contains(event.target)) more.open = false;
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && more.open) {
+      more.open = false;
+      var summary = more.querySelector("summary");
+      if (summary) summary.focus();
+    }
+  });
+})();
+
+// Unsaved changes: warn before leaving an editor with edits that were not saved.
+(function () {
+  "use strict";
+  var forms = document.querySelectorAll(
+    "#mapping-form, #light-form, #music-form, #settings-form, #smarthome-form, #time-form"
+  );
+  if (!forms.length) return;
+  var dirty = false;
+  var submitting = false;
+  var note = document.createElement("span");
+  note.className = "dirty-note";
+  note.setAttribute("role", "status");
+  note.hidden = true;
+  note.textContent = "Ungespeicherte Änderungen";
+  var bar = document.querySelector(".savebar-in");
+  if (bar) bar.insertBefore(note, bar.firstChild);
+  function mark(event) {
+    var name = event.target && event.target.name;
+    if (name === "token" || name === "action") return; // the token is not a change
+    dirty = true;
+    note.hidden = false;
+  }
+  forms.forEach(function (form) {
+    form.addEventListener("input", mark);
+    form.addEventListener("change", mark);
+    form.addEventListener("submit", function () {
+      submitting = true;
+    });
+  });
+  window.addEventListener("beforeunload", function (event) {
+    if (dirty && !submitting) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
+})();
