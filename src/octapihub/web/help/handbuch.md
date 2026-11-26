@@ -102,6 +102,9 @@ Zuordnungen mit **mehreren Aktionen hintereinander** (nur in der Konfigurationsd
 - „Pause“ und „Stopp“ ohne Gerät wirken auf **alles, was gerade läuft**.
 - Lauter/Leiser ändern die Lautstärke in Schritten von 10 Prozentpunkten.
 
+## 3b. Einrichtung (Schritt für Schritt)
+Die Seite **Einrichtung** (`/setup`, auf der Übersicht verlinkt, solange Pflichtschritte offen sind) führt durch: Token, Würfel koppeln, Licht (optional), Musik (optional), erste Seite belegen. Was erledigt ist, erkennt der Hub selbst; es wird nichts extra gespeichert. Der nächste offene Schritt ist hervorgehoben.
+
 ## 3a. Handy und App
 - **Menü unten:** Auf dem Handy zeigt die Leiste unten Übersicht, Würfel, Licht und Musik. Alles Weitere (Smart Home, Sense HAT, Anzeige, System, Einstellungen) steckt hinter **Mehr**. Ein Tippen daneben oder die Taste Esc schließt das Menü.
 - **Als App ablegen:** Im Browser des Handys „Zum Startbildschirm hinzufügen“ (Android: Menü ⋮, iPhone: Teilen-Symbol) wählen. OctaPiHub erscheint dann mit eigenem Symbol und öffnet sich ohne Adressleiste. Das ist nur eine Verknüpfung auf dieselbe Seite; es gibt keinen Offline-Betrieb.

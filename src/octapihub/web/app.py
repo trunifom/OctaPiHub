@@ -91,6 +91,7 @@ from octapihub.web.presenter import (
 )
 from octapihub.web.pwa import register_pwa
 from octapihub.web.security import Stats, register_security, token_problem_for_client
+from octapihub.web.setup_guide import overview_hint, register_setup
 from octapihub.web.smarthome_routes import register_smarthome_routes
 
 logger = logging.getLogger(__name__)
@@ -538,7 +539,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request) -> Response:
-        return page(request, "overview.html", "overview")
+        return page(request, "overview.html", "overview", setup_hint=overview_hint(backend))
 
     def mapping_context(
         values: dict[str, str],
@@ -1082,6 +1083,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
         )
 
     register_help_routes(app, page)
+    register_setup(app, backend, page)
     register_music_routes(app, backend, page, _read_form, _access_problem)
     register_smarthome_routes(app, backend, page, _read_form, _access_problem)
 

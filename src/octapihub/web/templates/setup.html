@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Einrichtung</h1>
+    <p class="lead">In fünf Schritten vom neuen Gerät zum ersten Würfel, der etwas auslöst. Erledigte Schritte erkennt der Hub selbst.</p>
+  </div>
+</div>
+
+<section class="panel" aria-labelledby="setup-title">
+  <div class="panel-head">
+    <h2 id="setup-title">{{ done_count }} von {{ total_count }} Schritten erledigt</h2>
+    <progress class="setup-progress" max="{{ total_count }}" value="{{ done_count }}" aria-label="Fortschritt der Einrichtung">{{ done_count }} von {{ total_count }}</progress>
+    {% if complete %}<p class="muted">Alles Wichtige ist eingerichtet. Schritte mit „optional“ brauchen Sie nur, wenn Sie Licht oder Musik steuern möchten.</p>{% endif %}
+  </div>
+  <ol class="setup-steps">
+    {% for step in steps %}
+    <li class="setup-step{% if step.done %} is-done{% elif step.key == next_key %} is-next{% endif %}">
+      <span class="setup-mark" aria-hidden="true">{{ m.icon('ok' if step.done else 'info') }}</span>
+      <div class="setup-body">
+        <h3>{{ step.title }}{% if step.optional %} <span class="pill pill-off">optional</span>{% endif %}</h3>
+        {% if step.done %}
+        <p class="muted"><span class="visually-hidden">Erledigt: </span>{{ step.done_text }}</p>
+        {% else %}
+        <p>{{ step.what }}</p>
+        {% endif %}
+        <a class="btn {{ 'btn-quiet' if step.done else 'btn-primary' }} btn-small" href="{{ step.href }}">{{ step.action if not step.done else 'Ansehen' }}</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endblock %}

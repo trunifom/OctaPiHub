@@ -6,6 +6,16 @@
   <p class="lead">So geht es Ihrem OctaPiHub. Hier sehen Sie auf einen Blick, was läuft.</p>
 </div>
 
+{% if setup_hint %}
+<div class="notice notice-info" role="status">
+  <span class="notice-ico">{{ m.icon('info') }}</span>
+  <div class="notice-body">
+    <p class="notice-title">Einrichtung: {{ setup_hint.done }} von {{ setup_hint.total }} Schritten erledigt</p>
+    <p>Als Nächstes: {{ setup_hint.next }}. <a href="/setup">Zur Einrichtung</a></p>
+  </div>
+</div>
+{% endif %}
+
 <div class="cards cards-overview">
   <article class="card status-card">
     <header class="card-head">

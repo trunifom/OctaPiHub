@@ -14,7 +14,7 @@ MANIFEST: dict[str, object] = {
     "scope": "/",
     "display": "standalone",
     "background_color": "#f4f7f9",
-    "theme_color": "#0e8a74",
+    "theme_color": "#0c806c",
     "icons": [
         {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
         {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
