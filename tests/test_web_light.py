@@ -215,6 +215,9 @@ def test_read_only_without_token_disables_buttons(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("token", [None, "", "wrong-token-zzz"])
 def test_bad_token_blocks_every_action_without_side_effects(rig: _Rig, token: str | None) -> None:
+    from octapihub.core.auth_guard import FailureLimiter
+
+    rig.backend.guard = FailureLimiter(max_failures=1000)  # the lock-out is tested elsewhere
     with rig.client() as client:
         for action in ("save", "pair", "refresh", "unpair", "test:s-1", "nonsense"):
             response = _post(client, _form(rig, action=action), token=token)

@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import logging
 import os
+import ssl
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC
@@ -22,6 +23,7 @@ from octapihub.composition import (
     build_sense_hat_service,
     build_smarthome_service,
 )
+from octapihub.core.audit import AuditLog
 from octapihub.core.errors import OctaPiHubError, SecretsError
 from octapihub.core.logging_support import (
     LOG_FORMAT,
@@ -116,6 +118,23 @@ def token_problem(token: str | None) -> str | None:
     return None
 
 
+def tls_problem(cert: str | None, key: str | None) -> str | None:
+    """Explain why the HTTPS files cannot be used, or ``None`` when they are fine (or not set)."""
+    if not cert and not key:
+        return None
+    if not cert or not key:
+        return "Für HTTPS werden Zertifikat und Schlüssel beide gebraucht."
+    for label, path in (("Zertifikat", cert), ("Schlüssel", key)):
+        if not Path(path).is_file():
+            return f"Die Datei für das {label} gibt es nicht: {path}"
+    try:
+        ssl.create_default_context(ssl.Purpose.CLIENT_AUTH).load_cert_chain(cert, key)
+    except (ssl.SSLError, OSError) as exc:
+        reason = type(exc).__name__
+        return f"Zertifikat und Schlüssel passen nicht zusammen oder sind unlesbar ({reason})."
+    return None
+
+
 async def discover_cast() -> list[str]:
     """Names of the Google Cast devices in the network (the search takes a few seconds)."""
     return await asyncio.to_thread(PyChromecastBackend().discover, 5.0)
@@ -161,6 +180,16 @@ def build_parser(environ: Mapping[str, str] | None = None) -> argparse.ArgumentP
         help="Ausführlichkeit: DEBUG, INFO, WARNING oder ERROR (Standard: INFO)",
     )
     parser.add_argument(
+        "--ssl-certfile",
+        default=env.get("OCTAPIHUB_SSL_CERT") or None,
+        help="Zertifikat (PEM) für HTTPS; zusammen mit --ssl-keyfile (Standard: HTTP)",
+    )
+    parser.add_argument(
+        "--ssl-keyfile",
+        default=env.get("OCTAPIHUB_SSL_KEY") or None,
+        help="Privater Schlüssel (PEM) für HTTPS",
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="Konfiguration und Zugangsdatei prüfen und beenden (0 = in Ordnung)",
@@ -178,7 +207,7 @@ def build_parser(environ: Mapping[str, str] | None = None) -> argparse.ArgumentP
     return parser
 
 
-def run_check(config_path: str, secrets_path: str) -> int:
+def run_check(config_path: str, secrets_path: str, args: argparse.Namespace | None = None) -> int:
     """Check the setup without starting anything; returns 0 (fine), 1 (warnings) or 2 (unusable)."""
     out = sys.stdout.write
     try:
@@ -208,6 +237,13 @@ def run_check(config_path: str, secrets_path: str) -> int:
         status = max(status, 1)
     elif not os.environ.get(TOKEN_VARIABLE):
         out("Hinweis: Kein Zugriffs-Token gesetzt, die Oberfläche ist nur lesend.\n")
+    if args is not None:
+        tls = tls_problem(args.ssl_certfile, args.ssl_keyfile)
+        if tls is not None:
+            out(f"WARNUNG: CH-WEB-022: {tls}\n")
+            status = max(status, 1)
+        elif args.ssl_certfile:
+            out("HTTPS: Zertifikat und Schlüssel passen zusammen\n")
     return status
 
 
@@ -243,7 +279,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     install_exception_hooks()
     fallback_warning = ""
     if args.check:
-        return run_check(args.config, args.secrets)
+        return run_check(args.config, args.secrets, args)
     if args.selftest:
         return run_selftest(args)
     if args.demo:
@@ -307,8 +343,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     backend.logs = logs
     backend.watchdog = None if args.demo else Watchdog()
     backend.log_dir = None if args.demo else log_dir
+    if not args.demo:
+        backend.audit = AuditLog(Path(args.data_dir) / "audit.jsonl")
     if backend.system is None:
         backend.system = SystemInfoReader(args.data_dir)
+    tls = tls_problem(args.ssl_certfile, args.ssl_keyfile)
+    if tls is not None:
+        print(f"CH-WEB-022: {tls}", file=sys.stderr)  # noqa: T201
+        return 2
     redactor.add_secret(backend.token)
     if not args.demo:
         register_secrets(redactor, args.secrets)
@@ -317,6 +359,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         host=args.host,
         port=args.port,
         log_level="info",
+        ssl_certfile=args.ssl_certfile,
+        ssl_keyfile=args.ssl_keyfile,
     )
     return 0
 

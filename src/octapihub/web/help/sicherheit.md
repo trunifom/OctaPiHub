@@ -10,6 +10,9 @@
 |---|---|
 | Zugriffs-Token | Alle Änderungen und Aktionen (speichern, abspielen, koppeln, exportieren, suchen) verlangen es. Es wird mit konstanter Zeit verglichen. |
 | Token-Prüfung beim Start | Fehlt es, ist es kürzer als 12 Zeichen oder noch der Platzhalter, startet der Dienst nicht (`CH-WEB-008`) bzw. die Oberfläche ist nur lesend. |
+| Sperre nach Fehlversuchen | Nach 5 falschen Tokens innerhalb von 5 Minuten nimmt der Hub von dieser Adresse 60 Sekunden lang nichts an, **auch nicht das richtige Token** (`CH-WEB-021`). Jede weitere Sperre dauert doppelt so lang (höchstens 15 Minuten). Ein richtiges Token setzt die Zählung zurück. Hinter einem Reverse-Proxy sehen alle Geräte wie dieselbe Adresse aus; dann gilt die Sperre für alle gemeinsam. |
+| Änderungsprotokoll | Auf der Seite *System* steht, wer (Adresse) wann was geändert oder ausgelöst hat, auch abgelehnte Versuche. Es enthält **nie** Inhalte, Tokens oder Zugangsdaten. Datei `audit.jsonl` im Datenordner, bei 512 KB wird sie rotiert (eine ältere Datei bleibt). |
+| Kennzahlen `/metrics` | Zahlen für Prometheus (Würfel verbunden, Hue, Fehlversuche, Anfragen). Nur mit Token: `Authorization: Bearer <Token>`. Ohne eingerichtetes Token ist die Seite gesperrt. |
 | Nur lokal als Standard | Der Dienst lauscht auf `127.0.0.1`. Das Heimnetz schalten Sie bewusst mit `OCTAPIHUB_HOST` frei. |
 | Content-Security-Policy | Die Seiten laden nur eigene Skripte und Stile (`default-src 'self'`); Einbetten in fremde Seiten ist verboten. |
 
@@ -43,6 +46,7 @@ Behandeln Sie Export-Dateien deshalb vertraulich, wenn Ihre Webhook-Adressen Ken
 Ein Würfel spricht Bluetooth LE. Der Hub liest nur die Lage-Meldungen und den Akkustand; er schreibt nichts in den Würfel. Bluetooth-Adressen von Würfeln werden in der Oberfläche nicht und in Protokollen nur gekürzt gezeigt.
 
 ## 8. Empfehlungen
+0. **Verschlüsselung:** Im Heimnetz ist HTTP üblich, das Token geht dann unverschlüsselt über das Netz. Wer das ändern will, schaltet HTTPS ein (`OCTAPIHUB_SSL_CERT` und `OCTAPIHUB_SSL_KEY`, siehe Installationsanleitung, Abschnitt 8) oder stellt einen Server wie Caddy davor.
 1. Eigenes, langes Token; nicht im Browser speichern lassen.
 2. Router: keine Portfreigabe, Gäste-WLAN getrennt halten.
 3. Raspberry Pi OS aktuell halten (`sudo apt update && sudo apt full-upgrade`).

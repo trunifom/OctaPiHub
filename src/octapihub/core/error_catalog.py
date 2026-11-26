@@ -270,6 +270,20 @@ _ENTRIES = (
         "Token aus `octapihub.env` erneut eingeben. Es wurde nichts geändert.",
     ),
     _e(
+        "CH-WEB-021",
+        "Weboberfläche",
+        "Zu viele Fehlversuche",
+        "Das Zugriffs-Token wurde mehrmals falsch eingegeben. Von dieser Adresse aus wird eine Zeit lang nichts angenommen, auch nicht das richtige Token.",
+        "Einige Minuten warten (die Meldung nennt die Sekunden) und das richtige Token aus `octapihub.env` eingeben. Jede weitere Sperre dauert doppelt so lang.",
+    ),
+    _e(
+        "CH-WEB-022",
+        "Weboberfläche",
+        "HTTPS-Dateien unbrauchbar",
+        "Zertifikat und Schlüssel für HTTPS fehlen, sind nur einzeln angegeben, unlesbar oder passen nicht zusammen. Der Dienst startet dann nicht, damit er nicht unverschlüsselt läuft.",
+        "`OCTAPIHUB_SSL_CERT` und `OCTAPIHUB_SSL_KEY` (oder `--ssl-certfile` und `--ssl-keyfile`) prüfen; mit `octapihub --check` testen. Ohne HTTPS beide Angaben entfernen.",
+    ),
+    _e(
         "CH-WEB-005",
         "Weboberfläche",
         "Hue in diesem Modus nicht verfügbar",

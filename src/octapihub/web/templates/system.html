@@ -78,6 +78,33 @@
   </div>
   {% endif %}
 </section>
+<section class="panel" aria-labelledby="audit-title">
+  <div class="panel-head">
+    <h2 id="audit-title">Änderungsprotokoll</h2>
+    <p class="muted">Wer wann etwas geändert oder ausgelöst hat (nur die Art der Änderung und die Adresse des Geräts, nie Inhalte oder Zugangsdaten). Abgelehnte Versuche stehen auch hier.</p>
+  </div>
+  {% if not audit_available %}
+  <p class="empty-inline">Das Änderungsprotokoll ist in diesem Modus nicht verfügbar.</p>
+  {% elif not audit_rows %}
+  <p class="empty-inline">Noch keine Änderungen seit dem Start.</p>
+  {% else %}
+  <div class="table-wrap">
+    <table class="table log-table">
+      <thead><tr><th scope="col">Zeit</th><th scope="col">Gerät</th><th scope="col">Was</th><th scope="col">Ergebnis</th></tr></thead>
+      <tbody>
+        {% for row in audit_rows %}
+        <tr class="{{ 'log-warning' if row.result != 'ok' else '' }}">
+          <td class="nowrap">{{ row.time }}</td>
+          <td class="muted">{{ row.client }}</td>
+          <td>{{ row.action }}</td>
+          <td>{{ 'ausgeführt' if row.result == 'ok' else 'abgelehnt' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
 <section class="panel" aria-labelledby="diag-title">
   <div class="panel-head">
     <h2 id="diag-title">Diagnose-Paket</h2>

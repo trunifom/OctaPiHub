@@ -41,6 +41,8 @@ from octapihub.application.sense_hat import JoystickAction, JoystickDirection
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.settings import SettingsManager
 from octapihub.application.smarthome import SmartHomeService
+from octapihub.core.audit import AuditLog
+from octapihub.core.auth_guard import FailureLimiter
 from octapihub.core.config import JOYSTICK_FACE_LABELS, JOYSTICK_SOURCE, MAX_CUBES
 from octapihub.core.errors import (
     ConfigurationError,
@@ -87,6 +89,7 @@ from octapihub.web.presenter import (
     local_time_text,
     overall_level,
 )
+from octapihub.web.security import Stats, register_security, token_problem_for_client
 from octapihub.web.smarthome_routes import register_smarthome_routes
 
 logger = logging.getLogger(__name__)
@@ -132,6 +135,8 @@ class WebBackend:
     list_audio_devices: Callable[[], Awaitable[list[tuple[str, str]]]] | None = None
     logs: LogRing | None = None
     log_dir: str | None = None
+    guard: FailureLimiter = field(default_factory=FailureLimiter)
+    audit: AuditLog | None = None
     redactor: Redactor | None = None
     time: TimeSettings = field(default_factory=TimeSettings)
     tz_override: tzinfo | None = None
@@ -165,14 +170,7 @@ def _access_problem(token: str | None, supplied: str) -> tuple[int, str, str, st
             "und starten Sie den Dienst neu.",
             "CH-WEB-003",
         )
-    if not _token_matches(token, supplied):
-        return (
-            403,
-            "Das Zugriffs-Token stimmt nicht",
-            "Es wurde nichts geändert. Prüfen Sie das Token und versuchen Sie es erneut.",
-            "CH-WEB-004",
-        )
-    return None
+    return token_problem_for_client(lambda: _token_matches(token, supplied))
 
 
 async def _read_form(request: Request, limit: int = MAX_FORM_BYTES) -> tuple[dict[str, str], str]:
@@ -438,6 +436,8 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
     live = LiveView(backend, templates)
     app.mount("/static", StaticFiles(directory=str(_PACKAGE_DIR / "static")), name="static")
 
+    register_security(app, backend, _token_matches, Stats())
+
     @app.middleware("http")
     async def security_headers(request: Request, call_next: Callable[..., Awaitable[Response]]):  # type: ignore[no-untyped-def]
         response = await call_next(request)
@@ -633,6 +633,16 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "log_rows": rows,
             "logs_available": backend.logs is not None,
             "log_level": level,
+            "audit_rows": [
+                {
+                    "time": local_time_text(datetime.fromisoformat(e.time), backend.tz),
+                    "client": e.client,
+                    "action": e.action,
+                    "result": e.result,
+                }
+                for e in (backend.audit.recent(30) if backend.audit else ())
+            ],
+            "audit_available": backend.audit is not None,
         }
 
     @app.post("/system/diagnostics")

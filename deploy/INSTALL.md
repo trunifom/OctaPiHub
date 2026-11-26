@@ -166,6 +166,21 @@ Heimnetz tragen Sie in `/etc/octapihub/octapihub.env` die LAN-Adresse des Gerät
 Token ist alles nur lesbar. Die Oberfläche läuft ohne Anmeldung und ohne Verschlüsselung im
 Heimnetz: Wer im Netz ist, kann ansehen, aber ohne Token nichts ändern.
 
+**Verschlüsselung (HTTPS, optional):** Ohne HTTPS laufen Token und Seiten unverschlüsselt durchs
+Heimnetz. Wer das nicht möchte, hat zwei Wege:
+
+1. *Direkt im Dienst:* Zertifikat und Schlüssel (PEM) auf dem Gerät ablegen, lesbar für den Benutzer
+   `octapihub`, und in `/etc/octapihub/octapihub.env` eintragen:
+   `OCTAPIHUB_SSL_CERT=/etc/octapihub/tls/cert.pem` und `OCTAPIHUB_SSL_KEY=/etc/octapihub/tls/key.pem`.
+   Beide müssen gesetzt sein und zusammenpassen, sonst startet der Dienst nicht (`CH-WEB-022`).
+   Prüfen mit `octapihub --check`. Danach `https://<Adresse>:8080` öffnen. Ein selbst erzeugtes
+   Zertifikat (z. B. mit `openssl req -x509 -newkey rsa:3072 -nodes -days 825 -keyout key.pem -out cert.pem -subj "/CN=octapihub.local"`)
+   löst im Browser eine Warnung aus, die Sie einmal bestätigen müssen.
+2. *Vorgeschalteter Server* (z. B. Caddy oder nginx) auf demselben Gerät übernimmt HTTPS und
+   leitet an `http://127.0.0.1:8080` weiter. Der Dienst bleibt dann auf `127.0.0.1`. Beachten Sie:
+   Alle Geräte erscheinen dann dem Hub mit derselben Adresse (die Sperre nach Fehlversuchen
+   gilt dann für alle gemeinsam), und der Server muss `/events/…` ohne Puffer durchlassen.
+
 Eine Bedienungsanleitung für die Oberfläche finden Sie im
 [Benutzerhandbuch](../src/octapihub/web/help/handbuch.md).
 
