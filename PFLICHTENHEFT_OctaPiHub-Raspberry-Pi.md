@@ -320,6 +320,17 @@ Nachweis für einen Hardwaretest. Commits werden nach erfolgreicher Prüfung ers
 | 2026-11-25 23:59:52 +01:00 | `8c33ce0dbdc4d3b51db020c8a769b4d20bc80b0d` | Smart-Home-Aktionen: Webhook, MQTT (eigener 3.1.1-Publisher) und Home Assistant (Weg zu Matter); Passwörter/Token nur in secrets.env; Wiederholung nur bei sicher nicht Zugestelltem. 1578 Tests bestanden; lokale Test-Server und Test-Broker, **kein echtes Gerät**. CoAP und direktes Matter nicht umgesetzt. |
 | 2026-11-26 00:18:43 +01:00 | `a3ed0dff9a76a73bd4dbde9d058a92c74bff3609` | Fehlerbehandlung überarbeitet (Fehlerkatalog, globale Handler mit Kennung, abgesicherter Start, Konfigurations-Fallback, `--check`, `/healthz`, Protokollierung unbehandelter Ausnahmen); eingebaute Hilfe mit Suche und ⓘ-Hilfe an jedem Eingabefeld; behebt einen Absturz des Log-Filters. 1609 Tests bestanden. |
 | 2026-11-26 00:18:45 +01:00 | `9fa391e150f9acbee19e112158a1fe03242a53f9` | README neu mit sieben Screenshots des Demo-Modus, Architektur- und Pflichtenheft-Ergänzungen; Benutzerhandbuch in die Software verlegt. Keine Hardwareprüfung. |
+| 2026-11-26 00:21:58 +01:00 | `b32461bf80af78317a6366f6f9695cd301929733` | Sicherungs- und Wiederherstellungsskript, Smart-Home-Beispiel und dieser Nachweis. |
+| 2026-11-26 06:36:52 +01:00 | `4d816e83375b3e4bfdd80d01632db88b81b6004a` | systemd-Watchdog (`Type=notify`, `WatchdogSec`): der Dienst meldet sich regelmäßig und wird bei einem Hänger neu gestartet. Nur mit Fakes geprüft. |
+| 2026-11-26 13:05:31 +01:00 | `002b6eee41e81744e0b2833f29b904827dc4b15d` | Systemzeitzone als Standard, Zeitzone wählbar, NTP-Status. Nur mit Fakes geprüft. |
+| 2026-11-26 14:05:59 +01:00 | `6b13945c19b484528ad67e70debfcbdb0b86e3d6` | `octapihub --selftest`: prüft Bluetooth, I2C, Audio, Netz und Geräte und sagt, was fehlt (Ausgang 0/1/2). Mit einer austauschbaren Systemschnittstelle getestet, **nicht** auf einem echten Raspberry Pi. |
+| 2026-11-26 14:18:58 +01:00 | `96cfac5e4965fefca8b03110c27feea739f69f59` | Zeitbedingungen (Zeitfenster, Wochentage) und Verzögerungen (0–30 s) je Würfelseite (F-R3). Nur mit Fakes geprüft. |
+| 2026-11-26 14:42:19 +01:00 | `eb057b9ad0ecf470d0c3fc2fb0719d4173212142` | Würfel-Vorlagen „Licht-Würfel“ und „Musik-Würfel“ (F-W9); der Würfel-Export behält Bedingungen und Verzögerungen. Nur mit Fakes geprüft. |
+| 2026-11-26 15:06:55 +01:00 | `03b445b38f2a4af0a973a46e1ac770ea0e1f29e5` | Live-Rückmeldung der Hue Bridge über den Ereignisstrom (F-H7). Mit Fake und lokalem TLS-Testserver geprüft, **nicht** gegen eine echte Bridge. |
+| 2026-11-26 15:08:18 +01:00 | `ef18126f7d5df3cf5b4c361862007364201cbb43` | Korrektur zum vorigen Commit (Testdoubles ohne `groups`/`stop`). |
+| 2026-11-26 15:35:49 +01:00 | `d8d982d21cf6f731af56e9e385d5580eeb279728` | Sperre nach Fehlversuchen, Änderungsprotokoll, `/metrics`, optional HTTPS, CI-Workflow und Dockerfile (NF-9a/9b). Dockerfile und CI **nicht ausgeführt**. |
+| 2026-11-26 15:36:02 +01:00 | `f2c99f02dae5030ac9506f5941c4dd0dc43dd8a9` | Frühere Versionen mit „Wiederherstellen“, Handy-Menü „Mehr“, App-Manifest, Warnung bei ungespeicherten Änderungen (NF-13). Nur mit dem Testclient geprüft. |
+| 2026-11-26 15:42:39 +01:00 | `01d91f0f23730dc6ae4d4f14f5ff8f5c05eca532` | Einrichtungsseite und automatische Kontrastprüfung nach WCAG AA (NF-14). Kein Test mit Screenreader oder echtem Browser. |
 
 Die Einträge verweisen jeweils auf den Commit mit der Funktion. Änderungen an diesem
 Nachweis erfolgen in einem nachfolgenden Dokumentations-Commit, damit der tatsächliche
