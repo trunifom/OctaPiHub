@@ -304,7 +304,9 @@ class LiveView:
             cube_level = "error"
         hue = backend.hue
         hue_view = (
-            build_hue_view(hue.status, backend.tz, {g.id: g.name for g in hue.groups})
+            build_hue_view(
+                hue.status, backend.tz, {g.id: g.name for g in getattr(hue, "groups", ())}
+            )
             if hue is not None
             else None
         )
