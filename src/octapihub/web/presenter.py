@@ -701,6 +701,10 @@ class FaceTile:
     color: str = ""
     detail: tuple[str, ...] = ()
     summary: str = ""
+    delay: str = ""
+    when_start: str = ""
+    when_end: str = ""
+    days: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -775,6 +779,10 @@ def build_cube_tiles(
                     color=form.get(f"{field}.color", ""),
                     detail=tuple(describe_face(config, existing, scenes, groups or {})),
                     summary=_face_summary(existing, label),
+                    delay=form.get(f"{field}.delay", ""),
+                    when_start=form.get(f"{field}.when_start", ""),
+                    when_end=form.get(f"{field}.when_end", ""),
+                    days=tuple(d for d in range(7) if form.get(f"{field}.day.{d}")),
                 )
             )
         if is_joystick:

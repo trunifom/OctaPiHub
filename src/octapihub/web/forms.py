@@ -15,12 +15,14 @@ from octapihub.core.config import (
     JOYSTICK_FACES,
     JOYSTICK_SOURCE,
     MATRIX_VIEW_IDS,
+    MAX_DELAY_SECONDS,
     MAX_FACE_LABEL_LENGTH,
     AppConfig,
     HueConfig,
     RuleMappingConfig,
     SenseHatConfig,
     SensorPresentation,
+    mapping_table,
     sense_hat_table,
     with_hue_table,
 )
@@ -626,6 +628,68 @@ def choice_label(choice: str, scenes: Mapping[str, str], playlists: Mapping[str,
     return f"Musik: {MUSIC_CONTROLS.get(parts[0], parts[0])}"
 
 
+WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+_FORM_TIME = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+
+def timing_to_form(field: str, mapping: RuleMappingConfig) -> dict[str, str]:
+    """Delay and time condition of a face as form values (empty = none)."""
+    delay = mapping.actions[0].delay_seconds if len(mapping.actions) == 1 else 0.0
+    values = {f"{field}.delay": f"{delay:g}" if delay else ""}
+    when = mapping.when
+    values[f"{field}.when_start"] = when.start if when else ""
+    values[f"{field}.when_end"] = when.end if when else ""
+    for day in range(7):
+        values[f"{field}.day.{day}"] = "1" if when and day in when.days else ""
+    return values
+
+
+def _timing_from_form(
+    form: Mapping[str, str], field: str, errors: dict[str, str]
+) -> tuple[float, dict[str, object] | None] | None:
+    """Delay seconds and the ``when`` table of one face; ``None`` if a value is invalid."""
+    delay = 0.0
+    raw_delay = form.get(f"{field}.delay", "").strip().replace(",", ".")
+    if raw_delay:
+        try:
+            delay = float(raw_delay)
+        except ValueError:
+            delay = math.nan
+        if not math.isfinite(delay) or not 0 <= delay <= MAX_DELAY_SECONDS:
+            errors[f"{field}.delay"] = (
+                f"Die Wartezeit muss eine Zahl von 0 bis {MAX_DELAY_SECONDS:g} Sekunden sein."
+            )
+            return None
+    start = form.get(f"{field}.when_start", "").strip()
+    end = form.get(f"{field}.when_end", "").strip()
+    days = [day for day in range(7) if form.get(f"{field}.day.{day}", "").strip()]
+    for key, text in (("when_start", start), ("when_end", end)):
+        if text and not _FORM_TIME.fullmatch(text):
+            errors[f"{field}.{key}"] = "Bitte eine Uhrzeit wie 18:30 angeben."
+            return None
+    if bool(start) != bool(end):
+        errors[f"{field}.when_start"] = "Für ein Zeitfenster brauchen Sie „von“ und „bis“."
+        return None
+    if start and start == end:
+        errors[f"{field}.when_end"] = "„Von“ und „bis“ dürfen nicht gleich sein."
+        return None
+    when: dict[str, object] = {}
+    if start:
+        when["start"], when["end"] = start, end
+    if days and len(days) < 7:
+        when["days"] = days
+    return delay, (when or None)
+
+
+def _apply_timing(entry: dict[str, object], delay: float, when: dict[str, object] | None) -> None:
+    actions = entry["actions"]
+    assert isinstance(actions, list)
+    if delay and len(actions) == 1:
+        actions[0]["delay_seconds"] = delay
+    if when:
+        entry["when"] = when
+
+
 def _mapping_lookup(config: AppConfig) -> dict[tuple[str, int], RuleMappingConfig]:
     return {(m.cube.casefold(), m.face): m for m in config.mappings}
 
@@ -654,6 +718,8 @@ def mapping_config_to_form(config: AppConfig) -> dict[str, str]:
                 if choice.startswith(MUSIC_PREFIX):
                     for key, value in music_options_of(mapping).items():
                         values[f"{mapping_field(index, face)}.{key}"] = value
+            if mapping is not None and choice_of(mapping) is not None:
+                values.update(timing_to_form(mapping_field(index, face), mapping))
     return values
 
 
@@ -689,6 +755,8 @@ def parse_mapping_form(
     home_ids = set(known_home_ids)
     errors: dict[str, str] = {}
     result: list[dict[str, object]] = []
+    locked: set[int] = set()
+    fields: dict[tuple[str, int], str] = {}
     raw_labels = _labels_from_form(form, config, errors)
     for index, (name, faces) in enumerate(mapping_sources(config)):
         cube_default = form.get(f"cubetarget.{index}", "").strip()
@@ -699,8 +767,10 @@ def parse_mapping_form(
             existing = lookup.get((name.casefold(), face))
             if existing is not None and choice_of(existing) is None:
                 result.append(_raw_mapping(existing))
+                locked.add(id(result[-1]))
                 continue
             field = mapping_field(index, face)
+            fields[(name.casefold(), face)] = field
             chosen = form.get(field, "").strip()
             if not chosen:
                 continue
@@ -800,6 +870,13 @@ def parse_mapping_form(
                     ],
                 }
             )
+    for entry in result:
+        if id(entry) in locked:
+            continue
+        field = fields[(str(entry["cube"]).casefold(), int(str(entry["face"])))]
+        timing = _timing_from_form(form, field, errors)
+        if timing is not None:
+            _apply_timing(entry, *timing)
     return MappingResult(None if errors else result, errors, None if errors else raw_labels)
 
 
@@ -873,15 +950,4 @@ def _music_options_from_form(
 
 
 def _raw_mapping(mapping: RuleMappingConfig) -> dict[str, object]:
-    return {
-        "cube": mapping.cube,
-        "face": mapping.face,
-        "actions": [
-            {
-                "kind": action.kind,
-                "action": action.action,
-                "parameters": dict(action.parameters),
-            }
-            for action in mapping.actions
-        ],
-    }
+    return mapping_table(mapping)

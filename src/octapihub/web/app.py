@@ -565,6 +565,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             else {},
             "music_enabled": backend.settings.config.music.enabled,
             "music_targets": {t.id: t.name for t in backend.settings.config.music.targets},
+            "weekdays": forms.WEEKDAYS,
             "option_shuffle": {"": "Wie die Playlist", "yes": "Zufällig", "no": "In Reihenfolge"},
             "option_repeat": {
                 "": "Wie die Playlist",
@@ -823,7 +824,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
                 "Starten Sie die Oberfläche mit einer Konfigurationsdatei.",
                 "CH-WEB-012",
             )
-        if backend.cubes.trigger(name, face) is None:
+        if backend.cubes.trigger(name, face, ignore_conditions=True) is None:
             return respond(
                 409,
                 "warn",

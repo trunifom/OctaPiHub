@@ -70,6 +70,11 @@ Jede Karte hat einen Bereich **„Name, Farbe, Optionen und Details“**:
   - *Gerät*: auf welchem Wiedergabegerät diese Musik-Aktion läuft.
   - *Reihenfolge*: wie die Playlist, zufällig oder in Reihenfolge.
   - *Wiederholen*: wie die Playlist, nicht wiederholen, alles wiederholen, Titel wiederholen.
+- **Zeit** (nur bei Seiten mit einer Auswahl, nicht bei Seiten mit mehreren Schritten):
+  - *Verzögerung*: 0 bis 30 Sekunden warten, bevor die Aktion startet, zum Beispiel „Musik 2 Sekunden nach dem Licht“. Währenddessen warten die weiteren Aktionen dieses Würfels.
+  - *Nur von … bis …*: ein Zeitfenster, auch über Mitternacht (22:00 bis 06:00). Das Ende selbst zählt nicht mehr dazu.
+  - *Wochentage*: nur an den angekreuzten Tagen; keiner angekreuzt = jeden Tag.
+  - Außerhalb der Bedingung passiert beim Drehen **nichts** (auch kein Fehler). „Jetzt auslösen“ ignoriert die Bedingung, damit Sie testen können. Die Uhrzeit folgt der eingestellten Zeitzone.
 - **Was passiert, wenn diese Seite oben liegt?** In Klartext: bei einer Playlist Quelle, Ordner, Gerät, Zufall und Wiederholen und Lautstärke; bei Licht Aktion und Raum; bei einer Szene deren Name; bei Smart Home Art und Ziel (Web-Adressen werden gekürzt, weil sie Geheimnisse enthalten können).
 
 #### Ein Gerät für den ganzen Würfel

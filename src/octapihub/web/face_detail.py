@@ -13,6 +13,7 @@ from octapihub.core.config import (
     PlaylistConfig,
     RepeatMode,
     RuleActionConfig,
+    RuleConditionConfig,
     RuleMappingConfig,
 )
 from octapihub.core.errors import MusicSourceError
@@ -150,6 +151,25 @@ def _hide_query(url: str) -> str:
     return f"{parts.scheme}://{parts.netloc}/…" if parts.path.strip("/") or parts.query else url
 
 
+_DAY_NAMES = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+
+
+def describe_condition(when: RuleConditionConfig) -> str:
+    """ "Nur Mo–Fr von 18:00 bis 23:00" for a time condition."""
+    parts: list[str] = []
+    if when.days:
+        days = list(when.days)
+        run = days == list(range(days[0], days[-1] + 1)) and len(days) > 2
+        parts.append(
+            f"{_DAY_NAMES[days[0]]}–{_DAY_NAMES[days[-1]]}"
+            if run
+            else ", ".join(_DAY_NAMES[d] for d in days)
+        )
+    if when.start:
+        parts.append(f"von {when.start} bis {when.end} Uhr")
+    return "Nur " + " ".join(parts) + " (sonst passiert nichts)"
+
+
 def describe_face(
     config: AppConfig,
     mapping: RuleMappingConfig | None,
@@ -161,9 +181,13 @@ def describe_face(
         return []
     playlists = {p.id: p for p in config.music.playlists}
     lines: list[str] = []
+    if mapping.when is not None:
+        lines.append(describe_condition(mapping.when))
     for index, action in enumerate(mapping.actions):
         if len(mapping.actions) > 1:
             lines.append(f"Schritt {index + 1}:")
+        if action.delay_seconds:
+            lines.append(f"Wartet zuerst {action.delay_seconds:g} Sekunden")
         if action.kind == "music":
             lines.extend(_music_lines(config, action, playlists))
         elif action.kind == "hue":

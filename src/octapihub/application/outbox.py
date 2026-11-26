@@ -170,9 +170,11 @@ class OutboxDispatcher:
             return None
         return self.enqueue_face_change(event.cube_name, event.orientation.value)
 
-    def enqueue_face_change(self, cube_name: str, face: int) -> str | None:
+    def enqueue_face_change(
+        self, cube_name: str, face: int, *, ignore_conditions: bool = False
+    ) -> str | None:
         """Queue actions for a face from BLE, web, joystick, or another input source."""
-        actions = self._rules.actions_for(cube_name, face)
+        actions = self._rules.actions_for(cube_name, face, ignore_conditions=ignore_conditions)
         if not actions:
             return None
         created_at = self._clock()

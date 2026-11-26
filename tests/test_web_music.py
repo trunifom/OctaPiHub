@@ -489,3 +489,89 @@ def test_the_holder_can_stop_the_music_and_light_cubes_can_ignore_it(tmp_path: P
         rig.music.execute(holder[0].actions[0].action, dict(holder[0].actions[0].parameters))
     )
     assert all(t.state.value == "idle" for t in rig.music.status.targets)
+
+
+# ---------- conditions and delays per face ----------
+
+
+def test_delay_and_time_condition_are_saved_shown_and_loaded_again(tmp_path: Path) -> None:
+    rig = Rig(tmp_path)
+    fields = {
+        "map.0.1": "music:play:morgen",
+        "map.0.1.delay": "2,5",
+        "map.0.1.when_start": "18:00",
+        "map.0.1.when_end": "23:30",
+        "map.0.1.day.0": "1",
+        "map.0.1.day.1": "1",
+        "map.0.1.day.2": "1",
+        "map.0.1.day.3": "1",
+        "map.0.1.day.4": "1",
+    }
+    with rig.client() as client:
+        response = post_mapping(rig, client, fields)
+        assert response.status_code == 200, response.text[:300]
+        page = client.get("/cubes").text
+    saved = [m for m in load_config(rig.path).mappings if (m.cube, m.face) == ("Musik", 1)][0]
+    assert saved.actions[0].delay_seconds == 2.5
+    assert saved.when is not None
+    assert (saved.when.start, saved.when.end, saved.when.days) == (
+        "18:00",
+        "23:30",
+        (0, 1, 2, 3, 4),
+    )
+    assert 'value="2.5"' in page and 'value="18:00"' in page and 'value="23:30"' in page
+    assert "Nur Mo–Fr von 18:00 bis 23:30 Uhr" in page and "Wartet zuerst 2.5 Sekunden" in page
+
+
+def test_without_timing_nothing_is_added(tmp_path: Path) -> None:
+    rig = Rig(tmp_path)
+    with rig.client() as client:
+        post_mapping(rig, client, {"map.0.1": "music:next", "map.0.1.day.0": ""})
+    saved = [m for m in load_config(rig.path).mappings if (m.cube, m.face) == ("Musik", 1)][0]
+    assert saved.when is None and saved.actions[0].delay_seconds == 0
+
+
+@pytest.mark.parametrize(
+    ("fields", "error_field"),
+    [
+        ({"map.0.1.delay": "31"}, "map.0.1.delay"),
+        ({"map.0.1.delay": "-1"}, "map.0.1.delay"),
+        ({"map.0.1.delay": "bald"}, "map.0.1.delay"),
+        ({"map.0.1.delay": "nan"}, "map.0.1.delay"),
+        ({"map.0.1.when_start": "18:00"}, "map.0.1.when_start"),
+        ({"map.0.1.when_end": "18:00"}, "map.0.1.when_start"),
+        ({"map.0.1.when_start": "18:00", "map.0.1.when_end": "18:00"}, "map.0.1.when_end"),
+        ({"map.0.1.when_start": "25:00", "map.0.1.when_end": "26:00"}, "map.0.1.when_start"),
+    ],
+)
+def test_invalid_timing_is_reported_and_nothing_is_saved(
+    tmp_path: Path, fields: dict[str, str], error_field: str
+) -> None:
+    rig = Rig(tmp_path)
+    before = rig.path.read_text(encoding="utf-8")
+    with rig.client() as client:
+        response = post_mapping(rig, client, {"map.0.1": "music:next", **fields})
+    assert response.status_code == 422 or error_field in response.text
+    assert rig.path.read_text(encoding="utf-8") == before
+
+
+def test_a_locked_face_keeps_its_condition_and_delay(tmp_path: Path) -> None:
+    import asyncio
+
+    rig = Rig(tmp_path)
+    two_steps = {
+        "cube": "Musik",
+        "face": 4,
+        "actions": [
+            {"kind": "music", "action": "stop", "parameters": {}},
+            {"kind": "music", "action": "resume", "parameters": {}, "delay_seconds": 3},
+        ],
+        "when": {"start": "08:00", "end": "09:00", "days": [5, 6]},
+    }
+    asyncio.run(rig.settings.apply_mappings([two_steps]))
+    with rig.client() as client:
+        response = post_mapping(rig, client, {"map.0.1": "music:next"})
+        assert response.status_code == 200, response.text[:300]
+    kept = [m for m in load_config(rig.path).mappings if (m.cube, m.face) == ("Musik", 4)]
+    assert kept and kept[0].when is not None and kept[0].when.days == (5, 6)
+    assert kept[0].actions[1].delay_seconds == 3.0

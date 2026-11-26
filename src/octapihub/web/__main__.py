@@ -263,9 +263,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         hue = build_hue_service(config, args.secrets)
         music, media = build_music_service(config, args.port)
         smarthome = build_smarthome_service(config, args.secrets)
-        cubes = build_cube_service(config, args.data_dir, plugins=(hue, music, smarthome))
-        system = SystemInfoReader(args.data_dir)
         time_settings = TimeSettings(config.timezone)
+        cubes = build_cube_service(
+            config, args.data_dir, plugins=(hue, music, smarthome), clock=time_settings.now
+        )
+        system = SystemInfoReader(args.data_dir)
         matrix = build_matrix_service(
             config, service, cubes, hue, host_level_from(system), music, time_settings.now
         )

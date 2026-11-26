@@ -61,7 +61,7 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 |---|---|---|
 | F-R1 | M | Zuordnung „Würfel × Seite → Aktion(en)“ in Konfigurationsdatei, in Weboberfläche bearbeitbar, vor Anwenden validiert. |
 | F-R2 | M | Aktionen laufen über eine **Warteschlange (Outbox)** mit Wiederholung, Backoff und Ablaufzeit; Reihenfolge je Würfel gewahrt. |
-| F-R3 | S | Mehrere Schritte je Aktion (z. B. Szene setzen, Lautstärke, 2 s warten, Musik starten) und einfache Bedingungen (Uhrzeit, Nachtmodus). |
+| F-R3 | S | Mehrere Schritte je Aktion (z. B. Szene setzen, Lautstärke, 2 s warten, Musik starten) und einfache Bedingungen (Uhrzeit, Wochentag). Umgesetzt: Verzögerung 0–30 s je Aktion und Zeitfenster/Wochentage je Seite (mit Fakes getestet, nicht an Hardware). Ein „Nachtmodus“ als Bedingung gibt es nicht. |
 | F-R4 | S | Entprellung: Seitenwechsel innerhalb < 1 s (einstellbar) führt nur die letzte Aktion aus. |
 | F-R5 | M | Fehlgeschlagene Aktion beeinflusst andere Aktionen/Adapter nicht (Isolation). |
 | F-R6 | S | Zustand beim Start: „letzte Szene wiederherstellen“ oder „nichts tun“ (einstellbar). |
@@ -103,7 +103,7 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 
 **Geplant (nicht implementiert):** Bilder oder Dashboards auf Nest-Hub-Displays, Gerätegruppen, direkte Matter- und CoAP-Anbindung (heute über Home Assistant, Webhook oder MQTT).
 
-**Stand F-M:** F-M1, F-M2, F-M3 (inkl. Bluetooth-Box), F-M4, F-M5, F-M7, F-M8 (Fehlerisolation, klare Meldung, kein Absturz; kein „Wecken“ eines schlafenden Geräts), F-M10 bis F-M13 sind **implementiert und mit Fakes getestet**; **keine** Prüfung mit echtem mpv, Google-Lautsprecher, Nest Hub oder Bluetooth-Box. F-M6 (Spotify) ist **nicht** umgesetzt: Spotify-Links werden erkannt und mit `CH-MUS-003` abgelehnt. F-M9 ist durch mehrere wählbare Ziele teilweise erfüllt (keine Gruppen, nicht mehrere gleichzeitig). Verzögerte Schritte (F-R3) gibt es nicht.
+**Stand F-M:** F-M1, F-M2, F-M3 (inkl. Bluetooth-Box), F-M4, F-M5, F-M7, F-M8 (Fehlerisolation, klare Meldung, kein Absturz; kein „Wecken“ eines schlafenden Geräts), F-M10 bis F-M13 sind **implementiert und mit Fakes getestet**; **keine** Prüfung mit echtem mpv, Google-Lautsprecher, Nest Hub oder Bluetooth-Box. F-M6 (Spotify) ist **nicht** umgesetzt: Spotify-Links werden erkannt und mit `CH-MUS-003` abgelehnt. F-M9 ist durch mehrere wählbare Ziele teilweise erfüllt (keine Gruppen, nicht mehrere gleichzeitig).
 
 ### 4.5 Sense HAT – Anzeige (F-D)
 | ID | Prio | Anforderung |

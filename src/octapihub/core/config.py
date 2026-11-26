@@ -36,6 +36,7 @@ MAX_FACE_LABEL_LENGTH = 40
 MAX_SMART_CONNECTIONS = 8
 MAX_SMART_ACTIONS = 64
 MAX_SMART_TEXT = 500
+MAX_DELAY_SECONDS = 30.0
 MAX_PLAYLISTS = 64
 MAX_SOURCE_LENGTH = 2000
 _SLUG_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
@@ -342,6 +343,16 @@ class RuleActionConfig:
     kind: str
     action: str
     parameters: Mapping[str, object]
+    delay_seconds: float = 0.0  # wait this long before the step (0 to 30 s)
+
+
+@dataclass(frozen=True, slots=True)
+class RuleConditionConfig:
+    """When a mapping may run: a daily time window and/or weekdays (0 = Monday)."""
+
+    start: str = ""  # "HH:MM"; a window may cross midnight
+    end: str = ""
+    days: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -351,6 +362,7 @@ class RuleMappingConfig:
     cube: str
     face: int
     actions: tuple[RuleActionConfig, ...]
+    when: RuleConditionConfig | None = None  # None: always
 
 
 @dataclass(frozen=True, slots=True)
@@ -558,23 +570,40 @@ def hue_table(hue: HueConfig) -> dict[str, object]:
     }
 
 
+def condition_table(condition: RuleConditionConfig) -> dict[str, object]:
+    """A condition as a plain TOML-shaped table (empty parts are left out)."""
+    table: dict[str, object] = {}
+    if condition.start:
+        table["start"] = condition.start
+        table["end"] = condition.end
+    if condition.days:
+        table["days"] = list(condition.days)
+    return table
+
+
+def mapping_table(mapping: RuleMappingConfig) -> dict[str, object]:
+    """One cube mapping as a plain TOML-shaped table."""
+    entry: dict[str, object] = {
+        "cube": mapping.cube,
+        "face": mapping.face,
+        "actions": [
+            {
+                "kind": action.kind,
+                "action": action.action,
+                "parameters": _thaw_parameter(action.parameters),
+                **({"delay_seconds": action.delay_seconds} if action.delay_seconds else {}),
+            }
+            for action in mapping.actions
+        ],
+    }
+    if mapping.when is not None:
+        entry["when"] = condition_table(mapping.when)
+    return entry
+
+
 def mappings_table(config: AppConfig) -> list[dict[str, object]]:
     """Return the cube mappings as plain TOML-shaped tables for editing."""
-    return [
-        {
-            "cube": mapping.cube,
-            "face": mapping.face,
-            "actions": [
-                {
-                    "kind": action.kind,
-                    "action": action.action,
-                    "parameters": _thaw_parameter(action.parameters),
-                }
-                for action in mapping.actions
-            ],
-        }
-        for mapping in config.mappings
-    ]
+    return [mapping_table(mapping) for mapping in config.mappings]
 
 
 def with_mappings_table(config: AppConfig, raw_mappings: Sequence[object]) -> AppConfig:
@@ -792,21 +821,7 @@ def _serialize_config(config: AppConfig) -> str:
             {"name": cube.name, "address": cube.address, "role": cube.role.value}
             for cube in config.cubes
         ],
-        "mappings": [
-            {
-                "cube": mapping.cube,
-                "face": mapping.face,
-                "actions": [
-                    {
-                        "kind": action.kind,
-                        "action": action.action,
-                        "parameters": _thaw_parameter(action.parameters),
-                    }
-                    for action in mapping.actions
-                ],
-            }
-            for mapping in config.mappings
-        ],
+        "mappings": mappings_table(config),
         "sense_hat": sense_hat_data,
         "hue": hue_table(config.hue),
         "music": music_table(config.music),
@@ -842,6 +857,8 @@ def _serialize_config(config: AppConfig) -> str:
                 f"face = {mapping.face}",
             ]
         )
+        if mapping.when is not None:
+            lines.append(f"when = {_toml_value(condition_table(mapping.when))}")
         for action in mapping.actions:
             lines.extend(
                 [
@@ -850,6 +867,7 @@ def _serialize_config(config: AppConfig) -> str:
                     f"kind = {_toml_string(action.kind)}",
                     f"action = {_toml_string(action.action)}",
                     f"parameters = {_toml_value(action.parameters)}",
+                    *([f"delay_seconds = {action.delay_seconds}"] if action.delay_seconds else []),
                 ]
             )
     for connection in validated.smarthome.connections:
@@ -1885,7 +1903,7 @@ def _parse_mapping(
 ) -> RuleMappingConfig:
     field = f"mappings[{index}]"
     mapping = _require_table(value, field)
-    _check_keys(mapping, {"cube", "face", "actions"}, field)
+    _check_keys(mapping, {"cube", "face", "actions", "when"}, field)
     cube_name = _require_string(mapping.get("cube"), f"{field}.cube")
     canonical_cube_name = cube_names.get(cube_name.casefold())
     if canonical_cube_name is None:
@@ -1912,12 +1930,14 @@ def _parse_mapping(
         _parse_rule_action(item, f"{field}.actions[{action_index}]")
         for action_index, item in enumerate(raw_actions)
     )
-    return RuleMappingConfig(canonical_cube_name, face, actions)
+    raw_when = mapping.get("when")
+    when = _parse_condition(raw_when, f"{field}.when") if raw_when is not None else None
+    return RuleMappingConfig(canonical_cube_name, face, actions, when)
 
 
 def _parse_rule_action(value: object, field: str) -> RuleActionConfig:
     action = _require_table(value, field)
-    _check_keys(action, {"kind", "action", "parameters"}, field)
+    _check_keys(action, {"kind", "action", "parameters", "delay_seconds"}, field)
     kind = _require_string(action.get("kind"), f"{field}.kind")
     name = _require_string(action.get("action"), f"{field}.action")
     if not _ACTION_IDENTIFIER_PATTERN.fullmatch(kind):
@@ -1937,7 +1957,52 @@ def _parse_rule_action(value: object, field: str) -> RuleActionConfig:
             for key, item in raw_parameters.items()
         }
     )
-    return RuleActionConfig(kind, name, parameters)
+    delay = action.get("delay_seconds", 0)
+    if (
+        isinstance(delay, bool)
+        or not isinstance(delay, (int, float))
+        or not math.isfinite(delay)
+        or not 0 <= delay <= MAX_DELAY_SECONDS
+    ):
+        raise ValidationError(
+            f"delay_seconds must be a number from 0 to {MAX_DELAY_SECONDS:g}",
+            details={"field": f"{field}.delay_seconds"},
+        )
+    return RuleActionConfig(kind, name, parameters, float(delay))
+
+
+_TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+
+def _parse_condition(value: object, field: str) -> RuleConditionConfig | None:
+    table = _require_table(value, field)
+    _check_keys(table, {"start", "end", "days"}, field)
+    start = table.get("start", "")
+    end = table.get("end", "")
+    for key, text in (("start", start), ("end", end)):
+        if not isinstance(text, str) or (text and not _TIME_PATTERN.fullmatch(text)):
+            raise ValidationError(
+                "A time must look like 18:30", details={"field": f"{field}.{key}"}
+            )
+    if bool(start) != bool(end):
+        raise ValidationError(
+            "A time window needs both start and end", details={"field": f"{field}.start"}
+        )
+    if start and start == end:
+        raise ValidationError("start and end must differ", details={"field": f"{field}.end"})
+    raw_days = table.get("days", [])
+    if (
+        not isinstance(raw_days, (list, tuple))
+        or any(isinstance(d, bool) or not isinstance(d, int) or not 0 <= d <= 6 for d in raw_days)
+        or len(set(raw_days)) != len(raw_days)
+    ):
+        raise ValidationError(
+            "days must be unique numbers from 0 (Monday) to 6 (Sunday)",
+            details={"field": f"{field}.days"},
+        )
+    if not start and not raw_days:
+        return None  # an empty condition means "always"
+    return RuleConditionConfig(str(start), str(end), tuple(sorted(raw_days)))
 
 
 def _parse_cube(value: object, index: int) -> CubeConfig:

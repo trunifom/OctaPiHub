@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -28,6 +29,7 @@ from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.sense_hat_worker import SenseHatSample, correct_temperature
 from octapihub.application.settings import SettingsManager
 from octapihub.application.smarthome import SmartHomeService, secret_key
+from octapihub.application.timer import TimerPlugin
 from octapihub.composition import build_matrix_service
 from octapihub.core.config import (
     AppConfig,
@@ -323,8 +325,8 @@ def build_demo_backend(token: str | None = DEMO_TOKEN) -> WebBackend:
     home_secrets = _DemoSecrets()
     home_secrets.set(secret_key("ha"), "demo-token")
     smarthome = SmartHomeService(base.smarthome, home_secrets, http=_demo_http, mqtt=_demo_mqtt)
-    cubes = _demo_cubes(base, directory, hue, music, smarthome)
     time_settings = TimeSettings(base.timezone)
+    cubes = _demo_cubes(base, directory, hue, music, smarthome, time_settings.now)
     matrix = build_matrix_service(base, service, cubes, hue, lambda: "ok", music, time_settings.now)
     settings = SettingsManager(
         config_path,
@@ -457,6 +459,7 @@ def _demo_cubes(
     hue: HueService | None = None,
     music: MusicService | None = None,
     smarthome: SmartHomeService | None = None,
+    rules_clock: Callable[[], datetime] | None = None,
 ) -> CubeService:
     """Two simulated cubes that connect instantly; no Bluetooth is used."""
     profile = DeviceProfile(
@@ -489,8 +492,11 @@ def _demo_cubes(
             plugins.register(music)
         if smarthome is not None:
             plugins.register(smarthome)
+        plugins.register(TimerPlugin())
         return OutboxDispatcher(
-            RuleEngine(settings), SQLiteOutbox(directory / "state.sqlite3"), plugins
+            RuleEngine(settings, rules_clock),
+            SQLiteOutbox(directory / "state.sqlite3"),
+            plugins,
         )
 
-    return CubeService(config, make_runtime, make_dispatcher)
+    return CubeService(config, make_runtime, make_dispatcher, rules_clock=rules_clock)

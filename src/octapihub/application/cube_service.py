@@ -7,6 +7,7 @@ import contextlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 from octapihub.application.ble_runtime import BleRuntime, CubeRuntimeStatus
 from octapihub.application.outbox import OutboxDispatcher, OutboxEntry
@@ -54,7 +55,9 @@ class CubeService:
         *,
         poll_interval_seconds: float = 0.1,
         restart_delay_seconds: float = _RESTART_DELAY_SECONDS,
+        rules_clock: Callable[[], datetime] | None = None,
     ) -> None:
+        self._rules_clock = rules_clock
         self._config = config
         self._runtime_factory = runtime_factory
         self._dispatcher_factory = dispatcher_factory
@@ -115,7 +118,7 @@ class CubeService:
             for i, name in enumerate([cube.name for cube in self._config.cubes] + [JOYSTICK_SOURCE])
         )
 
-    def trigger(self, source: str, face: int) -> str | None:
+    def trigger(self, source: str, face: int, *, ignore_conditions: bool = False) -> str | None:
         """Run the actions mapped to ``face`` of ``source`` as if the cube or joystick did it.
 
         Used for the Sense HAT joystick and for the web interface's "run now" buttons.
@@ -129,7 +132,9 @@ class CubeService:
             )
             return None
         try:
-            batch = dispatcher.enqueue_face_change(source, face)
+            batch = dispatcher.enqueue_face_change(
+                source, face, ignore_conditions=ignore_conditions
+            )
         except OctaPiHubError as exc:
             logger.warning("Cannot trigger %s face %s: %s", source, face, exc)
             return None
@@ -167,7 +172,7 @@ class CubeService:
         """
         dispatcher = self._dispatcher
         if dispatcher is not None:
-            dispatcher.update_rules(RuleEngine(config))
+            dispatcher.update_rules(RuleEngine(config, self._rules_clock))
             self._config = config
             return
         self._config = config

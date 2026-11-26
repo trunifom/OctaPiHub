@@ -21,6 +21,7 @@ from octapihub.application.plugins import (
 from octapihub.application.rules import RuleEngine
 from octapihub.application.sense_hat_service import SenseHatService
 from octapihub.application.smarthome import SmartHomeService
+from octapihub.application.timer import TimerPlugin
 from octapihub.core.config import JOYSTICK_SOURCE, AppConfig, HueConfig
 from octapihub.infrastructure.ble.bleak_transport import BleakTransportFactory
 from octapihub.infrastructure.ble.protocol import (
@@ -109,6 +110,7 @@ def build_cube_service(
     config: AppConfig,
     state_dir: str | Path = "data",
     plugins: Iterable[ActionPlugin] = (),
+    clock: Callable[[], datetime] | None = None,
 ) -> CubeService:
     """Create the cube pipeline with real Bluetooth, the SQLite outbox, and installed plugins.
 
@@ -136,8 +138,9 @@ def build_cube_service(
         registry = PluginRegistry()
         load_installed_plugins(registry)
         registry.register_many(extra_plugins)
+        registry.register(TimerPlugin())
         return OutboxDispatcher(
-            RuleEngine(settings),
+            RuleEngine(settings, clock),
             SQLiteOutbox(directory / "state.sqlite3"),
             registry,
             ttl_by_kind={
@@ -147,7 +150,7 @@ def build_cube_service(
             },
         )
 
-    return CubeService(config, make_runtime, make_dispatcher)
+    return CubeService(config, make_runtime, make_dispatcher, rules_clock=clock)
 
 
 def build_matrix_service(

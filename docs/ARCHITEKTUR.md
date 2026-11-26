@@ -16,7 +16,11 @@ Aktuell implementiert sind:
 - `application.ble_runtime`: serialisierte Verbindungseinrichtung und je ein überwachter
   Worker pro konfiguriertem Würfel.
 - `application.rules` und `application.outbox`: stabile Würfelseiten auf Plugin-Aktionen
-  abbilden und Aktionen isoliert aus der persistenten Warteschlange ausführen.
+  abbilden und Aktionen isoliert aus der persistenten Warteschlange ausführen. Eine Zuordnung
+  kann eine Zeitbedingung (`when`: Zeitfenster, Wochentage; geprüft beim Ereignis mit der
+  eingestellten Zeitzone) und je Aktion eine Verzögerung (`delay_seconds`, höchstens 30 s) haben.
+  Verzögerungen werden zu Schritten des internen Plugins `timer` (`wait`) vor der Aktion; sie
+  laufen in der Warteschlange des Würfels, daher ohne Änderung des SQLite-Schemas.
 - `infrastructure.ble`: Bleak/BlueZ-Adapter, Fake und Decoder der bekannten BLE-Nutzdaten.
 - `infrastructure.hue`: lokaler CLIP-v2-Client und Plugin für Szenenliste/-Recall mit
   verifizierter TLS-Verbindung und begrenzter Anfragerate.

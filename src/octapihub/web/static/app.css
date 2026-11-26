@@ -482,3 +482,9 @@ textarea { width: 100%; font: 0.85rem ui-monospace, SFMono-Regular, Menlo, Conso
 .err-entry:target { background: var(--accent-soft); border-radius: 10px; padding-left: 0.6rem; }
 .err-entry h3 { margin: 0 0 0.2rem; font-size: 1rem; }
 @media (max-width: 52rem) { .help-layout { grid-template-columns: 1fr; } .help-toc { position: static; max-height: none; } }
+
+.timing { border: 0; padding: 0; margin: 0.4rem 0; }
+.timing legend { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.25rem; padding: 0; }
+.weekdays { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.4rem 0; }
+.weekday { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.5rem; border: 1px solid var(--border); border-radius: 999px; font-size: 0.85rem; cursor: pointer; }
+.weekday input { margin: 0; }
