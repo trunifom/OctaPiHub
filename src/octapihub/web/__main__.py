@@ -35,6 +35,7 @@ from octapihub.core.resilience import (
     install_exception_hooks,
     load_with_fallback,
 )
+from octapihub.core.watchdog import Watchdog
 from octapihub.infrastructure.ble.bleak_transport import BleakDeviceScanner
 from octapihub.infrastructure.music.cast_player import PyChromecastBackend
 from octapihub.infrastructure.music.mpv_player import list_audio_devices
@@ -266,6 +267,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"CH-WEB-008: {problem}", file=sys.stderr)  # noqa: T201
         return 2
     backend.logs = logs
+    backend.watchdog = None if args.demo else Watchdog()
     backend.log_dir = None if args.demo else log_dir
     if backend.system is None:
         backend.system = SystemInfoReader(args.data_dir)

@@ -136,6 +136,7 @@ Eine versionierte TOML-Datei (`octapihub.toml`, **Schema v7**; ältere Versionen
 - **Fehlercodes:** Jede Meldung trägt einen Code (`CH-MUS-002` …). Die Oberfläche erklärt jeden unter **Hilfe → Fehlercodes** (Bedeutung, Abhilfe, ob wiederholt wird). Ein Test stellt sicher, dass jeder Code in der Software auch im Katalog steht.
 - **Fallbacks:** Unbrauchbare Konfiguration beim Start → neueste gültige Sicherung; ein unerwarteter Web-Fehler → ruhige Seite mit Kennung (`CH-WEB-500`) statt Absturz; Hardware fehlt → degradierter Betrieb.
 - **Logging:** Konsole/journald, die letzten 500 Meldungen in der Oberfläche, **rotierende Logdatei** (`<Datenordner>/logs/octapihub.log`, ca. 6 MB). Zugangsdaten sind unkenntlich, Bluetooth-Adressen gekürzt, Ausnahmetexte werden nicht protokolliert. Nicht abgefangene Fehler in Threads und Hintergrundaufgaben werden protokolliert.
+- **Watchdog:** systemd startet den Dienst neu, wenn er hängt (`Type=notify`, `WatchdogSec=60`); Teilprobleme lösen keinen Neustart aus.
 - **Gesundheit:** `/healthz` (ohne Token, ohne Geheimnisse) meldet je Teil `ok` oder `degraded` – für Überwachung.
 - **Diagnose-Paket:** ZIP ohne Geheimnisse (Seite *System*).
 

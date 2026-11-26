@@ -134,6 +134,10 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now octapihub
 sudo systemctl status octapihub
 ```
+Ein **Watchdog** überwacht den Dienst: Reagiert das Programm nicht mehr (z. B. blockiert), startet systemd es nach
+spätestens 60 Sekunden neu (`Type=notify`, `WatchdogSec=60`). Ein Teil mit Problemen (Bluetooth aus, Lampe nicht
+erreichbar) löst **keinen** Neustart aus, er wird in der Oberfläche angezeigt. 
+
 **Kontrolle:** `status` zeigt `active (running)`; `journalctl -u octapihub -n 30` zeigt keine
 Zeile mit `ERROR`. Vor dem ersten Start prüft `/opt/octapihub/venv/bin/octapihub --check --config
 /etc/octapihub/octapihub.toml --secrets /etc/octapihub/secrets.env` Einstellungen, Zugangsdatei und Token

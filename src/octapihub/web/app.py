@@ -49,6 +49,7 @@ from octapihub.core.errors import (
     ValidationError,
 )
 from octapihub.core.logging_support import LogRing, Redactor
+from octapihub.core.watchdog import Watchdog
 from octapihub.infrastructure.music.media import MediaRegistry, content_type_for
 from octapihub.infrastructure.system_info import SystemInfoReader
 from octapihub.web import forms
@@ -133,6 +134,7 @@ class WebBackend:
     scanner: DeviceScanner | None = None
     smarthome: SmartHomeService | None = None
     startup_warnings: list[str] = field(default_factory=list)
+    watchdog: Watchdog | None = None
     discover_cast: Callable[[], Awaitable[list[str]]] | None = None
     list_audio_devices: Callable[[], Awaitable[list[tuple[str, str]]]] | None = None
     logs: LogRing | None = None
@@ -397,9 +399,13 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
                 music_task = asyncio.get_running_loop().create_task(
                     _watch_music(backend.music), name="music-status"
                 )
+        if manage_service and backend.watchdog is not None:
+            await backend.watchdog.start()  # READY=1 and the first pings
         try:
             yield
         finally:
+            if backend.watchdog is not None:
+                await backend.watchdog.stop()
             if music_task is not None:
                 music_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):

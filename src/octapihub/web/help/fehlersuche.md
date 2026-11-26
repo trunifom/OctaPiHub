@@ -19,6 +19,7 @@ Wenn etwas nicht klappt, gehen Sie in dieser Reihenfolge vor: **Meldung lesen �
 | **Sicherungskopien** | Vor Import und Änderung der Würfelliste wird die Konfiguration als `octapihub.toml.bak-<Zeit>` gesichert (die neuesten fünf bleiben). |
 | **Fallback beim Start** | Ist die Konfigurationsdatei unbrauchbar, nutzt der Hub die neueste gültige Sicherung und zeigt einen Hinweis. Die kaputte Datei bleibt zum Reparieren liegen. |
 | **Fehlerseite** | Ein unerwarteter Fehler zeigt eine ruhige Seite mit Code `CH-WEB-500` und einer **Kennung**, die im Protokoll steht; das Programm läuft weiter. |
+| **Watchdog** | Hängt das Programm (blockierte Hauptschleife), meldet es sich nicht mehr bei systemd und wird nach höchstens 60 s neu gestartet (`journalctl` zeigt „Watchdog timeout“). Teilprobleme lösen keinen Neustart aus. |
 | **Protokollierung** | Jeder Fehler wird mit Code ins Protokoll geschrieben, Zugangsdaten sind unkenntlich. Nicht abgefangene Ausnahmen in Threads und Hintergrundaufgaben werden ebenfalls protokolliert. |
 
 ## 3. Protokolle (Logs)

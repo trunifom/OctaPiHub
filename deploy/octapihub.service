@@ -9,7 +9,11 @@ StartLimitIntervalSec=300
 StartLimitBurst=5
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
+# Meldet sich der Dienst nicht mehr (hängt), startet systemd ihn neu (siehe core/watchdog.py).
+WatchdogSec=60
+TimeoutStartSec=90
 User=octapihub
 Group=octapihub
 # Zugriff auf Bluetooth (BlueZ), I2C (Sense HAT), den Joystick (input) und die Tonausgabe (audio).
