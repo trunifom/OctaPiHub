@@ -597,6 +597,8 @@ def test_saving_a_joystick_mapping_through_the_editor(tmp_path: Path) -> None:
             scenes = (HueScene("s-1", "Abend"),)
             status = HueStatus(HueState.PAIRED, "", None, None, None)
 
+            async def stop(self) -> None: ...
+
         chain.backend.hue = FakeHue()  # type: ignore[assignment]
         values = forms.mapping_config_to_form(chain.settings.config)
         values["map.2.1"] = "s-1"

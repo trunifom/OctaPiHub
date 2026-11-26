@@ -81,7 +81,7 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 | F-H4 | M | Zertifikatsprüfung: Signify-signiertes Zertifikat gegen CA bzw. gespeicherten Fingerabdruck; bei Fehler klare Meldung, **kein** stilles Abschalten der Prüfung. |
 | F-H5 | M | Ratenbegrenzung der Anfragen (Voreinstellung konservativ, z. B. höchstens wenige pro Sekunde), Umgang mit HTTP 429. |
 | F-H6 | S | Szenenfarbe/Helligkeit für Sense-HAT-Anzeige bereitstellen. |
-| F-H7 | K | Ereignisstrom (SSE) der Bridge nutzen, um Änderungen außerhalb des Hubs zu erkennen. |
+| F-H7 | K | Ereignisstrom (SSE) der Bridge nutzen, um Änderungen außerhalb des Hubs zu erkennen. Umgesetzt für den Ein/Aus-Zustand der Räume: „Umschalten“ nutzt den gemeldeten Zustand statt einer Abfrage; bei Verbindungsverlust wird wieder abgefragt und neu verbunden. Mit Fake und lokalem TLS-Testserver geprüft, **nicht** gegen eine echte Bridge (Format des Ereignisstroms nach der Hue-Dokumentation, ungeprüft). |
 
 ### 4.4 Musik und Audio (F-M)
 | ID | Prio | Anforderung |

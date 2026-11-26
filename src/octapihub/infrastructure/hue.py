@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import http.client
 import ipaddress
 import json
 import math
 import re
 import ssl
+import threading
 import time
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -37,6 +39,9 @@ from octapihub.core.errors import (
 
 _HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 _MAX_RESPONSE_BYTES = 1_048_576
+_MAX_STREAM_LINE = 262_144
+_OPEN = object()
+_END = object()
 _DEFAULT_REQUEST_INTERVAL_SECONDS = 0.5
 
 
@@ -55,6 +60,7 @@ class HueBridgeSettings:
     timeout_seconds: float = 5.0
     minimum_request_interval_seconds: float = _DEFAULT_REQUEST_INTERVAL_SECONDS
     tls_server_name: str | None = None
+    stream_timeout_seconds: float = 90.0  # the bridge sends a keep-alive far more often
 
     def __post_init__(self) -> None:
         _validate_host(self.host)
@@ -302,6 +308,88 @@ class HueBridgeClient:
         value = state.get("on") if isinstance(state, dict) else None
         return value if isinstance(value, bool) else None
 
+    async def light_events(self) -> AsyncIterator[tuple[str, bool] | None]:
+        """Live on/off changes of grouped lights from the bridge's event stream.
+
+        Yields ``None`` once when the stream is open (state before that is unknown) and then
+        ``(grouped_light_id, is_on)`` for every change. Ends with ``HueBridgeError`` when the
+        connection fails or goes silent; the caller reconnects.
+        """
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[object] = asyncio.Queue()
+        stop = threading.Event()
+        opened: list[http.client.HTTPResponse] = []
+        host = _url_host(self._settings.host)
+        request = Request(
+            f"https://{host}:{self._settings.port}/eventstream/clip/v2",
+            headers={
+                "Accept": "text/event-stream",
+                "hue-application-key": self._settings.application_key,
+            },
+            method="GET",
+        )
+
+        def put(item: object) -> None:
+            with contextlib.suppress(RuntimeError):  # the loop is already closed
+                loop.call_soon_threadsafe(queue.put_nowait, item)
+
+        def read() -> None:
+            try:
+                with self._opener.open(
+                    request, timeout=self._settings.stream_timeout_seconds
+                ) as response:
+                    opened.append(response)
+                    put(_OPEN)
+                    data: list[str] = []
+                    size = 0
+                    while not stop.is_set():
+                        raw = response.readline(_MAX_STREAM_LINE + 1)
+                        if not raw:
+                            break  # the bridge closed the stream
+                        if len(raw) > _MAX_STREAM_LINE:
+                            raise HueBridgeError("Hue event stream line exceeded the size limit")
+                        line = raw.decode("utf-8", "replace").rstrip(chr(13) + chr(10))
+                        if line:
+                            if line.startswith("data:"):
+                                size += len(line)
+                                if size > _MAX_RESPONSE_BYTES:
+                                    raise HueBridgeError("Hue event exceeded the size limit")
+                                data.append(line[5:].lstrip())
+                            continue
+                        if data:
+                            for change in _parse_light_events(chr(10).join(data)):
+                                put(change)
+                        data, size = [], 0
+                put(_END)
+            except HueBridgeError as exc:
+                put(exc)
+            except HTTPError as exc:
+                status = exc.code
+                exc.close()
+                put(HueBridgeError("Hue event stream was refused", details={"status": status}))
+            except (TimeoutError, OSError, http.client.HTTPException) as exc:
+                put(
+                    HueBridgeError(
+                        "Hue event stream failed", details={"reason": type(exc).__name__}
+                    )
+                )
+
+        thread = threading.Thread(target=read, name="hue-events", daemon=True)
+        thread.start()
+        try:
+            while True:
+                item = await queue.get()
+                if item is _END:
+                    raise HueBridgeError("Hue event stream was closed by the bridge")
+                if isinstance(item, Exception):
+                    raise item
+                yield None if item is _OPEN else cast(tuple[str, bool], item)
+        finally:
+            stop.set()
+            for response in opened:
+                with contextlib.suppress(Exception):
+                    response.close()
+
     async def recall_scene(self, scene_id: str) -> None:
         """Activate a scene by resource ID."""
         if not isinstance(scene_id, str) or not scene_id.strip():
@@ -366,6 +454,26 @@ class HueActionPlugin:
         if not isinstance(scene_id, str):
             raise ValidationError("Hue scene action requires a string scene_id")
         await self._client.recall_scene(scene_id)
+
+
+def _parse_light_events(text: str) -> list[tuple[str, bool]]:
+    """On/off changes of grouped lights in one event-stream message (anything else is ignored)."""
+    try:
+        events = json.loads(text)
+    except json.JSONDecodeError:
+        return []
+    changes: list[tuple[str, bool]] = []
+    for event in events if isinstance(events, list) else []:
+        data = event.get("data") if isinstance(event, dict) else None
+        for resource in data if isinstance(data, list) else []:
+            if not isinstance(resource, dict) or resource.get("type") != "grouped_light":
+                continue
+            state = resource.get("on")
+            value = state.get("on") if isinstance(state, dict) else None
+            ident = resource.get("id")
+            if isinstance(ident, str) and ident and isinstance(value, bool):
+                changes.append((ident, value))
+    return changes
 
 
 def _parse_group(kind: str, item: object) -> HueGroup | None:

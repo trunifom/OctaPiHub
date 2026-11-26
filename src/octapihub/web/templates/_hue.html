@@ -18,6 +18,8 @@
   {% if hue_view.detail %}<p class="sub">{{ hue_view.detail }}</p>{% endif %}
   {% if hue_view.hint %}<p class="notice-hint">{{ hue_view.hint }}</p>{% endif %}
   {% if hue_view.error_code %}<p class="notice-code">Fehlercode <code>{{ hue_view.error_code }}</code></p>{% endif %}
+  {% if hue_view.live_text %}<p class="sub">{{ hue_view.live_text }}</p>{% endif %}
+  {% if hue_view.lights %}<p class="sub">{% for name, on in hue_view.lights %}<span class="badge badge-{{ 'ok' if on else 'off' }}"><span class="dot" aria-hidden="true"></span>{{ name }}: {{ 'an' if on else 'aus' }}</span> {% endfor %}</p>{% endif %}
   {% if hue_view.host %}<p class="sub">Bridge: {{ hue_view.host }}{% if hue_view.state == 'paired' %} · {{ hue_view.checked_text }}{% endif %}</p>{% endif %}
 </article>
 {% endif %}

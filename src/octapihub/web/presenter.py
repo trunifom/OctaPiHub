@@ -6,8 +6,9 @@ Nothing here changes stored values; rounding happens only when text is produced.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, tzinfo
+from typing import Any
 
 from octapihub.application.ble_runtime import CubeConnectionState, CubeRuntimeStatus
 from octapihub.application.hue_service import HueState, HueStatus
@@ -622,16 +623,36 @@ class HueView:
     host: str
     checked_text: str
     state: str
+    live_text: str = ""
+    lights: tuple[tuple[str, bool], ...] = ()  # (name, is on) from the live stream
 
 
-def build_hue_view(status: HueStatus, tz: tzinfo) -> HueView:
+def build_hue_view(
+    status: HueStatus, tz: tzinfo, group_names: Mapping[str, str] | None = None
+) -> HueView:
     """Describe the Hue state; connection is only claimed after a successful check."""
+    view = _hue_view(status, tz)
+    if status.state is not HueState.PAIRED:
+        return view
+    names = group_names or {}
+    return replace(
+        view,
+        live_text=(
+            "Live-Rückmeldung der Bridge aktiv: „Umschalten“ kennt den echten Zustand."
+            if status.live
+            else "Keine Live-Rückmeldung: „Umschalten“ fragt die Bridge bei jedem Schalten ab."
+        ),
+        lights=tuple((names[gid], on) for gid, on in status.lights if gid in names),
+    )
+
+
+def _hue_view(status: HueStatus, tz: tzinfo) -> HueView:
     checked = (
         f"Zuletzt geprüft am {local_time_text(status.scenes_checked_at, tz)}"
         if status.scenes_checked_at is not None
         else "Noch nicht geprüft"
     )
-    base = {
+    base: dict[str, Any] = {
         "error_text": status.last_error or "",
         "error_code": status.last_error_code or "",
         "host": status.host,

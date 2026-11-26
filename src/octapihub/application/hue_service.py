@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -28,6 +29,9 @@ from octapihub.core.errors import (
 )
 
 logger = logging.getLogger(__name__)
+
+_FIRST_RETRY_SECONDS = 1.0
+_MAX_RETRY_SECONDS = 60.0
 
 HUE_KEY_NAME = "HUE_APPLICATION_KEY"
 _UNEXPECTED = "Unerwarteter Fehler bei der Hue-Anbindung. Details stehen im Log."
@@ -101,6 +105,8 @@ class HueStatus:
     last_error: str | None
     last_error_code: str | None
     scenes_checked_at: datetime | None
+    live: bool = False  # the bridge's event stream is connected
+    lights: tuple[tuple[str, bool], ...] = ()  # (group id, is on) as last reported
 
 
 def _raise_project_error(exc: Exception) -> NoReturn:
@@ -152,6 +158,10 @@ class HueService:
         self._scenes_checked_at: datetime | None = None
         self._last_error: str | None = None
         self._last_error_code: str | None = None
+        self._live = False  # the event stream is connected, so the states below are current
+        self._light_state: dict[str, bool] = {}
+        self._follower: asyncio.Task[None] | None = None
+        self._retry_seconds = _FIRST_RETRY_SECONDS
 
     # ----- state -----
 
@@ -176,6 +186,8 @@ class HueService:
             self._last_error,
             self._last_error_code,
             self._scenes_checked_at,
+            self._live,
+            tuple(sorted(self._light_state.items())) if self._live else (),
         )
 
     @property
@@ -194,6 +206,12 @@ class HueService:
         """Load the stored key and build the gateway; failures are recorded, not raised."""
         async with self._lock:
             await self._load()
+            self._follow_lights()
+
+    async def stop(self) -> None:
+        """Stop following the bridge's event stream."""
+        async with self._lock:
+            await self._stop_following()
 
     async def reconfigure(self, config: HueConfig) -> None:
         """Apply new settings; a stored key is kept (the bridge may only have a new address)."""
@@ -203,7 +221,9 @@ class HueService:
             self._groups = ()
             self._cycle = {}
             self._scenes_checked_at = None
+            await self._stop_following()
             await self._load()
+            self._follow_lights()
 
     async def pair(self) -> None:
         """Pair with the bridge and store the key.
@@ -227,6 +247,7 @@ class HueService:
             self._key = key
             self._clear_error()
             self._build_gateway()
+            self._follow_lights()
             logger.info("Hue bridge paired")
 
     async def unpair(self) -> None:
@@ -236,6 +257,7 @@ class HueService:
             SecretsError: The key could not be removed (it stays active in that case).
         """
         async with self._lock:
+            await self._stop_following()
             try:
                 await asyncio.to_thread(self._secrets.delete, HUE_KEY_NAME)
             except Exception as exc:  # noqa: BLE001 - the key stays active on any failure
@@ -322,13 +344,85 @@ class HueService:
                     self._cycle[group.id] = index
                     body = simple_body("light.color", {"color": COLOR_CYCLE[index]}, None)
                 else:
-                    on = await gateway.group_is_on(group.id) if action == "light.toggle" else None
+                    on = await self._current_state(gateway, group.id, action)
                     body = simple_body(action, parameters, on)
                 await gateway.set_group(group.id, body)
+                self._remember_state(group.id, body)
         except Exception as exc:  # noqa: BLE001 - record for the interface, then re-raise typed
             self._record(exc)
             _raise_project_error(exc)
         self._clear_error()
+
+    async def _current_state(self, gateway: HueGateway, group_id: str, action: str) -> bool | None:
+        """Whether the group is on, only asked for a toggle.
+
+        While the event stream is connected the last reported state is used (no request, and
+        it already includes changes made with the Hue app); otherwise the bridge is asked.
+        """
+        if action != "light.toggle":
+            return None
+        if self._live and group_id in self._light_state:
+            return self._light_state[group_id]
+        on = await gateway.group_is_on(group_id)
+        if self._live and on is not None:
+            self._light_state[group_id] = on
+        return on
+
+    def _remember_state(self, group_id: str, body: Mapping[str, object]) -> None:
+        """Take our own on/off command over at once; the bridge's event confirms it."""
+        switch = body.get("on")
+        value = switch.get("on") if isinstance(switch, dict) else None
+        if self._live and isinstance(value, bool):
+            self._light_state[group_id] = value
+
+    # ----- live feedback -----
+
+    def _follow_lights(self) -> None:
+        """Start following the event stream if the gateway offers one."""
+        gateway = self._gateway
+        if (
+            gateway is None
+            or not callable(getattr(gateway, "light_events", None))
+            or self._follower is not None
+        ):
+            return
+        self._follower = asyncio.get_running_loop().create_task(
+            self._follow(gateway), name="hue-events"
+        )
+
+    async def _stop_following(self) -> None:
+        task, self._follower = self._follower, None
+        self._live = False
+        self._light_state = {}
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    async def _follow(self, gateway: HueGateway) -> None:
+        """Keep the light states current; reconnect with a growing pause when the stream ends."""
+        events = getattr(gateway, "light_events")  # noqa: B009 - optional capability
+        retry = _FIRST_RETRY_SECONDS
+        while True:
+            try:
+                stream: AsyncIterator[tuple[str, bool] | None] = events()
+                async for event in stream:
+                    if event is None:
+                        self._light_state = {}  # everything before the connection is unknown
+                        self._live = True
+                        retry = _FIRST_RETRY_SECONDS
+                        logger.info("Hue live feedback connected")
+                    else:
+                        self._light_state[event[0]] = event[1]
+                logger.warning("Hue event stream ended")
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - the stream is optional; toggles then ask
+                logger.warning("Hue event stream lost: %s", exc)
+            self._live = False
+            self._light_state = {}
+            await asyncio.sleep(retry)
+            retry = min(retry * 2, _MAX_RETRY_SECONDS)
 
     async def _resolve_group(
         self, gateway: HueGateway, parameters: Mapping[str, object]

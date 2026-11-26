@@ -303,7 +303,11 @@ class LiveView:
         elif cubes.error:
             cube_level = "error"
         hue = backend.hue
-        hue_view = build_hue_view(hue.status, backend.tz) if hue is not None else None
+        hue_view = (
+            build_hue_view(hue.status, backend.tz, {g.id: g.name for g in hue.groups})
+            if hue is not None
+            else None
+        )
         return {
             "hue_active": hue is not None,
             "hue_view": hue_view,
@@ -416,6 +420,8 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             if manage_service:
                 if backend.cubes is not None:
                     await backend.cubes.stop()
+                if backend.hue is not None:
+                    await backend.hue.stop()
                 if backend.matrix is not None:
                     await backend.matrix.stop()
                 if backend.music is not None:

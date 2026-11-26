@@ -236,6 +236,8 @@ Raspberry Pi verifiziert.
 
 ## Hue CLIP-v2-Adapter
 
+`HueBridgeClient.light_events()` liest den Ereignisstrom der Bridge (`/eventstream/clip/v2`, Server-Sent Events) in einem Thread und liefert `None` (offen) und `(grouped_light-ID, an/aus)`; `HueService` hält daraus einen Zustands-Cache, der nur gilt, solange der Strom verbunden ist (bei Abbruch geleert, Wiederverbindung mit Backoff 1 bis 60 s). „Umschalten“ nutzt den Cache, sonst eine Abfrage; eigene Ein/Aus-Befehle werden sofort übernommen. Gateways ohne `light_events` funktionieren weiter wie bisher.
+
 `infrastructure.hue.HueBridgeClient` liest Szenen unter
 `/clip/v2/resource/scene` und aktiviert eine Szene mit dem CLIP-v2-Recall-Aufruf.
 `HueActionPlugin` stellt `scene.activate` für die Outbox bereit. Die Verbindung nutzt

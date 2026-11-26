@@ -105,6 +105,8 @@ Zuordnungen mit **mehreren Aktionen hintereinander** (nur in der Konfigurationsd
 3. **Szenen:** *Szenen laden* liest Szenen **und Räume**. Mit *Testen* schalten Sie eine Szene probeweise.
 4. **Lampen und Räume:** Pro Raum gibt es Testtasten *Ein, Aus, Heller, Dunkler, Nächste Farbe, Nächste Szene*.
 5. **Verbindung trennen:** Häkchen „Ja, Verbindung trennen“, dann *Verbindung trennen*. Der Schlüssel wird gelöscht.
+**Live-Rückmeldung:** Der Hub hört der Bridge zu und kennt so, ob ein Raum an oder aus ist, auch wenn Sie die Hue-App benutzen. „Ein/Aus umschalten“ nutzt diesen Zustand. Oben steht, ob die Rückmeldung aktiv ist und welche Räume an oder aus sind. Ist sie nicht verbunden, fragt der Hub die Bridge bei jedem Umschalten ab; er verbindet sich automatisch neu (1 bis 60 Sekunden Pause).
+
 Der Zustand der Verbindung steht oben (*Verbunden*, *Nicht gekoppelt*, *Aus*) mit Fehlercode, falls etwas nicht stimmt.
 
 ## 5. Musik
