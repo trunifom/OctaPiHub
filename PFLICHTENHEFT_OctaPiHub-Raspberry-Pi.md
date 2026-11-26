@@ -55,6 +55,7 @@ Annahmen: WLAN-Heimnetz, Hue Bridge per Kabel, Internet vorhanden (Streaming), N
 | F-W6 | M | Verbindungsaufbau nacheinander, nie parallel; ein Besitzer-Prozess für Bluetooth. | Kein „Operation already in progress“ im Dauerlauf. |
 | F-W7 | S | Wahl des Bluetooth-Adapters (`hci0`/`hci1`) per Konfiguration. | Dongle wird genutzt. |
 | F-W8 | S | Neutral-Seite (0/10) konfigurierbar behandeln (ignorieren, Pause, Aus). | Test je Einstellung. |
+| F-W9 | C | Würfel-Vorlagen („Licht-Würfel“, „Musik-Würfel“) mit einem Klick auf einen Würfel anwenden (mit Sicherung und Bestätigung). Umgesetzt, mit Fakes getestet. | Test `tests/test_cube_templates.py`. |
 
 ### 4.2 Regeln und Aktionen (F-R)
 | ID | Prio | Anforderung |

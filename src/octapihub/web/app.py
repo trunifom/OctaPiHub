@@ -29,8 +29,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from octapihub.application.backup import Bundle
 from octapihub.application.ble_scan import DeviceScanner, FoundDevice
 from octapihub.application.cube_service import CubeService
+from octapihub.application.cube_templates import TEMPLATES, template_by_id, template_profile
 from octapihub.application.hue_service import HueService
 from octapihub.application.matrix.service import MatrixDisplayService
 from octapihub.application.matrix.views import VIEWS
@@ -566,6 +568,7 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
             "music_enabled": backend.settings.config.music.enabled,
             "music_targets": {t.id: t.name for t in backend.settings.config.music.targets},
             "weekdays": forms.WEEKDAYS,
+            "templates": TEMPLATES,
             "option_shuffle": {"": "Wie die Playlist", "yes": "Zufällig", "no": "In Reihenfolge"},
             "option_repeat": {
                 "": "Wie die Playlist",
@@ -952,6 +955,54 @@ def create_app(backend: WebBackend, *, manage_service: bool = False) -> FastAPI:
         except OctaPiHubError as exc:
             logger.error("Cube management failed: %s", exc)
             return respond(502, "error", "Das hat nicht geklappt", exc.user_message, exc.error_code)
+
+    @app.post("/cubes/template", response_class=HTMLResponse)
+    async def apply_template(request: Request) -> Response:
+        """Replace the faces of one cube with a ready-made template."""
+        submitted, supplied = await _read_form(request)
+
+        def respond(
+            status: int, level: str, title: str, detail: str = "", code: str = ""
+        ) -> Response:
+            banner = {"level": level, "title": title, "detail": detail, "code": code}
+            values = forms.mapping_config_to_form(backend.settings.config)
+            return page(
+                request, "cubes.html", "cubes", status, **mapping_context(values, {}, banner)
+            )
+
+        problem = _access_problem(backend.token, supplied)
+        if problem is not None:
+            status, title, detail, code = problem
+            return respond(status, "error", title, detail, code)
+        template = template_by_id(submitted.get("template", ""))
+        cube = next(
+            (c.name for c in backend.settings.config.cubes if c.name == submitted.get("cube")),
+            None,
+        )
+        if template is None or cube is None:
+            return respond(422, "error", "Ungültige Auswahl", "", "CH-WEB-011")
+        if not submitted.get("confirm_template"):
+            return respond(
+                422,
+                "warn",
+                "Bitte bestätigen Sie das Ersetzen",
+                f"Die Zuordnung, Namen und Farben von „{cube}“ werden ersetzt. "
+                "Setzen Sie das Häkchen bei „Ja, ersetzen“.",
+            )
+        bundle = Bundle("", {"cube": template_profile(template)})
+        try:
+            await backend.settings.apply_bundle(bundle, ["cube"], cube)
+        except ValidationError as exc:
+            return respond(422, "error", "Das geht so nicht", exc.user_message, exc.error_code)
+        except OctaPiHubError as exc:
+            logger.error("Applying a cube template failed: %s", exc)
+            return respond(502, "error", "Das hat nicht geklappt", exc.user_message, exc.error_code)
+        return respond(
+            200,
+            "ok",
+            f"„{template.name}“ auf „{cube}“ angewendet",
+            "Die bisherigen Einstellungen wurden vorher gesichert (Seite Sicherung).",
+        )
 
     @app.post("/cubes/mapping", response_class=HTMLResponse)
     async def save_mapping(request: Request) -> Response:

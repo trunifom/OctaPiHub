@@ -21,6 +21,36 @@
 
 <div id="live-cubes">{% include "_cubes.html" %}</div>
 
+<form method="post" action="/cubes/template" id="template-form" novalidate>
+  <section class="panel" aria-labelledby="template-title">
+    <div class="panel-head">
+      <h2 id="template-title">Vorlagen</h2>
+      <p class="muted">Belegen Sie einen Würfel mit einem Klick: ein Licht-Würfel oder ein Musik-Würfel. Danach können Sie alles oben noch anpassen.</p>
+    </div>
+    <details class="more">
+      <summary>Würfel mit einer Vorlage belegen</summary>
+      <fieldset class="templates">
+        <legend>Vorlage</legend>
+        {% for tpl in templates %}
+        <label class="template-choice"><input type="radio" name="template" value="{{ tpl.id }}"{% if loop.first %} checked{% endif %}><span><strong>{{ tpl.name }}</strong><small class="help">{{ tpl.description }}</small></span></label>
+        {% endfor %}
+      </fieldset>
+      <div class="field">
+        <label for="f-template-cube">Für diesen Würfel</label>
+        <select name="cube" id="f-template-cube">
+          {% for tile_cube in tiles if tile_cube.name != 'Joystick' %}<option value="{{ tile_cube.name }}">{{ tile_cube.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <label class="check"><input type="checkbox" name="confirm_template" value="1"> Ja, die Zuordnung dieses Würfels ersetzen</label>
+      <div class="field field-token">
+        <label for="f-token-template">Zugriffs-Token</label>
+        <input type="password" name="token" id="f-token-template" autocomplete="current-password" placeholder="{{ 'Token eingeben' if writable else 'Nicht eingerichtet' }}"{% if not writable %} disabled{% endif %}>
+      </div>
+      <button type="submit" class="btn"{% if not writable %} disabled{% endif %}>Vorlage anwenden</button>
+    </details>
+  </section>
+</form>
+
 <form method="post" action="/cubes/manage" id="manage-form" novalidate>
   <section class="panel" aria-labelledby="manage-title">
     <div class="panel-head">

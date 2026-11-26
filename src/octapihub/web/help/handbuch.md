@@ -77,6 +77,13 @@ Jede Karte hat einen Bereich **„Name, Farbe, Optionen und Details“**:
   - Außerhalb der Bedingung passiert beim Drehen **nichts** (auch kein Fehler). „Jetzt auslösen“ ignoriert die Bedingung, damit Sie testen können. Die Uhrzeit folgt der eingestellten Zeitzone.
 - **Was passiert, wenn diese Seite oben liegt?** In Klartext: bei einer Playlist Quelle, Ordner, Gerät, Zufall und Wiederholen und Lautstärke; bei Licht Aktion und Raum; bei einer Szene deren Name; bei Smart Home Art und Ziel (Web-Adressen werden gekürzt, weil sie Geheimnisse enthalten können).
 
+#### Vorlagen: ein Würfel mit einem Klick belegen
+Unter **Vorlagen** (Seite Würfel) gibt es zwei fertige Belegungen, die ohne eigene Szenen oder Playlists funktionieren:
+- **Licht-Würfel** (braucht Hue): Seite 1 Ein/Aus, 2 heller, 3 dunkler, 4 Farbe wechseln, 5 Warmweiß, 6 alles aus.
+- **Musik-Würfel** (braucht Musik): Seite 1 Pause/Weiter, 2 nächster Titel, 3 vorheriger Titel, 4 lauter, 5 leiser, 6 Stopp.
+
+Wählen Sie die Vorlage und den Würfel, setzen Sie das Häkchen „Ja, ersetzen“ und geben Sie das Token ein. **Die bisherige Zuordnung, Namen und Farben dieses Würfels werden ersetzt**; vorher wird die Konfiguration gesichert (Seite Sicherung → Zurückspielen). Danach lässt sich jede Seite wie gewohnt anpassen. Den Joystick gibt es als Ziel nicht.
+
 #### Ein Gerät für den ganzen Würfel
 Über jedem Würfel steht **„Wiedergabegerät für die Musik-Aktionen dieses Würfels“**. Wählen Sie dort z. B. „Nest Mini Küche“, gilt es für alle Musik-Seiten dieses Würfels. Einzelne Seiten dürfen abweichen. So ist immer klar, welche Seite *was* *wo* auslöst.
 

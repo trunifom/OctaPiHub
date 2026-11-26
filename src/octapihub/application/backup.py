@@ -187,7 +187,7 @@ def cube_profile(config: AppConfig, name: str) -> dict[str, Any]:
     return {
         "name": source,
         "mappings": [
-            {"face": m["face"], "actions": m["actions"]}
+            {k: v for k, v in m.items() if k != "cube"}
             for m in mappings_table(config)
             if str(m["cube"]).casefold() == source.casefold()
         ],
